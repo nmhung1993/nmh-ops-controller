@@ -1,0 +1,88 @@
+{
+  "app": {
+    "title": "Windows Controller",
+    "subtitle": "Giám sát & quản lý hệ thống",
+    "signIn": "Đăng nhập",
+    "username": "Tên đăng nhập",
+    "password": "Mật khẩu",
+    "logout": "Đăng xuất"
+  },
+  "nav": {
+    "dashboard": "Bảng điều khiển",
+    "processes": "Tiến trình",
+    "watchdog": "Giám sát",
+    "admin": "Quản trị"
+  },
+  "dashboard": {
+    "title": "Bảng điều khiển",
+    "cpu": "Sử dụng CPU",
+    "cores": "lõi",
+    "memory": "Bộ nhớ",
+    "free": "Trống",
+    "total": "Tổng",
+    "uptime": "Thời gian hoạt động",
+    "os": "Hệ điều hành",
+    "disk": "Dung lượng ổ đĩa",
+    "cpuHistory": "Lịch sử CPU (60 phút)",
+    "memHistory": "Lịch sử bộ nhớ (60 phút)",
+    "netHistory": "Lịch sử mạng (60 phút)",
+    "received": "Đã nhận",
+    "sent": "Đã gửi"
+  },
+  "processes": {
+    "title": "Các tiến trình đang chạy",
+    "search": "Tìm kiếm tiến trình...",
+    "total": "Tổng",
+    "apps": "Ứng dụng",
+    "pid": "PID",
+    "name": "Tên",
+    "cpu": "CPU (s)",
+    "memory": "Bộ nhớ (MB)",
+    "path": "Đường dẫn",
+    "actions": "Thao tác",
+    "kill": "Kết thúc",
+    "noProcesses": "Không tìm thấy tiến trình"
+  },
+  "watchdog": {
+    "title": "Giám sát",
+    "desc": "Cấu hình các tiến trình cần giám sát. Nếu tiến trình được giám sát ngừng chạy, file được chỉ định sẽ tự động khởi động lại.",
+    "adminOnly": "Chỉ quản trị viên",
+    "monitoredProcesses": "Tiến trình được giám sát",
+    "addMonitored": "+ Thêm tiến trình giám sát",
+    "discordWebhook": "Discord Webhook",
+    "webhookDesc": "Đặt URL webhook Discord để nhận thông báo khi tiến trình được giám sát ngừng hoạt động, được khởi động lại, hoặc ảnh chụp màn hình được gửi lên.",
+    "saveWebhook": "Lưu Webhook",
+    "relaunchHistory": "Lịch sử khởi động lại",
+    "process": "Tiến trình",
+    "status": "Trạng thái",
+    "time": "Thời gian",
+    "error": "Lỗi",
+    "noHistory": "Chưa có lịch sử",
+    "active": "Hoạt động",
+    "disabled": "Tắt",
+    "relaunched": "Đã khởi động lại",
+    "failed": "Thất bại"
+  },
+  "admin": {
+    "title": "Bảng quản trị",
+    "userManagement": "Quản lý người dùng",
+    "addUser": "+ Thêm người dùng",
+    "username": "Tên đăng nhập",
+    "role": "Vai trò",
+    "actions": "Thao tác",
+    "setPassword": "Đặt mật khẩu",
+    "delete": "Xóa"
+  },
+  "modals": {
+    "addMonitored": "Thêm tiến trình giám sát",
+    "editMonitored": "Sửa tiến trình giám sát",
+    "processName": "Tên tiến trình (vd: notepad)",
+    "filePath": "Đường dẫn file thực thi",
+    "enabled": "Bật",
+    "cancel": "Hủy",
+    "save": "Lưu",
+    "addUser": "Thêm người dùng",
+    "changePassword": "Đổi mật khẩu",
+    "newPassword": "Mật khẩu mới"
+  }
+}

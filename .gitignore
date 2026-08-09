@@ -1,0 +1,28 @@
+# Node modules
+node_modules/
+
+# Data files (config, users, screenshots)
+data/
+*.png
+*.ps1
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

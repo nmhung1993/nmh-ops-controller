@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Windows Controller</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <!-- ===== LOGIN PAGE ===== -->
+  <div id="login-page">
+    <div class="login-card">
+      <h1>🖥️ Windows Controller</h1>
+      <p class="subtitle">Monitor & manage your system</p>
+      <form id="login-form">
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" id="login-username" required autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="login-password" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+        <p class="error-msg" id="login-error"></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== APP ===== -->
+  <div id="app">
+    <aside class="sidebar">
+      <div class="brand">🖥️ <span data-i18n="app.title">Windows Controller</span></div>
+      <nav>
+        <a href="#dashboard" class="active" data-page="dashboard"><span class="icon">📊</span><span data-i18n="nav.dashboard">Dashboard</span></a>
+        <a href="#processes" data-page="processes"><span class="icon">⚙️</span><span data-i18n="nav.processes">Processes</span></a>
+        <a href="#watchdog" data-page="watchdog"><span class="icon">🛡️</span><span data-i18n="nav.watchdog">Watchdog</span></a>
+        <a href="#admin" data-page="admin" id="admin-link" style="display:none"><span class="icon">👑</span><span data-i18n="nav.admin">Admin</span></a>
+      </nav>
+      <div class="lang-switcher">
+        <button class="btn btn-sm" id="lang-en">🇬🇧 EN</button>
+        <button class="btn btn-sm" id="lang-vi">🇻🇳 VI</button>
+      </div>
+      <div class="user-info">
+        <div class="username" id="current-username">-</div>
+        <div class="role" id="current-role">-</div>
+        <button class="btn btn-danger btn-sm logout-btn" id="logout-btn">Logout</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <!-- ===== DASHBOARD ===== -->
+      <section class="page active" id="page-dashboard">
+        <h2>📊 <span data-i18n="dashboard.title">Dashboard</span></h2>
+        <div class="grid grid-4" id="dash-cards">
+          <div class="card">
+            <div class="card-title">CPU Usage</div>
+            <div class="card-value" id="cpu-value">--%</div>
+            <div class="progress"><div class="progress-bar cpu" id="cpu-bar" style="width:0%"></div></div>
+            <div class="bar-label"><span id="cpu-cores">- cores</span><span id="cpu-model"></span></div>
+          </div>
+          <div class="card">
+            <div class="card-title">Memory</div>
+            <div class="card-value" id="mem-value">--</div>
+            <div class="progress"><div class="progress-bar mem" id="mem-bar" style="width:0%"></div></div>
+            <div class="bar-label"><span id="mem-free">--</span><span id="mem-total">--</span></div>
+          </div>
+          <div class="card">
+            <div class="card-title">Uptime</div>
+            <div class="card-value" id="uptime-value">--</div>
+            <div class="card-sub" id="hostname-value">--</div>
+          </div>
+          <div class="card">
+            <div class="card-title">OS</div>
+            <div class="card-value" id="os-value" style="font-size:18px">--</div>
+            <div class="card-sub" id="net-info">--</div>
+          </div>
+        </div>
+
+        <div class="grid grid-2" style="margin-top:16px">
+          <div class="card">
+            <div class="card-title">Disk Usage</div>
+            <div id="disk-charts" class="disk-charts"></div>
+          </div>
+          <div class="card">
+            <div class="card-title">CPU History (60 min)</div>
+            <div style="position:relative; height:300px">
+              <canvas id="cpu-line-chart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-2" style="margin-top:16px">
+          <div class="card">
+            <div class="card-title">Memory History (60 min)</div>
+            <div style="position:relative; height:300px">
+              <canvas id="mem-line-chart"></canvas>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Network History (60 min)</div>
+            <div style="position:relative; height:300px">
+              <canvas id="net-line-chart"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== PROCESSES ===== -->
+      <section class="page" id="page-processes">
+        <h2>⚙️ <span data-i18n="processes.title">Running Processes</span></h2>
+        <div class="toolbar">
+          <input type="text" class="search-input" id="process-search" placeholder="🔍 Search processes...">
+          <div class="stats-row" style="margin:0">
+            <div class="stat-item"><div class="label">Total</div><div class="value" id="proc-count">0</div></div>
+            <div class="stat-item"><div class="label">Apps</div><div class="value" id="app-count">0</div></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>PID</th>
+                  <th>Name</th>
+                  <th>CPU (s)</th>
+                  <th>Memory (MB)</th>
+                  <th>Path</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="process-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== WATCHDOG ===== -->
+      <section class="page" id="page-watchdog">
+        <h2>🛡️ <span data-i18n="watchdog.title">Watchdog</span></h2>
+        <p style="color:var(--text-muted); margin-bottom:20px">
+          Configure processes to monitor. If a monitored process stops running, the specified file will be automatically launched. <strong>(Admin only)</strong>
+        </p>
+
+        <div class="card" style="margin-bottom:20px">
+          <h3 style="margin-bottom:16px">Monitored Processes</h3>
+          <div id="monitored-list"></div>
+          <button class="btn btn-primary" id="add-monitored-btn">+ Add Monitored Process</button>
+        </div>
+
+        <div class="card" style="margin-bottom:20px">
+          <h3 style="margin-bottom:16px">Discord Webhook</h3>
+          <p style="color:var(--text-muted); font-size:13px; margin-bottom:12px">
+            Set a Discord webhook URL to receive notifications when a monitored process goes down, is restarted, or a screenshot is captured. <strong>(Admin only)</strong>
+          </p>
+          <div class="form-group" style="display:flex; gap:10px; margin-bottom:0">
+            <input type="text" id="discord-webhook-input" placeholder="https://discord.com/api/webhooks/..." style="flex:1">
+            <button class="btn btn-primary" id="save-webhook-btn">Save Webhook</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-bottom:16px">Relaunch History</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Process</th>
+                  <th>Status</th>
+                  <th>Time</th>
+                  <th>Error</th>
+                </tr>
+              </thead>
+              <tbody id="history-body">
+                <tr><td colspan="4" style="text-align:center; color:var(--text-muted)">No history yet</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== ADMIN ===== -->
+      <section class="page" id="page-admin">
+        <h2>👑 <span data-i18n="admin.title">Admin Panel</span></h2>
+        <div class="card">
+          <h3 style="margin-bottom:16px">User Management</h3>
+          <div class="toolbar">
+            <button class="btn btn-primary" id="add-user-btn">+ Add User</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Username</th>
+                  <th>Role</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="users-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ===== MODALS ===== -->
+  <!-- Monitored process modal -->
+  <div class="modal-overlay" id="monitored-modal">
+    <div class="modal">
+      <h3 id="monitored-modal-title">Add Monitored Process</h3>
+      <div class="form-group">
+        <label>Process Name (e.g. notepad)</label>
+        <input type="text" id="monitored-name" placeholder="process name">
+      </div>
+      <div class="form-group">
+        <label>Executable File Path</label>
+        <input type="text" id="monitored-path" placeholder="C:\path\to\app.exe">
+      </div>
+      <div class="form-group">
+        <label>
+          <input type="checkbox" id="monitored-enabled" checked> Enabled
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="monitored-cancel">Cancel</button>
+        <button class="btn btn-primary" id="monitored-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- User modal -->
+  <div class="modal-overlay" id="user-modal">
+    <div class="modal">
+      <h3 id="user-modal-title">Add User</h3>
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="user-username">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="user-password">
+      </div>
+      <div class="form-group">
+        <label>Role</label>
+        <select id="user-role">
+          <option value="user">User (view only)</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="user-cancel">Cancel</button>
+        <button class="btn btn-primary" id="user-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Change password modal -->
+  <div class="modal-overlay" id="password-modal">
+    <div class="modal">
+      <h3>Change Password</h3>
+      <div class="form-group">
+        <label>New Password</label>
+        <input type="password" id="password-new">
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="password-cancel">Cancel</button>
+        <button class="btn btn-primary" id="password-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-container"></div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

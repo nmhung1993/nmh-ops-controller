@@ -1,0 +1,88 @@
+{
+  "app": {
+    "title": "Windows Controller",
+    "subtitle": "Monitor & manage your system",
+    "signIn": "Sign In",
+    "username": "Username",
+    "password": "Password",
+    "logout": "Logout"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "processes": "Processes",
+    "watchdog": "Watchdog",
+    "admin": "Admin"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "cpu": "CPU Usage",
+    "cores": "cores",
+    "memory": "Memory",
+    "free": "Free",
+    "total": "Total",
+    "uptime": "Uptime",
+    "os": "OS",
+    "disk": "Disk Usage",
+    "cpuHistory": "CPU History (60 min)",
+    "memHistory": "Memory History (60 min)",
+    "netHistory": "Network History (60 min)",
+    "received": "Received",
+    "sent": "Sent"
+  },
+  "processes": {
+    "title": "Running Processes",
+    "search": "Search processes...",
+    "total": "Total",
+    "apps": "Apps",
+    "pid": "PID",
+    "name": "Name",
+    "cpu": "CPU (s)",
+    "memory": "Memory (MB)",
+    "path": "Path",
+    "actions": "Actions",
+    "kill": "Kill",
+    "noProcesses": "No processes found"
+  },
+  "watchdog": {
+    "title": "Watchdog",
+    "desc": "Configure processes to monitor. If a monitored process stops running, the specified file will be automatically launched.",
+    "adminOnly": "Admin only",
+    "monitoredProcesses": "Monitored Processes",
+    "addMonitored": "+ Add Monitored Process",
+    "discordWebhook": "Discord Webhook",
+    "webhookDesc": "Set a Discord webhook URL to receive notifications when a monitored process goes down, is restarted, or a screenshot is captured.",
+    "saveWebhook": "Save Webhook",
+    "relaunchHistory": "Relaunch History",
+    "process": "Process",
+    "status": "Status",
+    "time": "Time",
+    "error": "Error",
+    "noHistory": "No history yet",
+    "active": "Active",
+    "disabled": "Disabled",
+    "relaunched": "Relaunched",
+    "failed": "Failed"
+  },
+  "admin": {
+    "title": "Admin Panel",
+    "userManagement": "User Management",
+    "addUser": "+ Add User",
+    "username": "Username",
+    "role": "Role",
+    "actions": "Actions",
+    "setPassword": "Set Password",
+    "delete": "Delete"
+  },
+  "modals": {
+    "addMonitored": "Add Monitored Process",
+    "editMonitored": "Edit Monitored Process",
+    "processName": "Process Name (e.g. notepad)",
+    "filePath": "Executable File Path",
+    "enabled": "Enabled",
+    "cancel": "Cancel",
+    "save": "Save",
+    "addUser": "Add User",
+    "changePassword": "Change Password",
+    "newPassword": "New Password"
+  }
+}

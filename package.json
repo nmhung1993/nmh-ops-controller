@@ -1,0 +1,19 @@
+{
+  "name": "windows-controller-webapp",
+  "version": "1.0.0",
+  "description": "Windows Controller Web App - Monitor system telemetry, processes, and auto-restart apps",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "node --watch server/server.js"
+  },
+  "engines": {
+    "node": ">=14"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.18.0",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2"
+  }
+}
