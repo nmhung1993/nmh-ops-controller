@@ -1,0 +1,12 @@
+{
+  "name": "windows-controller-agent",
+  "version": "2.0.0",
+  "private": true,
+  "main": "agent.js",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

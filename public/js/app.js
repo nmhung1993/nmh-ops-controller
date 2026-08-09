@@ -1,816 +1,643 @@
-// ===== STATE =====
-let token = localStorage.getItem('wc_token') || '';
-let user = JSON.parse(localStorage.getItem('wc_user') || 'null');
-let ws = null;
-let monitoredConfig = { monitoredProcesses: [] };
-let currentEditingMonitored = null;
-let currentEditingUser = null;
-let currentPasswordUser = null;
-let relaunchHistory = [];
-let historyData = { cpu: [], mem: [], net: [] };
-// 60 minutes of history at 2s intervals = 1800 points
-const MAX_POINTS = 1800;
-let diskCharts = [];
-let cpuLineChart = null;
-let memLineChart = null;
-let netLineChart = null;
-let currentLang = localStorage.getItem('wc_lang') || 'en';
-let translations = {};
+const state = {
+  token: localStorage.getItem('wc_token') || '',
+  user: (() => { try { return JSON.parse(localStorage.getItem('wc_user') || 'null'); } catch { return null; } })(),
+  lang: localStorage.getItem('wc_lang') || 'vi',
+  theme: localStorage.getItem('wc_theme') || document.documentElement.dataset.theme || 'light',
+  translations: {},
+  hosts: [],
+  selectedHostId: new URLSearchParams(location.search).get('host'),
+  processes: [],
+  watchdog: { version: 0, rules: [] },
+  socket: null,
+  socketTimer: null
+};
 
-// ===== I18N =====
-async function loadTranslations(lang) {
-  try {
-    const res = await fetch(`lang/${lang}.json`);
-    translations = await res.json();
-    currentLang = lang;
-    localStorage.setItem('wc_lang', lang);
-    applyTranslations();
-  } catch (e) {
-    console.error('Failed to load translations:', e);
-  }
+const $ = id => document.getElementById(id);
+const pageMeta = {
+  fleet: ['page.fleet.kicker', 'page.fleet.title'],
+  dashboard: ['page.dashboard.kicker', 'page.dashboard.title'],
+  processes: ['page.processes.kicker', 'page.processes.title'],
+  watchdog: ['page.watchdog.kicker', 'page.watchdog.title'],
+  activity: ['page.activity.kicker', 'page.activity.title'],
+  admin: ['page.admin.kicker', 'page.admin.title']
+};
+
+function t(key, values = {}) {
+  let value = state.translations[key] || key;
+  return Object.entries(values).reduce((result, [name, replacement]) => result.replaceAll(`{${name}}`, String(replacement)), value);
 }
 
-function t(key) {
-  return key.split('.').reduce((o, k) => (o && o[k] !== undefined ? o[k] : key), translations);
+async function loadTranslations(lang) {
+  try {
+    const response = await fetch(`lang/${lang}.json`, { cache: 'no-cache' });
+    if (!response.ok) throw new Error('translation_load_failed');
+    state.translations = await response.json();
+    state.lang = lang;
+    localStorage.setItem('wc_lang', lang);
+    applyTranslations();
+  } catch (error) {
+    if (lang !== 'en') return loadTranslations('en');
+    console.error(error);
+  }
 }
 
 function applyTranslations() {
-  document.querySelectorAll('[data-i18n]').forEach(el => {
-    el.textContent = t(el.dataset.i18n);
-  });
-  // Update document title
+  document.documentElement.lang = state.lang;
   document.title = t('app.title');
+  document.querySelectorAll('[data-i18n]').forEach(element => {
+    element.textContent = t(element.dataset.i18n);
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(element => {
+    element.placeholder = t(element.dataset.i18nPlaceholder);
+  });
+  const language = $('language-select');
+  if (language) language.value = state.lang;
+  updateThemeControl();
+  if (state.user) {
+    $('session-role').textContent = state.user.role === 'admin' ? t('role.admin') : t('role.viewer');
+  }
+  if (state.user && !$('app-shell').hidden) {
+    const page = currentPage();
+    $('page-kicker').textContent = t(pageMeta[page]?.[0] || pageMeta.fleet[0]);
+    $('page-title').textContent = t(pageMeta[page]?.[1] || pageMeta.fleet[1]);
+    renderHostSelect();
+    renderFleet();
+    renderDashboard();
+    renderProcesses();
+    renderWatchdog();
+    loadActivity().catch(() => {});
+    if (state.user.role === 'admin') loadAdmin().catch(() => {});
+  }
 }
 
-function setLanguage(lang) {
-  loadTranslations(lang);
+function applyTheme(theme) {
+  state.theme = theme === 'dark' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = state.theme;
+  localStorage.setItem('wc_theme', state.theme);
+  updateThemeControl();
 }
 
-// ===== HELPERS =====
-function $(id) { return document.getElementById(id); }
+function updateThemeControl() {
+  const label = $('theme-label');
+  if (!label) return;
+  label.textContent = t(state.theme === 'dark' ? 'theme.switchToLight' : 'theme.switchToDark');
+  $('theme-toggle').title = label.textContent;
+}
+
+function translateError(error) {
+  const raw = error?.message || String(error || '');
+  return t(`error.${raw}`) !== `error.${raw}` ? t(`error.${raw}`) : raw;
+}
+
+function statusLabel(status) {
+  return t(`status.${status}`) === `status.${status}` ? status : t(`status.${status}`);
+}
+
+function commandLabel(type) {
+  return t(`command.type.${type}`) === `command.type.${type}` ? type : t(`command.type.${type}`);
+}
+
+function eventLabel(type, fallback = '') {
+  return t(`event.${type}`) === `event.${type}` ? (fallback || type) : t(`event.${type}`);
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
+}
 
 function formatBytes(bytes) {
-  if (bytes === 0) return '0 B';
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + sizes[i];
+  const value = Number(bytes || 0);
+  if (!value) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+  return `${(value / (1024 ** index)).toFixed(index > 1 ? 1 : 0)} ${units[index]}`;
 }
 
 function formatUptime(seconds) {
-  const d = Math.floor(seconds / 86400);
-  const h = Math.floor((seconds % 86400) / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  return `${d}d ${h}h ${m}m ${s}s`;
+  const value = Number(seconds || 0);
+  const days = Math.floor(value / 86400);
+  const hours = Math.floor((value % 86400) / 3600);
+  const minutes = Math.floor((value % 3600) / 60);
+  return state.lang === 'vi' ? `${days} ngày ${hours} giờ ${minutes} phút` : `${days}d ${hours}h ${minutes}m`;
 }
 
-function formatTime(iso) {
-  if (!iso) return '-';
-  return new Date(iso).toLocaleTimeString();
+function formatDate(value) {
+  if (!value) return t('common.never');
+  return new Date(value).toLocaleString(state.lang === 'vi' ? 'vi-VN' : 'en-US');
 }
 
-function showToast(message, type = 'info') {
-  const container = $('toast-container');
-  const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  toast.textContent = message;
-  container.appendChild(toast);
-  setTimeout(() => toast.remove(), 3500);
+function clampPercent(value) {
+  return Math.max(0, Math.min(100, Number(value || 0)));
 }
 
-// ===== API =====
+function initials(value) {
+  return String(value || 'PC').split(/[\s_-]+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase() || 'PC';
+}
+
+function toast(message, type = '') {
+  const item = document.createElement('div');
+  item.className = `toast ${type}`;
+  item.textContent = message;
+  $('toast-region').appendChild(item);
+  setTimeout(() => item.remove(), 4200);
+}
+
 async function api(url, options = {}) {
-  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-  const res = await fetch(url, { ...options, headers });
-  if (res.status === 401) {
+  const headers = { ...(options.headers || {}) };
+  if (options.body && !(options.body instanceof FormData)) headers['Content-Type'] = 'application/json';
+  if (state.token) headers.Authorization = `Bearer ${state.token}`;
+  const response = await fetch(url, { ...options, headers });
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 401) {
     logout();
-    throw new Error('Session expired');
+    throw new Error(t('error.sessionExpired'));
   }
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Request failed');
+  if (!response.ok) throw new Error(translateError(data.error || t('error.generic')));
   return data;
 }
 
-// ===== AUTH =====
-function login(e) {
-  e.preventDefault();
-  const username = $('login-username').value.trim();
-  const password = $('login-password').value;
-  $('login-error').textContent = '';
-
-  fetch('/api/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password })
-  })
-    .then(res => res.json())
-    .then(data => {
-      if (data.error) {
-        $('login-error').textContent = data.error;
-        return;
-      }
-      token = data.token;
-      user = { username: data.username, role: data.role };
-      localStorage.setItem('wc_token', token);
-      localStorage.setItem('wc_user', JSON.stringify(user));
-      showApp();
-    })
-    .catch(err => {
-      $('login-error').textContent = 'Login failed';
-    });
+async function bootstrap() {
+  await loadTranslations(state.lang);
+  applyTheme(state.theme);
+  const setup = await api('/api/setup/status');
+  if (setup.required) return showOnly('setup-view');
+  if (!state.token || !state.user) return showOnly('login-view');
+  showApp();
 }
 
-function logout() {
-  token = '';
-  user = null;
-  localStorage.removeItem('wc_token');
-  localStorage.removeItem('wc_user');
-  if (ws) { ws.close(); ws = null; }
-  $('app').classList.remove('active');
-  $('login-page').style.display = 'flex';
+function showOnly(id) {
+  for (const view of ['setup-view', 'login-view', 'app-shell']) $(view).hidden = view !== id;
+  document.body.classList.toggle('app-active', id === 'app-shell');
+  const preferenceDock = document.querySelector('.preference-dock');
+  if (id === 'app-shell') {
+    document.querySelector('.topbar-actions').appendChild(preferenceDock);
+  } else {
+    document.body.insertBefore(preferenceDock, $(id));
+  }
 }
 
 function showApp() {
-  $('login-page').style.display = 'none';
-  $('app').classList.add('active');
-  $('current-username').textContent = user.username;
-  $('current-role').textContent = user.role === 'admin' ? '👑 Admin' : '👤 User';
-
-  // Show admin link only for admins
-  if (user.role === 'admin') {
-    $('admin-link').style.display = '';
-  } else {
-    $('admin-link').style.display = 'none';
-    // Hide admin page nav if currently on it
-    if (location.hash === '#admin') location.hash = '#dashboard';
-  }
-
-  // Hide monitor config actions for non-admins
-  const isAdmin = user.role === 'admin';
-  $('add-monitored-btn').style.display = isAdmin ? '' : 'none';
-  $('add-user-btn').style.display = isAdmin ? '' : 'none';
-  $('save-webhook-btn').style.display = isAdmin ? '' : 'none';
-  $('discord-webhook-input').disabled = !isAdmin;
-
-  initCharts();
-  connectWS();
-  loadConfig();
-  loadProcesses();
-  loadHistory();
-  if (isAdmin) loadUsers();
-  navigate();
+  showOnly('app-shell');
+  $('session-user').textContent = state.user.username;
+  const sessionAvatar = document.querySelector('.session-avatar');
+  if (sessionAvatar) sessionAvatar.textContent = initials(state.user.username).slice(0, 1);
+  $('session-role').textContent = state.user.role === 'admin' ? t('role.admin') : t('role.viewer');
+  document.querySelectorAll('[data-admin]').forEach(item => item.hidden = state.user.role !== 'admin');
+  if (state.user.role !== 'admin' && location.hash === '#admin') location.hash = '#fleet';
+  connectSocket();
+  loadHosts().then(() => navigate());
+  if (state.user.mustChangePassword) $('password-dialog').showModal();
 }
 
-// ===== NAVIGATION =====
-function navigate() {
-  const hash = location.hash || '#dashboard';
-  const page = hash.replace('#', '');
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.sidebar nav a').forEach(a => a.classList.remove('active'));
+function logout() {
+  state.token = '';
+  state.user = null;
+  localStorage.removeItem('wc_token');
+  localStorage.removeItem('wc_user');
+  clearTimeout(state.socketTimer);
+  if (state.socket) state.socket.close();
+  showOnly('login-view');
+}
 
-  const pageEl = $('page-' + page);
-  if (pageEl) {
-    pageEl.classList.add('active');
-    const navLink = document.querySelector(`.sidebar nav a[data-page="${page}"]`);
-    if (navLink) navLink.classList.add('active');
-  } else {
-    $('page-dashboard').classList.add('active');
-    document.querySelector('.sidebar nav a[data-page="dashboard"]').classList.add('active');
+async function setupSubmit(event) {
+  event.preventDefault();
+  try {
+    await api('/api/setup', { method: 'POST', body: JSON.stringify({ username: $('setup-username').value.trim(), password: $('setup-password').value }) });
+    showOnly('login-view');
+    $('login-username').value = $('setup-username').value.trim();
+    toast(t('setup.success'), 'success');
+  } catch (error) {
+    $('setup-error').textContent = translateError(error);
   }
 }
 
-// ===== WEBSOCKET =====
-function connectWS() {
-  if (!token) return;
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  ws = new WebSocket(`${proto}://${location.host}`);
+async function loginSubmit(event) {
+  event.preventDefault();
+  $('login-error').textContent = '';
+  try {
+    const result = await api('/api/login', { method: 'POST', body: JSON.stringify({ username: $('login-username').value.trim(), password: $('login-password').value }) });
+    state.token = result.token;
+    state.user = { username: result.username, role: result.role, mustChangePassword: result.mustChangePassword };
+    localStorage.setItem('wc_token', state.token);
+    localStorage.setItem('wc_user', JSON.stringify(state.user));
+    showApp();
+  } catch (error) {
+    $('login-error').textContent = translateError(error);
+  }
+}
 
-  ws.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
-    if (msg.type === 'telemetry') {
-      updateTelemetry(msg.data);
-    } else if (msg.type === 'relaunch') {
-      showToast(`Process "${msg.processName}" ${msg.status === 'relaunched' ? 'relaunched' : 'FAILED to relaunch'}`, msg.status === 'relaunched' ? 'success' : 'error');
-      loadHistory();
-      loadProcesses();
-    }
+function connectSocket() {
+  if (!state.token) return;
+  clearTimeout(state.socketTimer);
+  if (state.socket) state.socket.close();
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  state.socket = new WebSocket(`${protocol}//${location.host}/ws/ui?token=${encodeURIComponent(state.token)}`);
+  state.socket.onopen = () => {
+    $('socket-status').classList.add('connected');
+    $('socket-status-text').textContent = t('socket.live');
+    subscribeSelectedHost();
   };
-
-  ws.onclose = () => {
-    setTimeout(connectWS, 3000);
+  state.socket.onmessage = event => handleSocketMessage(JSON.parse(event.data));
+  state.socket.onclose = () => {
+    $('socket-status').classList.remove('connected');
+    $('socket-status-text').textContent = t('socket.reconnecting');
+    state.socketTimer = setTimeout(connectSocket, 3000);
   };
 }
 
-// ===== CHARTS =====
-function initCharts() {
-  if (typeof Chart === 'undefined') return;
-
-  // CPU line chart
-  const cpuCtx = $('cpu-line-chart').getContext('2d');
-  cpuLineChart = new Chart(cpuCtx, {
-    type: 'line',
-    data: {
-      labels: [],
-      datasets: [{
-        label: 'CPU %',
-        data: [],
-        borderColor: '#38bdf8',
-        backgroundColor: 'rgba(56,189,248,0.1)',
-        fill: true,
-        tension: 0.4,
-        pointRadius: 0
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      scales: {
-        y: { min: 0, max: 100, grid: { color: 'rgba(148,163,184,0.1)' }, ticks: { color: '#94a3b8' } },
-        x: { grid: { display: false }, ticks: { color: '#94a3b8', maxTicksLimit: 8 } }
-      },
-      plugins: { legend: { display: false } }
-    }
-  });
-
-  // Memory line chart
-  const memCtx = $('mem-line-chart').getContext('2d');
-  memLineChart = new Chart(memCtx, {
-    type: 'line',
-    data: {
-      labels: [],
-      datasets: [{
-        label: 'Memory %',
-        data: [],
-        borderColor: '#22c55e',
-        backgroundColor: 'rgba(34,197,94,0.1)',
-        fill: true,
-        tension: 0.4,
-        pointRadius: 0
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      scales: {
-        y: { min: 0, max: 100, grid: { color: 'rgba(148,163,184,0.1)' }, ticks: { color: '#94a3b8' } },
-        x: { grid: { display: false }, ticks: { color: '#94a3b8', maxTicksLimit: 8 } }
-      },
-      plugins: { legend: { display: false } }
-    }
-  });
-
-  // Network line chart
-  const netCtx = $('net-line-chart').getContext('2d');
-  netLineChart = new Chart(netCtx, {
-    type: 'line',
-    data: {
-      labels: [],
-      datasets: [
-        {
-          label: 'Received MB/s',
-          data: [],
-          borderColor: '#a78bfa',
-          backgroundColor: 'rgba(167,139,250,0.1)',
-          fill: true,
-          tension: 0.4,
-          pointRadius: 0
-        },
-        {
-          label: 'Sent MB/s',
-          data: [],
-          borderColor: '#f59e0b',
-          backgroundColor: 'rgba(245,158,11,0.1)',
-          fill: true,
-          tension: 0.4,
-          pointRadius: 0
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      scales: {
-        y: { grid: { color: 'rgba(148,163,184,0.1)' }, ticks: { color: '#94a3b8' } },
-        x: { grid: { display: false }, ticks: { color: '#94a3b8', maxTicksLimit: 8 } }
-      },
-      plugins: {
-        legend: { labels: { color: '#94a3b8', boxWidth: 12 } }
-      }
-    }
-  });
-}
-
-// ===== TELEMETRY =====
-let lastNetwork = { sentBytes: 0, recvBytes: 0 };
-let lastNetTime = Date.now();
-
-function updateTelemetry(t) {
-  const now = Date.now();
-  const timeLabel = new Date(now).toLocaleTimeString();
-
-  // Update history data
-  historyData.cpu.push({ t: timeLabel, v: parseFloat(t.cpu.usage) });
-  historyData.mem.push({ t: timeLabel, v: parseFloat(t.memory.percent) });
-
-  // Network rate (MB/s)
-  const dt = (now - lastNetTime) / 1000;
-  const sentRate = dt > 0 ? ((t.network.sentBytes - lastNetwork.sentBytes) / dt / 1048576) : 0;
-  const recvRate = dt > 0 ? ((t.network.recvBytes - lastNetwork.recvBytes) / dt / 1048576) : 0;
-  historyData.net.push({ t: timeLabel, recv: Math.max(0, recvRate), sent: Math.max(0, sentRate) });
-  lastNetwork = { sentBytes: t.network.sentBytes, recvBytes: t.network.recvBytes };
-  lastNetTime = now;
-
-  if (historyData.cpu.length > MAX_POINTS) historyData.cpu.shift();
-  if (historyData.mem.length > MAX_POINTS) historyData.mem.shift();
-  if (historyData.net.length > MAX_POINTS) historyData.net.shift();
-
-  // Update charts
-  if (cpuLineChart) {
-    cpuLineChart.data.labels = historyData.cpu.map(d => d.t);
-    cpuLineChart.data.datasets[0].data = historyData.cpu.map(d => d.v);
-    cpuLineChart.update();
-  }
-  if (memLineChart) {
-    memLineChart.data.labels = historyData.mem.map(d => d.t);
-    memLineChart.data.datasets[0].data = historyData.mem.map(d => d.v);
-    memLineChart.update();
-  }
-  if (netLineChart) {
-    netLineChart.data.labels = historyData.net.map(d => d.t);
-    netLineChart.data.datasets[0].data = historyData.net.map(d => d.recv);
-    netLineChart.data.datasets[1].data = historyData.net.map(d => d.sent);
-    netLineChart.update();
-  }
-  updateDiskCharts(t.disk);
-  $('cpu-value').textContent = `${t.cpu.usage}%`;
-  $('cpu-bar').style.width = `${t.cpu.usage}%`;
-  $('cpu-cores').textContent = `${t.cpu.cores} cores`;
-  $('cpu-model').textContent = t.cpu.model || '';
-
-  $('mem-value').textContent = `${t.memory.percent}%`;
-  $('mem-bar').style.width = `${t.memory.percent}%`;
-  $('mem-free').textContent = `Free: ${formatBytes(t.memory.free)}`;
-  $('mem-total').textContent = `Total: ${formatBytes(t.memory.total)}`;
-
-  $('uptime-value').textContent = formatUptime(t.uptime);
-
-  $('os-value').textContent = t.os || '--';
-  $('net-model').textContent = t.cpu.model || '';
-
-  // Network
-  $('net-recv').textContent = formatBytes(t.network.recvBytes);
-  $('net-sent').textContent = formatBytes(t.network.sentBytes);
-}
-
-function updateDiskCharts(disks) {
-  if (!disks || disks.length === 0) return;
-  const container = $('disk-charts');
-  const colors = ['#38bdf8', '#22c55e', '#f59e0b', '#a78bfa', '#ef4444', '#ec4899'];
-
-  // Ensure we have DOM + chart for each drive
-  disks.forEach((d, i) => {
-    let item = container.querySelector(`.disk-chart-item[data-drive="${d.drive}"]`);
-    if (!item) {
-      item = document.createElement('div');
-      item.className = 'disk-chart-item';
-      item.dataset.drive = d.drive;
-      item.innerHTML = `
-        <div class="drive-label">${d.drive}</div>
-        <div class="chart-wrap">
-          <canvas></canvas>
-        </div>
-        <div class="drive-info"></div>
-      `;
-      container.appendChild(item);
-
-      const ctx = item.querySelector('canvas').getContext('2d');
-      const chart = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-          labels: ['Used', 'Free'],
-          datasets: [{
-            data: [0, 1],
-            backgroundColor: [colors[i % colors.length], 'rgba(148,163,184,0.2)'],
-            borderColor: 'rgba(15,23,42,0.8)',
-            borderWidth: 2
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: { legend: { display: false } }
-        }
-      });
-      diskCharts.push(chart);
-    }
-
-    // Update chart data
-    const chartIdx = [...container.children].indexOf(item);
-    const chart = diskCharts[chartIdx];
-    const used = d.used;
-    const free = d.total - d.used;
-    chart.data.datasets[0].data = [used, free];
-    chart.update();
-
-    // Update info
-    const pct = d.total > 0 ? ((d.used / d.total) * 100).toFixed(1) : 0;
-    item.querySelector('.drive-info').textContent = `${pct}% · ${formatBytes(d.used)} / ${formatBytes(d.total)}`;
-  });
-
-  // Remove charts for drives that no longer exist
-  const existing = [...container.querySelectorAll('.disk-chart-item')];
-  existing.forEach(item => {
-    if (!disks.find(d => d.drive === item.dataset.drive)) {
-      const idx = [...container.children].indexOf(item);
-      if (diskCharts[idx]) diskCharts[idx].destroy();
-      diskCharts.splice(idx, 1);
-      item.remove();
-    }
-  });
-}
-
-// ===== PROCESSES =====
-async function loadProcesses() {
-  try {
-    const procs = await api('/api/processes');
-    renderProcesses(procs);
-  } catch (err) {
-    console.error(err);
+function subscribeSelectedHost() {
+  if (state.socket?.readyState === WebSocket.OPEN) {
+    state.socket.send(JSON.stringify({ type: 'ui.subscribe', payload: { agentId: state.selectedHostId } }));
   }
 }
 
-function renderProcesses(procs) {
-  const body = $('process-table-body');
-  const search = $('process-search').value.toLowerCase();
-  const filtered = procs.filter(p =>
-    p.name.toLowerCase().includes(search) || (p.path || '').toLowerCase().includes(search)
-  );
-
-  $('proc-count').textContent = procs.length;
-  $('app-count').textContent = filtered.length;
-
-  if (filtered.length === 0) {
-    body.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--text-muted)">No processes found</td></tr>';
-    return;
-  }
-
-  const isAdmin = user.role === 'admin';
-  body.innerHTML = filtered.map(p => `
-    <tr>
-      <td>${p.pid}</td>
-      <td><strong>${p.name}</strong></td>
-      <td>${p.cpu || 0}</td>
-      <td>${p.memoryMB || 0}</td>
-      <td title="${escapeHtml(p.path || '')}" style="max-width:300px; overflow:hidden; text-overflow:ellipsis">${escapeHtml(p.path || '-')}</td>
-      <td>
-        ${isAdmin ? `<button class="btn btn-danger btn-sm" onclick="killProc(${p.pid}, '${p.name}')">Kill</button>` : '<span style="color:var(--text-muted)">-</span>'}
-      </td>
-    </tr>
-  `).join('');
-}
-
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
-
-async function killProc(pid, name) {
-  if (!confirm(`Kill process "${name}" (PID ${pid})?`)) return;
-  try {
-    await api(`/api/processes/${pid}/kill`, { method: 'POST' });
-    showToast(`Process "${name}" killed`, 'success');
-    loadProcesses();
-  } catch (err) {
-    showToast(err.message, 'error');
+function handleSocketMessage(message) {
+  if (message.type === 'ui.telemetry') {
+    const host = state.hosts.find(item => item.id === message.agentId);
+    if (host) { host.telemetry = message.payload; host.online = true; host.lastSeen = message.sentAt; }
+    if (host) updateFleetHostCard(host);
+    updateFleetSummary();
+    if (message.agentId === state.selectedHostId) renderDashboard();
+  } else if (message.type === 'ui.processes' && message.agentId === state.selectedHostId) {
+    state.processes = message.payload?.processes || [];
+    renderProcesses();
+  } else if (message.type === 'ui.host.status' || message.type === 'ui.agent.pending') {
+    loadHosts();
+    if (state.user.role === 'admin') loadAdmin();
+  } else if (message.type === 'ui.event' && message.agentId === state.selectedHostId) {
+    loadActivity();
+    toast(eventLabel(message.payload?.eventType, message.payload?.message), message.payload?.severity === 'error' ? 'error' : '');
+  } else if (message.type === 'ui.command' && message.agentId === state.selectedHostId) {
+    loadActivity();
+    if (message.payload?.status === 'failed') toast(translateError(message.payload.error || t('command.failed')), 'error');
+    if (message.payload?.status === 'expired') toast(t('command.expired'), 'error');
+    if (message.payload?.status === 'succeeded') toast(t('command.completed'), 'success');
   }
 }
 
-// ===== CONFIG / WATCHDOG =====
-function maskWebhook(url) {
-  if (!url) return '';
-  if (url.length <= 10) return '••••••••••';
-  return '••••••••••' + url.slice(-10);
+async function loadHosts() {
+  state.hosts = await api('/api/v1/hosts');
+  if (!state.hosts.some(host => host.id === state.selectedHostId)) state.selectedHostId = state.hosts[0]?.id || null;
+  updateHostQuery();
+  renderHostSelect();
+  renderFleet();
+  renderDashboard();
 }
 
-async function loadConfig() {
-  try {
-    monitoredConfig = await api('/api/config');
-    renderMonitored();
-    // Populate Discord webhook field (masked - show only last 10 chars)
-    if (user.role === 'admin') {
-      $('discord-webhook-input').value = maskWebhook(monitoredConfig.discordWebhook || '');
-    }
-  } catch (err) {
-    console.error(err);
-  }
+function updateHostQuery() {
+  const url = new URL(location.href);
+  if (state.selectedHostId) url.searchParams.set('host', state.selectedHostId);
+  else url.searchParams.delete('host');
+  history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
 }
 
-async function saveWebhook() {
-  const inputValue = $('discord-webhook-input').value.trim();
-  // If the value still contains the masked placeholder (••••), keep the original webhook
-  let webhook = inputValue.includes('••••') ? (monitoredConfig.discordWebhook || '') : inputValue;
-  const items = monitoredConfig.monitoredProcesses || [];
-  try {
-    await api('/api/config', {
-      method: 'POST',
-      body: JSON.stringify({ monitoredProcesses: items, discordWebhook: webhook })
-    });
-    monitoredConfig.discordWebhook = webhook;
-    // Re-mask the input after saving
-    $('discord-webhook-input').value = maskWebhook(webhook);
-    showToast(user.role === 'admin' ? 'Webhook saved' : 'Configuration saved', 'success');
-  } catch (err) {
-    showToast(err.message, 'error');
-  }
+function renderHostSelect() {
+  $('host-select').innerHTML = state.hosts.length
+    ? state.hosts.map(host => `<option value="${host.id}" ${host.id === state.selectedHostId ? 'selected' : ''}>${escapeHtml(host.displayName)}${host.online ? '' : ` (${escapeHtml(t('common.offline'))})`}</option>`).join('')
+    : `<option value="">${escapeHtml(t('host.none'))}</option>`;
+  $('host-select').setAttribute('aria-label', t('host.selector'));
+  $('host-select').disabled = state.hosts.length === 0;
+  const online = state.hosts.filter(host => host.online).length;
+  $('online-count').textContent = online;
+  $('offline-count').textContent = state.hosts.length - online;
 }
 
-function renderMonitored() {
-  const list = $('monitored-list');
-  const items = monitoredConfig.monitoredProcesses || [];
-  const isAdmin = user.role === 'admin';
+function selectedHost() {
+  return state.hosts.find(host => host.id === state.selectedHostId) || null;
+}
 
-  if (items.length === 0) {
-    list.innerHTML = '<p style="color:var(--text-muted)">No monitored processes configured</p>';
-    return;
-  }
+function selectHost(hostId, destination = null) {
+  state.selectedHostId = hostId;
+  updateHostQuery();
+  renderHostSelect();
+  renderDashboard();
+  subscribeSelectedHost();
+  if (destination) location.hash = destination;
+  else refreshCurrentPage();
+}
 
-  list.innerHTML = items.map((item, idx) => `
-    <div class="monitored-card">
-      <div>
-        <div class="proc-name">${escapeHtml(item.processName)} <span class="badge ${item.enabled ? 'badge-running' : 'badge-down'}">${item.enabled ? 'Active' : 'Disabled'}</span></div>
-        <div class="proc-path">${escapeHtml(item.filePath || '')}</div>
+function hostNeedsAttention(host) {
+  return !host.online || Number(host.telemetry?.cpu?.usage || 0) >= 85 || Number(host.telemetry?.memory?.percent || 0) >= 90;
+}
+
+function updateFleetSummary() {
+  const onlineCount = state.hosts.filter(host => host.online).length;
+  const attentionCount = state.hosts.filter(hostNeedsAttention).length;
+  if ($('fleet-total')) $('fleet-total').textContent = state.hosts.length;
+  if ($('fleet-health')) $('fleet-health').textContent = state.hosts.length ? `${Math.round((onlineCount / state.hosts.length) * 100)}%` : '--';
+  if ($('fleet-attention')) $('fleet-attention').textContent = attentionCount;
+  $('online-count').textContent = onlineCount;
+  $('offline-count').textContent = state.hosts.length - onlineCount;
+}
+
+function updateFleetHostCard(host) {
+  const card = [...document.querySelectorAll('.host-card')].find(item => item.dataset.host === host.id);
+  if (!card) return renderFleet();
+  const cpu = clampPercent(host.telemetry?.cpu?.usage);
+  const memory = clampPercent(host.telemetry?.memory?.percent);
+  const hasCpu = Boolean(host.telemetry?.cpu);
+  const hasMemory = Boolean(host.telemetry?.memory);
+  const status = card.querySelector('[data-role="status"]');
+  card.classList.toggle('online', host.online);
+  card.classList.toggle('attention', host.online && hostNeedsAttention(host));
+  status.classList.toggle('online', host.online);
+  status.textContent = host.online ? t('common.online') : t('common.offline');
+  card.querySelector('[data-role="cpu-value"]').textContent = hasCpu ? `${cpu}%` : '--';
+  card.querySelector('[data-role="cpu-meter"]').style.width = `${hasCpu ? cpu : 0}%`;
+  card.querySelector('[data-role="memory-value"]').textContent = hasMemory ? `${memory}%` : '--';
+  card.querySelector('[data-role="memory-meter"]').style.width = `${hasMemory ? memory : 0}%`;
+  card.querySelector('[data-role="last-seen"]').textContent = t('fleet.lastSeen', { time: formatDate(host.lastSeen) });
+  card.setAttribute('aria-label', `${host.displayName}, ${host.online ? t('common.online') : t('common.offline')}, CPU ${hasCpu ? `${cpu}%` : '--'}, ${t('fleet.memory')} ${hasMemory ? `${memory}%` : '--'}`);
+}
+
+function renderFleet() {
+  updateFleetSummary();
+  $('fleet-empty').hidden = state.hosts.length > 0;
+  $('fleet-grid').innerHTML = state.hosts.map((host, index) => {
+    const telemetry = host.telemetry || {};
+    const cpu = clampPercent(telemetry.cpu?.usage);
+    const memory = clampPercent(telemetry.memory?.percent);
+    const needsAttention = hostNeedsAttention(host);
+    const cardLabel = `${host.displayName}, ${host.online ? t('common.online') : t('common.offline')}, CPU ${telemetry.cpu ? `${cpu}%` : '--'}, ${t('fleet.memory')} ${telemetry.memory ? `${memory}%` : '--'}`;
+    return `<article class="host-card ${host.online ? 'online' : ''} ${needsAttention && host.online ? 'attention' : ''}" data-host="${host.id}" tabindex="0" role="button" aria-label="${escapeHtml(cardLabel)}" style="animation-delay:${index * 35}ms">
+      <div class="host-card-main">
+        <div class="host-head"><div class="host-identity"><span class="host-glyph">${escapeHtml(initials(host.displayName))}</span><div><h3>${escapeHtml(host.displayName)}</h3><small>${escapeHtml(host.hostname)}</small></div></div><span class="status-pill ${host.online ? 'online' : ''}" data-role="status">${host.online ? escapeHtml(t('common.online')) : escapeHtml(t('common.offline'))}</span></div>
+        <p class="host-meta">${escapeHtml(host.platform || 'Windows')} / Agent ${escapeHtml(host.version || '--')}</p>
       </div>
-      ${isAdmin ? `
-      <div class="actions">
-        <button class="btn btn-success btn-sm" onclick="manualLaunch(${idx})">🚀 Launch</button>
-        <button class="btn btn-sm" onclick="editMonitored(${idx})">Edit</button>
-        <button class="btn btn-danger btn-sm" onclick="removeMonitored(${idx})">Remove</button>
-      </div>` : ''}
-    </div>
-  `).join('');
+      <div class="host-metrics"><div class="host-metric"><header><span>${escapeHtml(t('fleet.cpu'))}</span><span>CPU</span></header><strong data-role="cpu-value">${telemetry.cpu ? `${cpu}%` : '--'}</strong><div class="mini-track"><i data-role="cpu-meter" style="width:${telemetry.cpu ? cpu : 0}%"></i></div></div><div class="host-metric memory"><header><span>${escapeHtml(t('fleet.memory'))}</span><span>RAM</span></header><strong data-role="memory-value">${telemetry.memory ? `${memory}%` : '--'}</strong><div class="mini-track"><i data-role="memory-meter" style="width:${telemetry.memory ? memory : 0}%"></i></div></div></div>
+      <footer class="host-footer"><span data-role="last-seen">${escapeHtml(t('fleet.lastSeen', { time: formatDate(host.lastSeen) }))}</span>${state.user?.role === 'admin' ? `<div class="row-actions"><button class="button compact danger revoke-host" type="button" data-host="${host.id}">${escapeHtml(t('fleet.revoke'))}</button></div>` : ''}</footer>
+    </article>`;
+  }).join('');
+  document.querySelectorAll('.host-card').forEach(card => {
+    card.addEventListener('click', () => selectHost(card.dataset.host, '#dashboard'));
+    card.addEventListener('keydown', event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      selectHost(card.dataset.host, '#dashboard');
+    });
+  });
+  document.querySelectorAll('.revoke-host').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); revokeHost(button.dataset.host); }));
 }
 
-async function manualLaunch(idx) {
-  const items = monitoredConfig.monitoredProcesses || [];
-  const item = items[idx];
-  if (!item || !item.filePath) {
-    showToast('Process or file path missing', 'error');
+function renderDashboard() {
+  const host = selectedHost();
+  const telemetry = host?.telemetry;
+  if (!host || !telemetry) {
+    for (const id of ['cpu-value', 'memory-value', 'uptime-value', 'network-value']) $(id).textContent = '--';
+    $('cpu-model').textContent = t('dashboard.waiting');
+    $('memory-detail').textContent = t('dashboard.waiting');
+    $('os-value').textContent = t('dashboard.waiting');
+    $('network-detail').textContent = t('dashboard.sendReceive');
+    $('host-status-badge').textContent = t('common.offline');
+    $('host-status-badge').classList.remove('online');
+    if ($('dashboard-host-name')) $('dashboard-host-name').textContent = host?.displayName || '--';
+    if ($('host-updated-at')) $('host-updated-at').textContent = t('dashboard.waiting');
+    if ($('cpu-meter')) $('cpu-meter').style.width = '0%';
+    if ($('memory-meter')) $('memory-meter').style.width = '0%';
+    $('machine-details').innerHTML = `<dt>${escapeHtml(t('machine.status'))}</dt><dd>${escapeHtml(t('machine.waiting'))}</dd>`;
+    $('disk-list').innerHTML = '';
     return;
   }
-  if (!confirm(`Khởi động thủ công tiến trình "${item.processName}"?`)) return;
+  $('cpu-value').textContent = `${telemetry.cpu.usage}%`;
+  $('cpu-model').textContent = t('dashboard.cpuDetail', { cores: telemetry.cpu.cores, model: telemetry.cpu.model });
+  $('memory-value').textContent = `${telemetry.memory.percent}%`;
+  $('memory-detail').textContent = t('dashboard.memoryUsage', { used: formatBytes(telemetry.memory.used), total: formatBytes(telemetry.memory.total) });
+  $('uptime-value').textContent = formatUptime(telemetry.uptime);
+  $('os-value').textContent = telemetry.os;
+  $('network-value').textContent = `${formatBytes(telemetry.network.recvPerSecond)}/s`;
+  $('network-detail').textContent = t('dashboard.sentRate', { rate: formatBytes(telemetry.network.sentPerSecond) });
+  $('host-status-badge').textContent = host.online ? t('common.online') : t('common.offline');
+  $('host-status-badge').classList.toggle('online', host.online);
+  if ($('dashboard-host-name')) $('dashboard-host-name').textContent = host.displayName;
+  if ($('host-updated-at')) $('host-updated-at').textContent = t('dashboard.updatedAt', { time: formatDate(host.lastSeen) });
+  if ($('cpu-meter')) $('cpu-meter').style.width = `${clampPercent(telemetry.cpu.usage)}%`;
+  if ($('memory-meter')) $('memory-meter').style.width = `${clampPercent(telemetry.memory.percent)}%`;
+  $('machine-details').innerHTML = `<dt>${escapeHtml(t('machine.displayName'))}</dt><dd>${escapeHtml(host.displayName)}</dd><dt>${escapeHtml(t('machine.hostname'))}</dt><dd>${escapeHtml(host.hostname)}</dd><dt>${escapeHtml(t('machine.platform'))}</dt><dd>${escapeHtml(host.platform)}</dd><dt>${escapeHtml(t('machine.agentVersion'))}</dt><dd>${escapeHtml(host.version)}</dd><dt>${escapeHtml(t('machine.lastSeen'))}</dt><dd>${escapeHtml(formatDate(host.lastSeen))}</dd><dt>${escapeHtml(t('machine.fingerprint'))}</dt><dd>${escapeHtml(host.fingerprint)}</dd>`;
+  $('disk-list').innerHTML = (telemetry.disk || []).map(disk => {
+    const percent = disk.total ? Math.round((disk.used / disk.total) * 100) : 0;
+    return `<div class="disk-row"><header><strong>${escapeHtml(disk.drive)}</strong><span>${formatBytes(disk.used)} / ${formatBytes(disk.total)} (${percent}%)</span></header><div class="bar"><i style="width:${percent}%"></i></div></div>`;
+  }).join('') || `<p>${escapeHtml(t('dashboard.noDisks'))}</p>`;
+}
+
+async function loadTelemetryHistory() {
+  if (!state.selectedHostId) return;
+  const from = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const points = await api(`/api/v1/hosts/${state.selectedHostId}/telemetry?from=${encodeURIComponent(from)}&limit=1000`);
+  drawLine($('cpu-chart'), points.map(point => Number(point.cpu?.usage || 0)));
+  drawLine($('memory-chart'), points.map(point => Number(point.memory?.percent || 0)));
+}
+
+function drawLine(svg, values) {
+  if (!values.length) return svg.innerHTML = '';
+  const width = 800;
+  const height = 240;
+  const points = values.map((value, index) => `${(index / Math.max(values.length - 1, 1)) * width},${height - (Math.max(0, Math.min(100, value)) / 100) * height}`).join(' ');
+  svg.innerHTML = `<polyline points="${points}"></polyline>`;
+}
+
+async function loadProcesses() {
+  if (!state.selectedHostId) return;
+  const result = await api(`/api/v1/hosts/${state.selectedHostId}/processes`);
+  state.processes = result.processes || [];
+  renderProcesses();
+  if (result.commandId) toast(t('process.refreshRequested'));
+}
+
+function renderProcesses() {
+  const query = $('process-search').value.trim().toLowerCase();
+  const rows = state.processes.filter(process => !query || process.name.toLowerCase().includes(query) || (process.path || '').toLowerCase().includes(query));
+  if ($('process-count')) $('process-count').textContent = rows.length;
+  $('process-body').innerHTML = rows.length ? rows.map(process => `<tr><td><div class="process-name"><span class="process-glyph">${escapeHtml(initials(process.name).slice(0, 1))}</span><strong>${escapeHtml(process.name)}</strong></div></td><td>${process.pid}</td><td>${Number(process.cpuPercent || 0).toFixed(1)}%</td><td>${Number(process.memoryMB || 0).toFixed(1)} MB</td><td class="path" title="${escapeHtml(process.path)}">${escapeHtml(process.path || '-')}</td><td><div class="row-actions">${state.user.role === 'admin' ? `<button class="button compact capture-process" type="button" data-name="${escapeHtml(process.name)}">${escapeHtml(t('process.capture'))}</button><button class="button compact danger kill-process" type="button" data-pid="${process.pid}" data-name="${escapeHtml(process.name)}">${escapeHtml(t('process.kill'))}</button>` : ''}</div></td></tr>`).join('') : `<tr><td colspan="6">${escapeHtml(t('process.none'))}</td></tr>`;
+  document.querySelectorAll('.kill-process').forEach(button => button.addEventListener('click', () => killRemoteProcess(button.dataset.pid, button.dataset.name)));
+  document.querySelectorAll('.capture-process').forEach(button => button.addEventListener('click', () => sendCommand('window.capture', { processName: button.dataset.name })));
+}
+
+async function killRemoteProcess(pid, name) {
+  if (!confirm(t('process.killConfirm', { name, pid }))) return;
+  await sendCommand('process.kill', { pid: Number(pid) });
+}
+
+async function sendCommand(type, payload) {
   try {
-    await api('/api/processes/launch', {
-      method: 'POST',
-      body: JSON.stringify({ processName: item.processName, filePath: item.filePath })
-    });
-    showToast(`Đang khởi động "${item.processName}"...`, 'success');
-    // Refresh processes after a moment
-    setTimeout(loadProcesses, 3000);
-  } catch (err) {
-    showToast(err.message, 'error');
+    await api(`/api/v1/hosts/${state.selectedHostId}/commands`, { method: 'POST', body: JSON.stringify({ type, payload }) });
+    toast(t('command.queued'), 'success');
+    setTimeout(loadActivity, 500);
+  } catch (error) {
+    toast(translateError(error), 'error');
   }
 }
 
-function editMonitored(idx) {
-  const items = monitoredConfig.monitoredProcesses || [];
-  openMonitoredModal(items[idx]);
+async function loadWatchdog() {
+  if (!state.selectedHostId) return;
+  state.watchdog = await api(`/api/v1/hosts/${state.selectedHostId}/watchdog`);
+  renderWatchdog();
 }
 
-function openMonitoredModal(item = null) {
-  currentEditingMonitored = item;
-  $('monitored-modal-title').textContent = item ? 'Edit Monitored Process' : 'Add Monitored Process';
-  $('monitored-name').value = item ? item.processName : '';
-  $('monitored-path').value = item ? (item.filePath || '') : '';
-  $('monitored-enabled').checked = item ? item.enabled : true;
-  $('monitored-modal').classList.add('active');
+function renderWatchdog() {
+  if ($('rule-count')) $('rule-count').textContent = state.watchdog.rules.length;
+  $('rule-list').innerHTML = state.watchdog.rules.length ? state.watchdog.rules.map(rule => `<article class="rule-card ${rule.enabled ? 'enabled' : ''}"><div><div class="rule-title"><h3>${escapeHtml(rule.processName)}</h3><span class="status-pill ${rule.enabled ? 'online' : ''}">${escapeHtml(t(rule.enabled ? 'watchdog.enabled' : 'watchdog.disabled'))}</span></div><p class="rule-meta"><span><i></i>${escapeHtml(t(rule.runMode === 'service' ? 'watchdog.service' : 'watchdog.interactive'))}</span><span><i></i>${escapeHtml(rule.captureAfterLaunch === false ? t('watchdog.captureDisabled') : t('watchdog.captureEnabled'))}</span><span><i></i>${escapeHtml(rule.filePath || t('common.pathHidden'))}</span></p></div><div class="row-actions">${state.user.role === 'admin' ? `<button class="button primary compact launch-rule" type="button" data-id="${rule.id}">${escapeHtml(t('watchdog.launch'))}</button><button class="button compact edit-rule" type="button" data-id="${rule.id}">${escapeHtml(t('common.edit'))}</button><button class="button compact danger delete-rule" type="button" data-id="${rule.id}">${escapeHtml(t('common.delete'))}</button>` : ''}</div></article>`).join('') : `<div class="empty-state"><span class="empty-icon">00</span><h3>${escapeHtml(t('watchdog.emptyTitle'))}</h3><p>${escapeHtml(t('watchdog.emptyDescription'))}</p></div>`;
+  document.querySelectorAll('.launch-rule').forEach(button => button.addEventListener('click', () => sendCommand('watchdog.launch', { ruleId: button.dataset.id })));
+  document.querySelectorAll('.edit-rule').forEach(button => button.addEventListener('click', () => openRuleDialog(button.dataset.id)));
+  document.querySelectorAll('.delete-rule').forEach(button => button.addEventListener('click', () => deleteRule(button.dataset.id)));
 }
 
-function closeMonitoredModal() {
-  $('monitored-modal').classList.remove('active');
-  currentEditingMonitored = null;
+function openRuleDialog(ruleId = null) {
+  const rule = state.watchdog.rules.find(item => item.id === ruleId);
+  $('rule-dialog-title').textContent = t(rule ? 'watchdog.editTitle' : 'watchdog.addTitle');
+  $('rule-id').value = rule?.id || '';
+  $('rule-name').value = rule?.processName || '';
+  $('rule-path').value = rule?.filePath || '';
+  $('rule-mode').value = rule?.runMode || 'interactive';
+  $('rule-enabled').checked = rule?.enabled !== false;
+  $('rule-screenshot').checked = rule?.captureAfterLaunch !== false;
+  $('rule-dialog').showModal();
 }
 
-async function saveMonitored() {
-  const name = $('monitored-name').value.trim();
-  const filePath = $('monitored-path').value.trim();
-  const enabled = $('monitored-enabled').checked;
-
-  if (!name || !filePath) {
-    showToast('Process name and file path are required', 'error');
-    return;
-  }
-
-  const items = monitoredConfig.monitoredProcesses || [];
-  const newItem = { processName: name, filePath, enabled };
-
-  if (currentEditingMonitored !== null) {
-    items[currentEditingMonitored] = newItem;
-  } else {
-    items.push(newItem);
-  }
-
+async function saveRule(event) {
+  event.preventDefault();
+  const ruleId = $('rule-id').value || crypto.randomUUID();
+  const rule = { id: ruleId, processName: $('rule-name').value.trim(), filePath: $('rule-path').value.trim(), runMode: $('rule-mode').value, enabled: $('rule-enabled').checked, captureAfterLaunch: $('rule-screenshot').checked };
+  const rules = state.watchdog.rules.filter(item => item.id !== ruleId).concat(rule);
   try {
-    await api('/api/config', {
-      method: 'POST',
-      body: JSON.stringify({ monitoredProcesses: items, discordWebhook: monitoredConfig.discordWebhook || '' })
-    });
-    monitoredConfig.monitoredProcesses = items;
-    renderMonitored();
-    closeMonitoredModal();
-    showToast('Configuration saved', 'success');
-  } catch (err) {
-    showToast(err.message, 'error');
-  }
+    state.watchdog = await api(`/api/v1/hosts/${state.selectedHostId}/watchdog`, { method: 'PUT', body: JSON.stringify({ rules }) });
+    $('rule-dialog').close();
+    renderWatchdog();
+    toast(t('watchdog.configSent'), 'success');
+  } catch (error) { toast(translateError(error), 'error'); }
 }
 
-async function removeMonitored(idx) {
-  if (!confirm('Remove this monitored process?')) return;
-  const items = monitoredConfig.monitoredProcesses || [];
-  items.splice(idx, 1);
+async function deleteRule(ruleId) {
+  if (!confirm(t('watchdog.deleteConfirm'))) return;
+  const rules = state.watchdog.rules.filter(item => item.id !== ruleId);
+  state.watchdog = await api(`/api/v1/hosts/${state.selectedHostId}/watchdog`, { method: 'PUT', body: JSON.stringify({ rules }) });
+  renderWatchdog();
+}
+
+async function loadActivity() {
+  if (!state.selectedHostId) return;
+  const [events, commands] = await Promise.all([
+    api(`/api/v1/hosts/${state.selectedHostId}/events`),
+    api(`/api/v1/hosts/${state.selectedHostId}/commands`)
+  ]);
+  $('event-list').innerHTML = events.length ? events.map(event => `<div class="timeline-item ${escapeHtml(event.severity)}"><h4>${escapeHtml(eventLabel(event.type, event.payload.message))}</h4><p>${escapeHtml(event.type)}</p><time>${escapeHtml(formatDate(event.occurredAt))}</time></div>`).join('') : `<p>${escapeHtml(t('activity.noEvents'))}</p>`;
+  $('command-list').innerHTML = commands.length ? commands.map(command => `<div class="timeline-item ${escapeHtml(command.status)}"><h4>${escapeHtml(commandLabel(command.type))} / ${escapeHtml(statusLabel(command.status))}</h4><p>${escapeHtml(t('activity.requestedBy', { user: command.requestedBy }))}${command.result?.error ? ` / ${escapeHtml(translateError(new Error(command.result.error)))}` : ''}</p><time>${escapeHtml(formatDate(command.requestedAt))}</time></div>`).join('') : `<p>${escapeHtml(t('activity.noCommands'))}</p>`;
+}
+
+async function loadAdmin() {
+  if (state.user.role !== 'admin') return;
+  const [pending, users, settings] = await Promise.all([api('/api/v1/agents/pending'), api('/api/v1/users'), api('/api/v1/settings')]);
+  $('pending-list').innerHTML = pending.length ? pending.map(agent => `<div class="stack-item"><div><h4>${escapeHtml(agent.hostname)}</h4><p>${escapeHtml(agent.fingerprint)}<br>${escapeHtml(agent.platform || '')}</p></div><div class="row-actions"><button class="button danger compact reject-agent" data-id="${agent.id}" data-name="${escapeHtml(agent.hostname)}">${escapeHtml(t('admin.reject'))}</button><button class="button primary compact approve-agent" data-id="${agent.id}" data-name="${escapeHtml(agent.hostname)}">${escapeHtml(t('admin.approve'))}</button></div></div>`).join('') : `<p>${escapeHtml(t('admin.noPending'))}</p>`;
+  $('user-list').innerHTML = users.map(user => `<div class="stack-item"><div><h4>${escapeHtml(user.username)}</h4><p>${escapeHtml(user.role === 'admin' ? t('role.admin') : t('role.viewer'))}${user.mustChangePassword ? ` / ${escapeHtml(t('user.passwordRequired'))}` : ''}</p></div>${user.username !== state.user.username ? `<button class="button danger compact delete-user" data-user="${escapeHtml(user.username)}">${escapeHtml(t('common.delete'))}</button>` : ''}</div>`).join('');
+  $('discord-webhook').value = settings.discordWebhook || '';
+  document.querySelectorAll('.approve-agent').forEach(button => button.addEventListener('click', () => approveAgent(button.dataset.id, button.dataset.name)));
+  document.querySelectorAll('.reject-agent').forEach(button => button.addEventListener('click', () => rejectAgent(button.dataset.id, button.dataset.name)));
+  document.querySelectorAll('.delete-user').forEach(button => button.addEventListener('click', () => deleteUser(button.dataset.user)));
+}
+
+async function approveAgent(agentId, hostname) {
+  const displayName = prompt(t('admin.displayNamePrompt'), hostname);
+  if (!displayName) return;
+  await api(`/api/v1/agents/${agentId}/approve`, { method: 'POST', body: JSON.stringify({ displayName }) });
+  toast(t('admin.approved'), 'success');
+  await Promise.all([loadAdmin(), loadHosts()]);
+}
+
+async function rejectAgent(agentId, hostname) {
+  if (!confirm(t('admin.rejectConfirm', { host: hostname }))) return;
+  await api(`/api/v1/agents/${agentId}/revoke`, { method: 'POST', body: '{}' });
+  toast(t('admin.rejected'));
+  loadAdmin();
+}
+
+async function revokeHost(agentId) {
+  const host = state.hosts.find(item => item.id === agentId);
+  if (!confirm(t('fleet.revokeConfirm', { host: host?.displayName || agentId }))) return;
+  await api(`/api/v1/agents/${agentId}/revoke`, { method: 'POST', body: '{}' });
+  toast(t('fleet.revoked'));
+  loadHosts();
+}
+
+async function createUser(event) {
+  event.preventDefault();
   try {
-    await api('/api/config', {
-      method: 'POST',
-      body: JSON.stringify({ monitoredProcesses: items, discordWebhook: monitoredConfig.discordWebhook || '' })
-    });
-    monitoredConfig.monitoredProcesses = items;
-    renderMonitored();
-    showToast('Configuration saved', 'success');
-  } catch (err) {
-    showToast(err.message, 'error');
-  }
-}
-
-async function loadHistory() {
-  if (user.role !== 'admin') return;
-  try {
-    relaunchHistory = await api('/api/config/relaunch-history');
-    const body = $('history-body');
-    if (relaunchHistory.length === 0) {
-      body.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--text-muted)">No history yet</td></tr>';
-      return;
-    }
-    body.innerHTML = relaunchHistory.slice().reverse().map(h => `
-      <tr>
-        <td><strong>${escapeHtml(h.processName)}</strong></td>
-        <td><span class="badge ${h.status === 'relaunched' ? 'badge-running' : 'badge-down'}">${h.status === 'relaunched' ? 'Relaunched' : 'Failed'}</span></td>
-        <td>${formatTime(new Date(h.lastAttempt).toISOString())}</td>
-        <td>${escapeHtml(h.error || '-')}</td>
-      </tr>
-    `).join('');
-  } catch (err) {
-    console.error(err);
-  }
-}
-
-// ===== ADMIN / USERS =====
-async function loadUsers() {
-  try {
-    const users = await api('/api/users');
-    const body = $('users-body');
-    body.innerHTML = users.map(u => `
-      <tr>
-        <td><strong>${escapeHtml(u.username)}</strong></td>
-        <td><span class="badge ${u.role === 'admin' ? 'badge-admin' : 'badge-user'}">${u.role}</span></td>
-        <td>
-          <button class="btn btn-sm" onclick="openPasswordModal('${u.username}')">Set Password</button>
-          ${u.username !== 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteUser('${u.username}')">Delete</button>` : ''}
-        </td>
-      </tr>
-    `).join('');
-  } catch (err) {
-    console.error(err);
-  }
-}
-
-function openUserModal() {
-  currentEditingUser = null;
-  $('user-modal-title').textContent = 'Add User';
-  $('user-username').value = '';
-  $('user-password').value = '';
-  $('user-role').value = 'user';
-  $('user-modal').classList.add('active');
-}
-
-function closeUserModal() {
-  $('user-modal').classList.remove('active');
-}
-
-async function saveUser() {
-  const username = $('user-username').value.trim();
-  const password = $('user-password').value;
-  const role = $('user-role').value;
-
-  if (!username || !password) {
-    showToast('Username and password required', 'error');
-    return;
-  }
-
-  try {
-    await api('/api/users', {
-      method: 'POST',
-      body: JSON.stringify({ username, password, role })
-    });
-    closeUserModal();
-    loadUsers();
-    showToast('User created', 'success');
-  } catch (err) {
-    showToast(err.message, 'error');
-  }
+    await api('/api/v1/users', { method: 'POST', body: JSON.stringify({ username: $('user-username').value.trim(), password: $('user-password').value, role: $('user-role').value }) });
+    $('user-dialog').close();
+    $('user-form').reset();
+    toast(t('user.created'), 'success');
+    loadAdmin();
+  } catch (error) { toast(translateError(error), 'error'); }
 }
 
 async function deleteUser(username) {
-  if (!confirm(`Delete user "${username}"?`)) return;
+  if (!confirm(t('admin.deleteUserConfirm', { user: username }))) return;
+  await api(`/api/v1/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
+  loadAdmin();
+}
+
+async function saveSettings(event) {
+  event.preventDefault();
   try {
-    await api(`/api/users/${username}`, { method: 'DELETE' });
-    loadUsers();
-    showToast('User deleted', 'success');
-  } catch (err) {
-    showToast(err.message, 'error');
-  }
+    await api('/api/v1/settings', { method: 'PUT', body: JSON.stringify({ discordWebhook: $('discord-webhook').value.trim() }) });
+    toast(t('admin.settingsSaved'), 'success');
+  } catch (error) { toast(translateError(error), 'error'); }
 }
 
-function openPasswordModal(username) {
-  currentPasswordUser = username;
-  $('password-new').value = '';
-  $('password-modal').classList.add('active');
-}
-
-async function savePassword() {
-  const password = $('password-new').value;
-  if (!password) {
-    showToast('Password required', 'error');
-    return;
-  }
+async function changePassword(event) {
+  event.preventDefault();
   try {
-    await api(`/api/users/${currentPasswordUser}/password`, {
-      method: 'POST',
-      body: JSON.stringify({ password })
-    });
-    $('password-modal').classList.remove('active');
-    showToast('Password updated', 'success');
-  } catch (err) {
-    showToast(err.message, 'error');
-  }
+    await api(`/api/v1/users/${encodeURIComponent(state.user.username)}/password`, { method: 'POST', body: JSON.stringify({ password: $('new-password').value }) });
+    state.user.mustChangePassword = false;
+    localStorage.setItem('wc_user', JSON.stringify(state.user));
+    $('password-dialog').close();
+    toast(t('password.updated'), 'success');
+  } catch (error) { toast(translateError(error), 'error'); }
 }
 
-// ===== EVENT LISTENERS =====
-document.addEventListener('DOMContentLoaded', () => {
-  $('login-form').addEventListener('submit', login);
-  $('logout-btn').addEventListener('click', logout);
-
-  // Language switcher
-  $('lang-en').addEventListener('click', () => setLanguage('en'));
-  $('lang-vi').addEventListener('click', () => setLanguage('vi'));
-
-  // Navigation
-  window.addEventListener('hashchange', navigate);
-
-  // Process search
-  $('process-search').addEventListener('input', () => {
-    // Debounce
-    clearTimeout(window._searchTimeout);
-    window._searchTimeout = setTimeout(() => {
-      // Re-fetch processes filtered client-side
-      loadProcesses();
-    }, 300);
+function navigate() {
+  let page = (location.hash || '#fleet').slice(1);
+  if (!pageMeta[page] || (page === 'admin' && state.user?.role !== 'admin')) page = 'fleet';
+  document.querySelectorAll('.page').forEach(section => section.hidden = section.id !== `page-${page}`);
+  document.querySelectorAll('#main-nav a').forEach(link => {
+    const active = link.dataset.page === page;
+    link.classList.toggle('active', active);
+    if (active) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
   });
+  $('page-kicker').textContent = t(pageMeta[page][0]);
+  $('page-title').textContent = t(pageMeta[page][1]);
+  refreshPage(page);
+}
 
-  // Monitored modal
-  $('add-monitored-btn').addEventListener('click', () => openMonitoredModal());
-  $('monitored-cancel').addEventListener('click', closeMonitoredModal);
-  $('monitored-save').addEventListener('click', saveMonitored);
+function currentPage() { return (location.hash || '#fleet').slice(1); }
+function refreshCurrentPage() { refreshPage(currentPage()); }
+function refreshPage(page) {
+  if (page === 'fleet') loadHosts().catch(showError);
+  else if (page === 'dashboard') { renderDashboard(); loadTelemetryHistory().catch(showError); }
+  else if (page === 'processes') loadProcesses().catch(showError);
+  else if (page === 'watchdog') loadWatchdog().catch(showError);
+  else if (page === 'activity') loadActivity().catch(showError);
+  else if (page === 'admin') loadAdmin().catch(showError);
+}
+function showError(error) { toast(translateError(error), 'error'); }
 
-  // Discord webhook
-  $('save-webhook-btn').addEventListener('click', saveWebhook);
-
-  // User modal
-  $('add-user-btn').addEventListener('click', openUserModal);
-  $('user-cancel').addEventListener('click', closeUserModal);
-  $('user-save').addEventListener('click', saveUser);
-
-  // Password modal
-  $('password-cancel').addEventListener('click', () => $('password-modal').classList.remove('active'));
-  $('password-save').addEventListener('click', savePassword);
-
-  // Close modals on overlay click
-  document.querySelectorAll('.modal-overlay').forEach(overlay => {
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) overlay.classList.remove('active');
-    });
-  });
-
-  // Load initial translations
-  loadTranslations(currentLang);
-
-  // Initial state
-  if (token && user) {
-    showApp();
-  } else {
-    $('login-page').style.display = 'flex';
-  }
+$('setup-form').addEventListener('submit', setupSubmit);
+$('login-form').addEventListener('submit', loginSubmit);
+$('logout-button').addEventListener('click', logout);
+$('host-select').addEventListener('change', event => selectHost(event.target.value));
+$('refresh-button').addEventListener('click', refreshCurrentPage);
+$('process-refresh').addEventListener('click', () => loadProcesses().catch(showError));
+$('process-search').addEventListener('input', renderProcesses);
+$('add-rule-button').addEventListener('click', () => openRuleDialog());
+$('rule-form').addEventListener('submit', saveRule);
+$('open-admin-button').addEventListener('click', () => location.hash = '#admin');
+$('add-user-button').addEventListener('click', () => $('user-dialog').showModal());
+$('user-form').addEventListener('submit', createUser);
+$('settings-form').addEventListener('submit', saveSettings);
+$('password-form').addEventListener('submit', changePassword);
+$('password-dialog').addEventListener('cancel', event => {
+  if (state.user?.mustChangePassword) event.preventDefault();
 });
+$('language-select').addEventListener('change', event => loadTranslations(event.target.value));
+$('theme-toggle').addEventListener('click', () => applyTheme(state.theme === 'dark' ? 'light' : 'dark'));
+window.addEventListener('hashchange', navigate);
+bootstrap().catch(showError);

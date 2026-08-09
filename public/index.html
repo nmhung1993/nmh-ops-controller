@@ -1,293 +1,167 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="vi">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
   <title>Windows Controller</title>
+  <script>
+    document.documentElement.dataset.theme = localStorage.getItem('wc_theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  </script>
   <link rel="stylesheet" href="css/style.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
+  <a class="skip-link" href="#main-content" data-i18n="accessibility.skipToContent">Chuyển đến nội dung chính</a>
+  <div class="ambient-grid" aria-hidden="true"></div>
 
-  <!-- ===== LOGIN PAGE ===== -->
-  <div id="login-page">
-    <div class="login-card">
-      <div class="logo">🖥️</div>
-      <h1>Windows Controller</h1>
-      <p class="subtitle">Monitor & manage your system</p>
-      <form id="login-form">
-        <div class="form-group">
-          <label>Username</label>
-          <input type="text" id="login-username" required autocomplete="username">
-        </div>
-        <div class="form-group">
-          <label>Password</label>
-          <input type="password" id="login-password" required autocomplete="current-password">
-        </div>
-        <button type="submit" class="btn btn-primary btn-block">Sign In</button>
-        <p class="error-msg" id="login-error"></p>
-      </form>
-    </div>
+  <svg class="icon-library" aria-hidden="true">
+    <symbol id="icon-fleet" viewBox="0 0 24 24"><rect x="3" y="4" width="8" height="7" rx="1"/><rect x="13" y="4" width="8" height="7" rx="1"/><rect x="3" y="13" width="8" height="7" rx="1"/><rect x="13" y="13" width="8" height="7" rx="1"/></symbol>
+    <symbol id="icon-dashboard" viewBox="0 0 24 24"><path d="M4 18a8 8 0 1 1 16 0"/><path d="m12 12 4-3"/><path d="M7 18h10"/></symbol>
+    <symbol id="icon-process" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m7 10 2 2-2 2M12 14h5"/></symbol>
+    <symbol id="icon-watchdog" viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.2c0 4.6 3 7.9 7.5 9.8 4.5-1.9 7.5-5.2 7.5-9.8V6L12 3Z"/><path d="m8.5 12 2.2 2.2 4.8-5"/></symbol>
+    <symbol id="icon-activity" viewBox="0 0 24 24"><path d="M4 12h3l2-6 4 12 2-6h5"/></symbol>
+    <symbol id="icon-admin" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5 20a7 7 0 0 1 14 0M19 5v4M17 7h4"/></symbol>
+    <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 6v5h-5M4 18v-5h5"/><path d="M18 9a7 7 0 0 0-12-2M6 15a7 7 0 0 0 12 2"/></symbol>
+    <symbol id="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="icon-cpu" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M19 9h3M2 15h3M19 15h3"/></symbol>
+    <symbol id="icon-memory" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="M8 10v4M12 10v4M16 10v4M7 18v3M17 18v3"/></symbol>
+    <symbol id="icon-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="icon-network" viewBox="0 0 24 24"><path d="M5 16a10 10 0 0 1 14 0M8 19a6 6 0 0 1 8 0M2 12a14 14 0 0 1 20 0"/><circle cx="12" cy="21" r="1"/></symbol>
+  </svg>
+
+  <div class="preference-dock" aria-label="Display preferences">
+    <label class="sr-only" for="language-select" data-i18n="language.label">Ngôn ngữ hiển thị</label>
+    <select id="language-select" class="preference-select" aria-label="Display language">
+      <option value="vi">Tiếng Việt</option>
+      <option value="en">English</option>
+    </select>
+    <button class="theme-toggle" id="theme-toggle" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-sun"></use></svg><span id="theme-label">Giao diện tối</span></button>
   </div>
 
-  <!-- ===== APP ===== -->
-  <div id="app">
+  <section class="auth-view" id="setup-view" hidden>
+    <div class="auth-layout">
+      <div class="auth-story" aria-hidden="true"><div class="auth-signal"><span></span><span></span><span></span></div><p>WINDOWS FLEET / LAN</p><h2 data-i18n="auth.storyTitle">Vận hành toàn bộ hệ thống từ một điểm quan sát.</h2><p data-i18n="auth.storyDescription">Theo dõi tài nguyên, tiến trình và Watchdog trên từng máy Windows trong mạng nội bộ.</p></div>
+      <form class="auth-card" id="setup-form">
+        <div class="brand-mark"><span>WC</span><i></i></div>
+        <p class="eyebrow" data-i18n="setup.eyebrow">KHỞI TẠO LẦN ĐẦU</p>
+        <h1 data-i18n="setup.title">Thiết lập trung tâm điều khiển</h1>
+        <p class="auth-copy" data-i18n="setup.description">Tạo tài khoản quản trị đầu tiên.</p>
+        <label><span data-i18n="setup.username">Tên đăng nhập quản trị</span><input id="setup-username" required autocomplete="username"></label>
+        <label><span data-i18n="setup.password">Mật khẩu</span><input id="setup-password" type="password" minlength="10" required autocomplete="new-password"></label>
+        <button class="button primary wide" type="submit" data-i18n="setup.submit">Tạo tài khoản quản trị</button>
+        <p class="form-error" id="setup-error" role="alert"></p>
+      </form>
+    </div>
+  </section>
+
+  <section class="auth-view" id="login-view" hidden>
+    <div class="auth-layout">
+      <div class="auth-story" aria-hidden="true"><div class="auth-signal"><span></span><span></span><span></span></div><p>WINDOWS FLEET / LAN</p><h2 data-i18n="auth.storyTitle">Vận hành toàn bộ hệ thống từ một điểm quan sát.</h2><p data-i18n="auth.storyDescription">Theo dõi tài nguyên, tiến trình và Watchdog trên từng máy Windows trong mạng nội bộ.</p></div>
+      <form class="auth-card" id="login-form">
+        <div class="brand-mark"><span>WC</span><i></i></div>
+        <p class="eyebrow" data-i18n="login.eyebrow">VẬN HÀNH TRONG MẠNG LAN TIN CẬY</p>
+        <h1>Windows Controller</h1>
+        <p class="auth-copy" data-i18n="login.description">Một giao diện thống nhất cho các máy Windows trong mạng nội bộ.</p>
+        <label><span data-i18n="login.username">Tên đăng nhập</span><input id="login-username" required autocomplete="username"></label>
+        <label><span data-i18n="login.password">Mật khẩu</span><input id="login-password" type="password" required autocomplete="current-password"></label>
+        <button class="button primary wide" type="submit" data-i18n="login.submit">Đăng nhập hệ thống</button>
+        <p class="form-error" id="login-error" role="alert"></p>
+      </form>
+    </div>
+  </section>
+
+  <div class="app-shell" id="app-shell" hidden>
     <aside class="sidebar">
-      <div class="brand">
-        <div class="brand-icon">🖥️</div>
-        <span data-i18n="app.title">Windows Controller</span>
+      <a class="brand" href="#fleet" aria-label="Windows Controller"><span class="brand-symbol">WC<i></i></span><strong>Windows<br>Controller</strong></a>
+      <div class="environment-badge"><span class="signal-dot"></span><div><small data-i18n="sidebar.environment">MÔI TRƯỜNG</small><strong data-i18n="sidebar.environmentValue">LAN tin cậy</strong></div></div>
+      <div class="fleet-pulse" aria-label="Fleet connection summary">
+        <span><b id="online-count">0</b><i data-i18n="common.online">Đang trực tuyến</i></span>
+        <span><b id="offline-count">0</b><i data-i18n="common.offline">Mất kết nối</i></span>
       </div>
-      <nav>
-        <a href="#dashboard" class="active" data-page="dashboard"><span class="icon">📊</span><span data-i18n="nav.dashboard">Dashboard</span></a>
-        <a href="#processes" data-page="processes"><span class="icon">⚙️</span><span data-i18n="nav.processes">Processes</span></a>
-        <a href="#watchdog" data-page="watchdog"><span class="icon">🛡️</span><span data-i18n="nav.watchdog">Watchdog</span></a>
-        <a href="#admin" data-page="admin" id="admin-link" style="display:none"><span class="icon">👑</span><span data-i18n="nav.admin">Admin</span></a>
+      <nav id="main-nav" aria-label="Primary navigation">
+        <a href="#fleet" data-page="fleet"><svg class="icon" aria-hidden="true"><use href="#icon-fleet"></use></svg><span data-i18n="nav.fleet">Danh sách máy</span></a>
+        <a href="#dashboard" data-page="dashboard"><svg class="icon" aria-hidden="true"><use href="#icon-dashboard"></use></svg><span data-i18n="nav.dashboard">Tổng quan</span></a>
+        <a href="#processes" data-page="processes"><svg class="icon" aria-hidden="true"><use href="#icon-process"></use></svg><span data-i18n="nav.processes">Tiến trình</span></a>
+        <a href="#watchdog" data-page="watchdog"><svg class="icon" aria-hidden="true"><use href="#icon-watchdog"></use></svg><span data-i18n="nav.watchdog">Giám sát tự động</span></a>
+        <a href="#activity" data-page="activity"><svg class="icon" aria-hidden="true"><use href="#icon-activity"></use></svg><span data-i18n="nav.activity">Nhật ký hoạt động</span></a>
+        <a href="#admin" data-page="admin" data-admin><svg class="icon" aria-hidden="true"><use href="#icon-admin"></use></svg><span data-i18n="nav.admin">Quản trị</span></a>
       </nav>
-      <div class="lang-switcher">
-        <button class="btn btn-sm" id="lang-en">🇬🇧 EN</button>
-        <button class="btn btn-sm" id="lang-vi">🇻🇳 VI</button>
-      </div>
-      <div class="user-info">
-        <div class="avatar">👤</div>
-        <div class="username" id="current-username">-</div>
-        <div class="role" id="current-role">-</div>
-        <button class="btn btn-danger btn-sm logout-btn" id="logout-btn">Logout</button>
-      </div>
+      <div class="session-card"><div class="session-avatar" aria-hidden="true">A</div><div><span id="session-user">-</span><small id="session-role">-</small></div><button class="text-button" id="logout-button" type="button" data-i18n="session.signOut">Đăng xuất</button></div>
+      <p class="sidebar-foot">CENTRAL NODE / <span>3003</span></p>
     </aside>
 
-    <main class="main">
-      <!-- ===== DASHBOARD ===== -->
-      <section class="page active" id="page-dashboard">
-        <div class="page-header">
-          <h2>📊 <span data-i18n="dashboard.title">Dashboard</span></h2>
-          <span class="page-sub" id="hostname-value">--</span>
+    <main class="workspace" id="main-content" tabindex="-1">
+      <header class="topbar">
+        <div class="page-heading"><p class="eyebrow" id="page-kicker">TOÀN CẢNH HỆ THỐNG</p><h1 id="page-title">Danh sách máy</h1></div>
+        <div class="topbar-actions">
+          <div class="live-indicator" id="socket-status" role="status" aria-live="polite"><i></i><span id="socket-status-text" data-i18n="socket.connecting">Đang kết nối</span></div>
+          <label class="host-control"><span data-i18n="host.selector">Máy đang được chọn</span><select id="host-select"></select></label>
+          <button class="button icon-action" id="refresh-button" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-refresh"></use></svg><span data-i18n="common.refresh">Làm mới</span></button>
         </div>
-        <div class="grid grid-4" id="dash-cards">
-          <div class="card metric-card">
-            <div class="metric-icon">🖥️</div>
-            <div class="card-title">CPU Usage</div>
-            <div class="card-value" id="cpu-value">--%</div>
-            <div class="progress"><div class="progress-bar cpu" id="cpu-bar" style="width:0%"></div></div>
-            <div class="bar-label"><span id="cpu-cores">- cores</span><span id="cpu-model"></span></div>
-          </div>
-          <div class="card metric-card">
-            <div class="metric-icon">🧠</div>
-            <div class="card-title">Memory</div>
-            <div class="card-value" id="mem-value">--</div>
-            <div class="progress"><div class="progress-bar mem" id="mem-bar" style="width:0%"></div></div>
-            <div class="bar-label"><span id="mem-free">--</span><span id="mem-total">--</span></div>
-          </div>
-          <div class="card metric-card">
-            <div class="metric-icon">⏱️</div>
-            <div class="card-title">Uptime</div>
-            <div class="card-value" id="uptime-value">--</div>
-            <div class="card-sub" id="net-info">--</div>
-          </div>
-          <div class="card metric-card">
-            <div class="metric-icon">💻</div>
-            <div class="card-title">OS</div>
-            <div class="card-value" id="os-value" style="font-size:18px">--</div>
-            <div class="card-sub" id="net-model"></div>
-          </div>
-        </div>
+      </header>
 
-        <div class="grid grid-2" style="margin-top:16px">
-          <div class="card">
-            <div class="card-title">Disk Usage</div>
-            <div id="disk-charts" class="disk-charts"></div>
-          </div>
-          <div class="card">
-            <div class="card-title">CPU History (60 min)</div>
-            <div style="position:relative; height:300px">
-              <canvas id="cpu-line-chart"></canvas>
-            </div>
-          </div>
+      <section class="page" id="page-fleet">
+        <div class="section-heading"><div><p class="section-index">01 / FLEET</p><h2 data-i18n="fleet.title">Các máy trong mạng LAN</h2><p data-i18n="fleet.description">Theo dõi tình trạng của từng máy.</p></div><button class="button primary" id="open-admin-button" type="button" data-admin data-i18n="fleet.approve">Duyệt máy mới</button></div>
+        <div class="fleet-summary" aria-label="Fleet summary">
+          <article><span data-i18n="fleet.summary.total">Tổng số máy</span><strong id="fleet-total">0</strong><small data-i18n="fleet.summary.totalHint">Agent đã được phê duyệt</small></article>
+          <article><span data-i18n="fleet.summary.health">Tình trạng hệ thống</span><strong id="fleet-health">--</strong><small data-i18n="fleet.summary.healthHint">Tỷ lệ máy đang trực tuyến</small></article>
+          <article class="attention"><span data-i18n="fleet.summary.attention">Cần chú ý</span><strong id="fleet-attention">0</strong><small data-i18n="fleet.summary.attentionHint">Mất kết nối hoặc tải cao</small></article>
         </div>
+        <div class="fleet-grid" id="fleet-grid"></div>
+        <div class="empty-state" id="fleet-empty" hidden><span class="empty-icon">00</span><h3 data-i18n="fleet.emptyTitle">Chưa có máy nào được duyệt</h3><p data-i18n="fleet.emptyDescription">Hãy cài Agent và duyệt máy.</p></div>
+      </section>
 
-        <div class="grid grid-2" style="margin-top:16px">
-          <div class="card">
-            <div class="card-title">Memory History (60 min)</div>
-            <div style="position:relative; height:300px">
-              <canvas id="mem-line-chart"></canvas>
-            </div>
-          </div>
-          <div class="card">
-            <div class="card-title">Network History (60 min)</div>
-            <div style="position:relative; height:300px">
-              <canvas id="net-line-chart"></canvas>
-            </div>
-          </div>
+      <section class="page" id="page-dashboard" hidden>
+        <div class="context-strip"><div><span class="signal-dot"></span><strong id="dashboard-host-name">--</strong></div><span id="host-updated-at" data-i18n="dashboard.waiting">Đang chờ dữ liệu từ Agent</span></div>
+        <div class="metric-grid">
+          <article class="metric cpu"><div class="metric-icon"><svg class="icon"><use href="#icon-cpu"></use></svg></div><span data-i18n="dashboard.cpuLoad">MỨC SỬ DỤNG CPU</span><strong id="cpu-value">--</strong><small id="cpu-model" data-i18n="dashboard.waiting">Đang chờ dữ liệu từ Agent</small><div class="metric-track"><i id="cpu-meter"></i></div></article>
+          <article class="metric memory"><div class="metric-icon"><svg class="icon"><use href="#icon-memory"></use></svg></div><span data-i18n="dashboard.memory">BỘ NHỚ RAM</span><strong id="memory-value">--</strong><small id="memory-detail" data-i18n="dashboard.waiting">Đang chờ dữ liệu từ Agent</small><div class="metric-track"><i id="memory-meter"></i></div></article>
+          <article class="metric uptime"><div class="metric-icon"><svg class="icon"><use href="#icon-clock"></use></svg></div><span data-i18n="dashboard.uptime">THỜI GIAN HOẠT ĐỘNG</span><strong id="uptime-value">--</strong><small id="os-value" data-i18n="dashboard.waiting">Đang chờ dữ liệu từ Agent</small></article>
+          <article class="metric network"><div class="metric-icon"><svg class="icon"><use href="#icon-network"></use></svg></div><span data-i18n="dashboard.network">LƯU LƯỢNG MẠNG</span><strong id="network-value">--</strong><small id="network-detail" data-i18n="dashboard.sendReceive">Tốc độ gửi / nhận</small></article>
+        </div>
+        <div class="dashboard-grid">
+          <article class="panel chart-panel"><div class="panel-title"><div><span class="panel-label">CPU / 60M</span><h3 data-i18n="dashboard.cpuTrend">Biến động CPU</h3></div><span data-i18n="dashboard.last60">Trong 60 phút gần nhất</span></div><svg class="line-chart" id="cpu-chart" viewBox="0 0 800 240" preserveAspectRatio="none" role="img" aria-label="CPU history"></svg></article>
+          <article class="panel chart-panel"><div class="panel-title"><div><span class="panel-label">RAM / 60M</span><h3 data-i18n="dashboard.memoryTrend">Biến động bộ nhớ</h3></div><span data-i18n="dashboard.last60">Trong 60 phút gần nhất</span></div><svg class="line-chart memory-line" id="memory-chart" viewBox="0 0 800 240" preserveAspectRatio="none" role="img" aria-label="Memory history"></svg></article>
+          <article class="panel disk-panel"><div class="panel-title"><div><span class="panel-label">STORAGE</span><h3 data-i18n="dashboard.storage">Dung lượng lưu trữ</h3></div><span data-i18n="dashboard.fixedDisks">Các ổ đĩa cố định trên máy</span></div><div id="disk-list"></div></article>
+          <article class="panel machine-panel"><div class="panel-title"><div><span class="panel-label">IDENTITY</span><h3 data-i18n="dashboard.identity">Thông tin nhận dạng máy</h3></div><span class="status-pill" id="host-status-badge" data-i18n="common.offline">Mất kết nối</span></div><dl id="machine-details"></dl></article>
         </div>
       </section>
 
-      <!-- ===== PROCESSES ===== -->
-      <section class="page" id="page-processes">
-        <h2>⚙️ <span data-i18n="processes.title">Running Processes</span></h2>
-        <div class="toolbar">
-          <input type="text" class="search-input" id="process-search" placeholder="🔍 Search processes...">
-          <div class="stats-row" style="margin:0">
-            <div class="stat-item"><div class="label">Total</div><div class="value" id="proc-count">0</div></div>
-            <div class="stat-item"><div class="label">Apps</div><div class="value" id="app-count">0</div></div>
-          </div>
-        </div>
-        <div class="card">
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>PID</th>
-                  <th>Name</th>
-                  <th>CPU (s)</th>
-                  <th>Memory (MB)</th>
-                  <th>Path</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="process-table-body"></tbody>
-            </table>
-          </div>
-        </div>
+      <section class="page" id="page-processes" hidden>
+        <div class="section-heading"><div><p class="section-index">03 / PROCESSES</p><h2 data-i18n="process.title">Các tiến trình đang chạy</h2><p data-i18n="process.description">Danh sách chỉ được tải khi cần.</p></div><div class="inline-actions"><label class="search-field"><span class="sr-only" data-i18n="process.search">Tìm tiến trình</span><input class="search" id="process-search" data-i18n-placeholder="process.search" placeholder="Tìm tiến trình"></label><button class="button primary" id="process-refresh" type="button" data-i18n="process.fetch">Tải danh sách tiến trình</button></div></div>
+        <div class="table-toolbar"><strong id="process-count">0</strong><span data-i18n="process.snapshotCount">tiến trình trong ảnh chụp hiện tại</span></div>
+        <div class="table-panel"><table><caption class="sr-only" data-i18n="process.title">Các tiến trình đang chạy</caption><thead><tr><th scope="col" data-i18n="process.name">Tiến trình</th><th scope="col" data-i18n="process.pid">Mã PID</th><th scope="col" data-i18n="process.cpu">CPU</th><th scope="col" data-i18n="process.memory">Bộ nhớ</th><th scope="col" data-i18n="process.path">Đường dẫn tệp thực thi</th><th scope="col"><span class="sr-only" data-i18n="common.actions">Thao tác</span></th></tr></thead><tbody id="process-body"></tbody></table></div>
       </section>
 
-      <!-- ===== WATCHDOG ===== -->
-      <section class="page" id="page-watchdog">
-        <h2>🛡️ <span data-i18n="watchdog.title">Watchdog</span></h2>
-        <p style="color:var(--text-muted); margin-bottom:20px">
-          Configure processes to monitor. If a monitored process stops running, the specified file will be automatically launched. <strong>(Admin only)</strong>
-        </p>
-
-        <div class="card" style="margin-bottom:20px">
-          <h3 style="margin-bottom:16px">Monitored Processes</h3>
-          <div id="monitored-list"></div>
-          <div class="toolbar" style="margin-top:16px; margin-bottom:0">
-            <button class="btn btn-primary" id="add-monitored-btn">+ Add Monitored Process</button>
-          </div>
-        </div>
-
-        <div class="card" style="margin-bottom:20px">
-          <h3 style="margin-bottom:16px">Discord Webhook</h3>
-          <p style="color:var(--text-muted); font-size:13px; margin-bottom:12px">
-            Set a Discord webhook URL to receive notifications when a monitored process goes down, is restarted, or a screenshot is captured. <strong>(Admin only)</strong>
-          </p>
-          <div class="form-group" style="display:flex; gap:10px; margin-bottom:0">
-            <input type="text" id="discord-webhook-input" placeholder="https://discord.com/api/webhooks/..." style="flex:1">
-            <button class="btn btn-primary" id="save-webhook-btn">Save Webhook</button>
-          </div>
-        </div>
-
-        <div class="card">
-          <h3 style="margin-bottom:16px">Relaunch History</h3>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Process</th>
-                  <th>Status</th>
-                  <th>Time</th>
-                  <th>Error</th>
-                </tr>
-              </thead>
-              <tbody id="history-body">
-                <tr><td colspan="4" style="text-align:center; color:var(--text-muted)">No history yet</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
+      <section class="page" id="page-watchdog" hidden>
+        <div class="section-heading"><div><p class="section-index">04 / RESILIENCE</p><h2 data-i18n="watchdog.title">Cơ chế tự giám sát tại máy trạm</h2><p data-i18n="watchdog.description">Quy tắc tiếp tục chạy khi Central Server mất kết nối.</p></div><button class="button primary" id="add-rule-button" type="button" data-admin data-i18n="watchdog.add">Thêm quy tắc</button></div>
+        <div class="watchdog-banner"><svg class="icon"><use href="#icon-watchdog"></use></svg><div><strong data-i18n="watchdog.localFirst">Bảo vệ tại máy trạm</strong><p data-i18n="watchdog.localFirstDescription">Agent lưu cấu hình cục bộ và tiếp tục khởi động lại ứng dụng ngay cả khi mất kết nối tới trung tâm.</p></div><span id="rule-count">0</span></div>
+        <div class="rule-list" id="rule-list"></div>
       </section>
 
-      <!-- ===== ADMIN ===== -->
-      <section class="page" id="page-admin">
-        <h2>👑 <span data-i18n="admin.title">Admin Panel</span></h2>
-        <div class="card">
-          <h3 style="margin-bottom:16px">User Management</h3>
-          <div class="toolbar">
-            <button class="btn btn-primary" id="add-user-btn">+ Add User</button>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Username</th>
-                  <th>Role</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="users-body"></tbody>
-            </table>
-          </div>
+      <section class="page" id="page-activity" hidden>
+        <div class="section-heading"><div><p class="section-index">05 / AUDIT</p><h2 data-i18n="activity.title">Nhật ký sự kiện và kiểm toán</h2><p data-i18n="activity.description">Theo dõi sự kiện và lệnh điều khiển.</p></div></div>
+        <div class="activity-grid"><article class="panel"><div class="panel-title"><div><span class="panel-label">EVENT STREAM</span><h3 data-i18n="activity.events">Sự kiện hệ thống</h3></div></div><div class="timeline" id="event-list"></div></article><article class="panel"><div class="panel-title"><div><span class="panel-label">COMMAND AUDIT</span><h3 data-i18n="activity.commands">Lệnh điều khiển</h3></div></div><div class="timeline" id="command-list"></div></article></div>
+      </section>
+
+      <section class="page" id="page-admin" hidden>
+        <div class="section-heading"><div><p class="section-index">06 / ADMIN</p><h2 data-i18n="admin.title">Quản trị hệ thống</h2><p data-i18n="admin.description">Quản lý Agent, người dùng và kênh thông báo tập trung.</p></div></div>
+        <div class="admin-grid">
+          <article class="panel"><div class="panel-title"><div><span class="panel-label">ENROLLMENT</span><h3 data-i18n="admin.pending">Agent đang chờ duyệt</h3></div><span data-i18n="admin.verify">Đối chiếu dấu vân tay trước khi duyệt</span></div><div id="pending-list" class="stack-list"></div></article>
+          <article class="panel"><div class="panel-title"><div><span class="panel-label">ACCESS CONTROL</span><h3 data-i18n="admin.users">Tài khoản người dùng</h3></div><button class="button compact" id="add-user-button" type="button" data-i18n="admin.addUser">Thêm tài khoản</button></div><div id="user-list" class="stack-list"></div></article>
+          <article class="panel span-two integration-panel"><div class="integration-copy"><span class="panel-label">DISCORD / WEBHOOK</span><h3 data-i18n="admin.integrations">Tích hợp thông báo</h3><p data-i18n="admin.webhookCentral">Webhook chỉ lưu tại Central Server</p></div><form id="settings-form" class="settings-form"><label><span data-i18n="admin.discordWebhook">Địa chỉ Discord webhook</span><input id="discord-webhook" type="url" placeholder="https://discord.com/api/webhooks/..."></label><button class="button primary" type="submit" data-i18n="admin.saveSettings">Lưu cấu hình</button></form></article>
         </div>
       </section>
     </main>
   </div>
 
-  <!-- ===== MODALS ===== -->
-  <!-- Monitored process modal -->
-  <div class="modal-overlay" id="monitored-modal">
-    <div class="modal">
-      <h3 id="monitored-modal-title">Add Monitored Process</h3>
-      <div class="form-group">
-        <label>Process Name (e.g. notepad)</label>
-        <input type="text" id="monitored-name" placeholder="process name">
-      </div>
-      <div class="form-group">
-        <label>Executable File Path</label>
-        <input type="text" id="monitored-path" placeholder="C:\path\to\app.exe">
-      </div>
-      <div class="form-group">
-        <label>
-          <input type="checkbox" id="monitored-enabled" checked> Enabled
-        </label>
-      </div>
-      <div class="modal-actions">
-        <button class="btn" id="monitored-cancel">Cancel</button>
-        <button class="btn btn-primary" id="monitored-save">Save</button>
-      </div>
-    </div>
-  </div>
+  <dialog id="rule-dialog"><form method="dialog" id="rule-form" class="dialog-form"><div class="dialog-heading"><div><p class="eyebrow" data-i18n="watchdog.ruleEyebrow">QUY TẮC GIÁM SÁT</p><h2 id="rule-dialog-title" data-i18n="watchdog.addTitle">Thêm quy tắc giám sát</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Close">×</button></div><input id="rule-id" type="hidden"><label><span data-i18n="watchdog.processName">Tên tiến trình</span><input id="rule-name" required placeholder="parsecd"></label><label><span data-i18n="watchdog.executablePath">Đường dẫn tệp thực thi</span><input id="rule-path" required placeholder="C:\Program Files\App\app.exe"></label><label><span data-i18n="watchdog.runMode">Phiên Windows dùng để khởi chạy</span><select id="rule-mode"><option value="interactive" data-i18n="watchdog.interactive">Phiên desktop của người dùng</option><option value="service" data-i18n="watchdog.service">Phiên dịch vụ Windows</option></select></label><label class="check"><input id="rule-enabled" type="checkbox" checked><span data-i18n="watchdog.enableRestart">Tự động khởi động lại khi tiến trình dừng</span></label><label class="check"><input id="rule-screenshot" type="checkbox" checked><span data-i18n="watchdog.captureAfter">Chụp cửa sổ sau khi khởi động lại</span></label><div class="dialog-actions"><button class="button" value="cancel" formnovalidate data-i18n="common.cancel">Hủy</button><button class="button primary" id="rule-save" value="default" data-i18n="watchdog.save">Lưu quy tắc</button></div></form></dialog>
 
-  <!-- User modal -->
-  <div class="modal-overlay" id="user-modal">
-    <div class="modal">
-      <h3 id="user-modal-title">Add User</h3>
-      <div class="form-group">
-        <label>Username</label>
-        <input type="text" id="user-username">
-      </div>
-      <div class="form-group">
-        <label>Password</label>
-        <input type="password" id="user-password">
-      </div>
-      <div class="form-group">
-        <label>Role</label>
-        <select id="user-role">
-          <option value="user">User (view only)</option>
-          <option value="admin">Admin</option>
-        </select>
-      </div>
-      <div class="modal-actions">
-        <button class="btn" id="user-cancel">Cancel</button>
-        <button class="btn btn-primary" id="user-save">Save</button>
-      </div>
-    </div>
-  </div>
+  <dialog id="user-dialog"><form method="dialog" id="user-form" class="dialog-form"><div class="dialog-heading"><div><p class="eyebrow" data-i18n="user.accessEyebrow">PHÂN QUYỀN TRUY CẬP</p><h2 data-i18n="user.addTitle">Thêm tài khoản</h2></div><button class="icon-button" value="cancel" formnovalidate aria-label="Close">×</button></div><label><span data-i18n="user.username">Tên đăng nhập</span><input id="user-username" required></label><label><span data-i18n="user.password">Mật khẩu</span><input id="user-password" type="password" minlength="10" required></label><label><span data-i18n="user.role">Quyền truy cập</span><select id="user-role"><option value="user" data-i18n="user.viewer">Người xem</option><option value="admin" data-i18n="user.admin">Quản trị viên</option></select></label><div class="dialog-actions"><button class="button" value="cancel" formnovalidate data-i18n="common.cancel">Hủy</button><button class="button primary" value="default" data-i18n="user.create">Tạo tài khoản</button></div></form></dialog>
 
-  <!-- Change password modal -->
-  <div class="modal-overlay" id="password-modal">
-    <div class="modal">
-      <h3>Change Password</h3>
-      <div class="form-group">
-        <label>New Password</label>
-        <input type="password" id="password-new">
-      </div>
-      <div class="modal-actions">
-        <button class="btn" id="password-cancel">Cancel</button>
-        <button class="btn btn-primary" id="password-save">Save</button>
-      </div>
-    </div>
-  </div>
+  <dialog id="password-dialog"><form method="dialog" id="password-form" class="dialog-form"><div class="dialog-heading"><div><p class="eyebrow" data-i18n="password.eyebrow">CẬP NHẬT BẢO MẬT</p><h2 data-i18n="password.title">Đổi mật khẩu</h2></div></div><p data-i18n="password.description">Tài khoản cũ cần đổi mật khẩu.</p><label><span data-i18n="password.new">Mật khẩu mới</span><input id="new-password" type="password" minlength="10" required></label><div class="dialog-actions"><button class="button primary" value="default" data-i18n="password.update">Cập nhật mật khẩu</button></div></form></dialog>
 
-  <div id="toast-container"></div>
-
+  <div class="toast-region" id="toast-region" role="status" aria-live="polite"></div>
   <script src="js/app.js"></script>
 </body>
 </html>

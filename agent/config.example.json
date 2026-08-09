@@ -1,0 +1,6 @@
+{
+  "serverUrl": "http://192.168.1.10:3003",
+  "stateDir": "C:\\ProgramData\\WindowsController\\agent\\state",
+  "helperConfig": "C:\\ProgramData\\WindowsController\\agent\\helper\\helper.json",
+  "helperCaptureDir": "C:\\ProgramData\\WindowsController\\agent\\helper\\captures"
+}

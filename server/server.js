@@ -2,784 +2,817 @@ const express = require('express');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
-const os = require('os');
-const { exec, spawn } = require('child_process');
-const WebSocket = require('ws');
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const WebSocket = require('ws');
+const {
+  DATA_DIR,
+  DB_FILE,
+  createDatabase,
+  getSetting,
+  setSetting,
+  migrateLegacyData,
+  attachLegacyDataToLocalAgent,
+  parseJson,
+  rowToAgent
+} = require('./database');
 
+const PORT = Number(process.env.PORT || 3003);
+const HOST = process.env.HOST || '0.0.0.0';
+const TELEMETRY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const EVENT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const SCREENSHOT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const AGENT_OFFLINE_MS = 20_000;
+const COMMAND_TIMEOUT_MS = 60_000;
+const MAX_SCREENSHOT_BYTES = 10 * 1024 * 1024;
+const ALLOWED_COMMANDS = new Set(['process.kill', 'watchdog.launch', 'window.capture']);
+
+fs.mkdirSync(DATA_DIR, { recursive: true });
+const SCREENSHOT_DIR = path.join(DATA_DIR, 'screenshots');
+const BACKUP_DIR = path.join(DATA_DIR, 'backups');
+fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
+fs.mkdirSync(BACKUP_DIR, { recursive: true });
+
+const db = createDatabase();
+migrateLegacyData(db);
+
+const JWT_SECRET = loadOrCreateSecret('jwt-secret');
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const agentWss = new WebSocket.Server({ noServer: true });
+const uiWss = new WebSocket.Server({ noServer: true });
+const agentSockets = new Map();
+const pendingSockets = new Map();
+const uiClients = new Set();
+const lastTelemetryPersistedAt = new Map();
+const loginAttempts = new Map();
 
-const PORT = process.env.PORT || 3003;
-const JWT_SECRET = 'windows-controller-secret-key';
-const DATA_DIR = path.join(__dirname, '..', 'data');
-const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
-const USERS_FILE = path.join(DATA_DIR, 'users.json');
-const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
-
-// ============ DATA PERSISTENCE ============
-function ensureDataFiles() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(CONFIG_FILE)) {
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify({ monitoredProcesses: [], discordWebhook: '' }, null, 2));
-  }
-  if (!fs.existsSync(USERS_FILE)) {
-    const defaultUsers = [
-      { username: 'admin', password: bcrypt.hashSync('admin123', 10), role: 'admin' },
-      { username: 'user', password: bcrypt.hashSync('user123', 10), role: 'user' }
-    ];
-    fs.writeFileSync(USERS_FILE, JSON.stringify(defaultUsers, null, 2));
-  }
-}
-
-function readConfig() {
-  try {
-    return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-  } catch (e) {
-    return { monitoredProcesses: [], discordWebhook: '' };
-  }
-}
-
-function writeConfig(config) {
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
-}
-
-function readUsers() {
-  try {
-    return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-  } catch (e) {
-    return [];
-  }
-}
-
-function writeUsers(users) {
-  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
-}
-
-// ============ AUTH ============
-app.use(express.json());
+app.disable('x-powered-by');
+app.use(express.json({ limit: '12mb' }));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
+function loadOrCreateSecret(name) {
+  const file = path.join(DATA_DIR, name);
+  try {
+    const current = fs.readFileSync(file, 'utf8').trim();
+    if (current) return current;
+  } catch {}
+  const secret = crypto.randomBytes(48).toString('base64url');
+  fs.writeFileSync(file, secret, { encoding: 'utf8', mode: 0o600 });
+  return secret;
+}
+
+function id(prefix = '') {
+  return `${prefix}${crypto.randomUUID()}`;
+}
+
+function hashToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+function envelope(type, payload = {}, extra = {}) {
+  return {
+    type,
+    messageId: id('msg-'),
+    sentAt: new Date().toISOString(),
+    payload,
+    ...extra
+  };
+}
+
+function sendJson(ws, value) {
+  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(value));
+}
+
 function authenticate(req, res, next) {
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  const token = req.headers.authorization?.startsWith('Bearer ')
+    ? req.headers.authorization.slice(7)
+    : '';
   try {
     req.user = jwt.verify(token, JWT_SECRET);
     next();
-  } catch (e) {
-    return res.status(401).json({ error: 'Invalid token' });
+  } catch {
+    res.status(401).json({ error: 'Unauthorized' });
   }
 }
 
 function requireAdmin(req, res, next) {
-  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
   next();
 }
 
-app.post('/api/login', (req, res) => {
-  const { username, password } = req.body;
-  const users = readUsers();
-  const user = users.find(u => u.username === username);
-  if (!user || !bcrypt.compareSync(password, user.password)) {
-    return res.status(401).json({ error: 'Invalid credentials' });
-  }
-  const token = jwt.sign({ username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
-  res.json({ token, username: user.username, role: user.role });
-});
+function loginRateLimited(ip) {
+  const now = Date.now();
+  const attempts = (loginAttempts.get(ip) || []).filter(ts => now - ts < 10 * 60 * 1000);
+  loginAttempts.set(ip, attempts);
+  return attempts.length >= 10;
+}
 
-// ============ TELEMETRY ============
-function getTelemetry() {
-  const cpus = os.cpus();
-  let totalIdle = 0, totalTick = 0;
-  cpus.forEach(cpu => {
-    for (let type in cpu.times) {
-      totalTick += cpu.times[type];
-    }
-    totalIdle += cpu.times.idle;
-  });
-  const cpuUsage = 100 - (totalIdle / totalTick) * 100;
+function recordLoginFailure(ip) {
+  const attempts = loginAttempts.get(ip) || [];
+  attempts.push(Date.now());
+  loginAttempts.set(ip, attempts);
+}
 
-  const totalMem = os.totalmem();
-  const freeMem = os.freemem();
-  const usedMem = totalMem - freeMem;
-
-  // Disk usage via PowerShell
-  let diskUsage = [];
-  try {
-    const { execSync } = require('child_process');
-    const result = execSync(
-      'powershell -NoProfile -Command "Get-CimInstance Win32_LogicalDisk -Filter \\"DriveType=3\\" | Select-Object DeviceID,@{N=\'Size\';E={$_.Size}},@{N=\'FreeSpace\';E={$_.FreeSpace}} | ConvertTo-Json"',
-      { encoding: 'utf8', windowsHide: true }
-    );
-    const parsed = JSON.parse(result);
-    const disks = Array.isArray(parsed) ? parsed : [parsed];
-    diskUsage = disks.map(d => ({
-      drive: d.DeviceID,
-      total: parseInt(d.Size) || 0,
-      free: parseInt(d.FreeSpace) || 0,
-      used: (parseInt(d.Size) || 0) - (parseInt(d.FreeSpace) || 0)
-    }));
-  } catch (e) {
-    diskUsage = [];
-  }
-
-  // Network bytes
-  let network = { sentBytes: 0, recvBytes: 0 };
-  try {
-    const { execSync } = require('child_process');
-    const result = execSync(
-      'powershell -NoProfile -Command "$i=Get-NetAdapter -Physical | Get-NetAdapterStatistics; $sent=($i | Measure-Object -Property SentBytes -Sum).Sum; $recv=($i | Measure-Object -Property ReceivedBytes -Sum).Sum; [PSCustomObject]@{Sent=$sent; Recv=$recv} | ConvertTo-Json"',
-      { encoding: 'utf8', windowsHide: true }
-    );
-    const parsed = JSON.parse(result);
-    network = { sentBytes: parsed.Sent || 0, recvBytes: parsed.Recv || 0 };
-  } catch (e) {
-    network = { sentBytes: 0, recvBytes: 0 };
-  }
-
+function serializeHost(row) {
+  const telemetry = parseJson(row.telemetry_json, null);
+  const online = row.status === 'approved' && row.last_seen && Date.now() - Date.parse(row.last_seen) <= AGENT_OFFLINE_MS;
   return {
-    timestamp: new Date().toISOString(),
-    cpu: {
-      usage: cpuUsage.toFixed(1),
-      cores: cpus.length,
-      model: cpus[0]?.model || 'Unknown'
-    },
-    memory: {
-      total: totalMem,
-      used: usedMem,
-      free: freeMem,
-      percent: ((usedMem / totalMem) * 100).toFixed(1)
-    },
-    disk: diskUsage,
-    network: network,
-    uptime: os.uptime(),
-    hostname: os.hostname(),
-    os: `${os.type()} ${os.release()}`
+    id: row.id,
+    hostname: row.hostname,
+    displayName: row.display_name,
+    fingerprint: row.fingerprint,
+    platform: row.platform,
+    version: row.version,
+    status: row.status,
+    online,
+    lastSeen: row.last_seen,
+    telemetry,
+    telemetryAt: row.telemetry_at,
+    capabilities: parseJson(row.capabilities_json, [])
   };
 }
 
-// ============ PROCESSES ============
-function getProcesses() {
-  return new Promise((resolve, reject) => {
-    exec(
-      'powershell -NoProfile -Command "Get-Process | Select-Object Id,ProcessName,CPU,WorkingSet64,@{N=\'MemoryMB\';E={[math]::Round($_.WorkingSet64/1MB,1)}},@{N=\'CPUPercent\';E={if($_.CPU){[math]::Round($_.CPU,1)}else{0}}},Path,StartTime | ConvertTo-Json -Depth 3"',
-      { maxBuffer: 1024 * 1024 * 10, windowsHide: true },
-      (err, stdout) => {
-        if (err) return reject(err);
-        try {
-          const parsed = JSON.parse(stdout);
-          const procs = Array.isArray(parsed) ? parsed : [parsed];
-          resolve(procs.map(p => ({
-            pid: p.Id,
-            name: p.ProcessName,
-            cpu: p.CPUPercent || 0,
-            memoryMB: p.MemoryMB || 0,
-            path: p.Path || '',
-            startTime: p.StartTime || null
-          })));
-        } catch (e) {
-          reject(e);
-        }
-      }
-    );
-  });
+function getHost(agentId) {
+  return db.prepare(`
+    SELECT a.*, l.telemetry_json, l.telemetry_at
+    FROM agents a LEFT JOIN latest_state l ON l.agent_id = a.id
+    WHERE a.id = ?
+  `).get(agentId);
 }
 
-function killProcess(pid) {
-  return new Promise((resolve, reject) => {
-    exec(`taskkill /PID ${pid} /F`, { windowsHide: true }, (err, stdout, stderr) => {
-      if (err) return reject(err);
-      resolve(stdout);
-    });
-  });
+function getWatchdog(agentId) {
+  const row = db.prepare('SELECT version, config_json, updated_at FROM watchdog_configs WHERE agent_id = ?').get(agentId);
+  return row
+    ? { version: row.version, ...parseJson(row.config_json, { rules: [] }), updatedAt: row.updated_at }
+    : { version: 0, rules: [], updatedAt: null };
 }
 
-function startProcessRepo(path) {
-  return new Promise((resolve, reject) => {
-    try {
-      // Use spawn with detached + ignore stdio so the GUI app doesn't hold
-      // the stdio handles open, which would hang exec().
-      const child = spawn(path, { detached: true, stdio: 'ignore', windowsHide: true });
-      child.unref();
-      resolve('Process started');
-    } catch (err) {
-      reject(err);
+function pushWatchdogConfig(agentId) {
+  const ws = agentSockets.get(agentId);
+  if (!ws) return;
+  sendJson(ws, envelope('server.config', getWatchdog(agentId), { agentId }));
+}
+
+function broadcastUi(type, payload, agentId = null) {
+  const message = envelope(type, payload, agentId ? { agentId } : {});
+  for (const client of uiClients) {
+    if (!agentId || !client.subscribedAgentId || client.subscribedAgentId === agentId) {
+      sendJson(client, message);
     }
-  });
+  }
 }
 
-// ============ DISCORD NOTIFICATIONS ============
-async function sendDiscordMessage(message) {
-  const config = readConfig();
-  const webhook = config.discordWebhook;
+function updateAgentLastSeen(agentId) {
+  const now = new Date().toISOString();
+  db.prepare('UPDATE agents SET last_seen = ? WHERE id = ?').run(now, agentId);
+  const ws = agentSockets.get(agentId);
+  if (ws) ws.lastSeenMs = Date.now();
+}
+
+async function sendDiscord(content, image = null) {
+  const webhook = getSetting(db, 'discord_webhook', '');
   if (!webhook) return;
   try {
-    await fetch(webhook, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: message })
-    });
-  } catch (e) {
-    console.error('Discord send failed:', e.message);
-  }
-}
-
-async function sendDiscordScreenshot(message, filePath) {
-  const config = readConfig();
-  const webhook = config.discordWebhook;
-  if (!webhook || !fs.existsSync(filePath)) return;
-  try {
-    const form = new FormData();
-    form.append('content', message);
-    form.append('file', new Blob([fs.readFileSync(filePath)], { type: 'image/png' }), 'screenshot.png');
-    const res = await fetch(webhook, { method: 'POST', body: form });
-    if (!res.ok) {
-      console.error('Discord screenshot HTTP error:', res.status, await res.text());
-    }
-  } catch (e) {
-    console.error('Discord screenshot failed:', e.message);
-  }
-}
-
-function captureScreen(filePath, processName) {
-  return new Promise((resolve, reject) => {
-    const safeProcessName = (processName || '').replace(/'/g, "''");
-    // Use a single C# helper class compiled via Add-Type. This puts all
-    // window-finding + capture logic in C# to avoid PowerShell scoping issues.
-    const script = `
-Add-Type -AssemblyName System.Drawing
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -ReferencedAssemblies System.Drawing,System.Windows.Forms @"
-using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Runtime.InteropServices;
-
-public class WinCapture {
-  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
-  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
-  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
-  [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
-  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
-  [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
-  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
-  [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, uint nFlags);
-  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
-  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
-  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
-  [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
-  [DllImport("user32.dll")] public static extern bool SetActiveWindow(IntPtr hWnd);
-  [DllImport("user32.dll")] public static extern IntPtr SetFocus(IntPtr hWnd);
-  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
-  [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
-  [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out RECT pvAttribute, int cbAttribute);
-  [DllImport("user32.dll")] public static extern int GetSystemMetrics(int nIndex);
-  private const int HWND_TOPMOST = -1;
-  private const int HWND_NOTOPMOST = -2;
-  private const uint SWP_NOSIZE = 0x0001;
-  private const uint SWP_NOMOVE = 0x0002;
-  private const uint SWP_SHOWWINDOW = 0x0040;
-  public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
-  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
-  private const uint DWMWA_EXTENDED_FRAME_BOUNDS = 9;
-  private const uint PW_RENDERFULLCONTENT = 2;
-  private const int SW_SHOW = 5;
-  private const int SW_RESTORE = 9;
-  private const int SW_SHOWNA = 4;
-  private const byte VK_MENU = 0x12;
-  private const uint KEYEVENTF_KEYUP = 0x0002;
-
-  public static IntPtr FindMainWindow(string processName) {
-    System.Diagnostics.Process[] procs = System.Diagnostics.Process.GetProcessesByName(processName);
-    if (procs.Length == 0) return IntPtr.Zero;
-    HashSet<uint> pids = new HashSet<uint>();
-    foreach (var p in procs) pids.Add((uint)p.Id);
-    // Enumerate ALL top-level windows and pick the LARGEST one. The real main
-    // window (e.g. "UltraViewer 6.6.124 - Free") is usually hidden to tray but
-    // still has its real size, while MainWindowHandle may return a 0x0 placeholder.
-    IntPtr best = IntPtr.Zero;
-    long bestArea = 0;
-    EnumWindows((hWnd, lParam) => {
-      uint pid;
-      GetWindowThreadProcessId(hWnd, out pid);
-      if (pids.Contains(pid)) {
-        RECT r;
-        GetWindowRect(hWnd, out r);
-        long w = r.Right - r.Left;
-        long h = r.Bottom - r.Top;
-        long area = w * h;
-        if (area > bestArea) { bestArea = area; best = hWnd; }
-      }
-      return true;
-    }, IntPtr.Zero);
-    // Fallback: if no window had a real size, use MainWindowHandle
-    if (best == IntPtr.Zero) {
-      foreach (var p in procs) {
-        IntPtr h = p.MainWindowHandle;
-        if (h != IntPtr.Zero && IsWindow(h)) return h;
-      }
-    }
-    return best;
-  }
-
-  public static bool BringToFront(IntPtr hwnd) {
-    // Restore the window if it's minimized / hidden to tray
-    if (IsIconic(hwnd)) {
-      ShowWindow(hwnd, SW_RESTORE);
+    let response;
+    if (image) {
+      const form = new FormData();
+      form.append('content', content);
+      form.append('file', new Blob([image.buffer], { type: 'image/png' }), image.name);
+      response = await fetch(webhook, { method: 'POST', body: form });
     } else {
-      ShowWindow(hwnd, SW_SHOW);
+      response = await fetch(webhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content })
+      });
     }
-    ShowWindow(hwnd, SW_SHOWNA);
-
-    // Force it to the top of the z-order, then remove the topmost flag.
-    // This reliably brings the window above others even if hidden/minimized.
-    SetWindowPos(hwnd, new IntPtr(HWND_TOPMOST), 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW);
-    SetWindowPos(hwnd, new IntPtr(HWND_NOTOPMOST), 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE);
-
-    // Unlock foreground switching: Windows restricts SetForegroundWindow from
-    // background processes. Simulating an Alt key press temporarily unlocks it.
-    keybd_event(VK_MENU, 0, 0, UIntPtr.Zero);              // Alt down
-    keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, UIntPtr.Zero); // Alt up
-
-    // Attach to the foreground thread so we can reliably steal focus
-    IntPtr foreground = GetForegroundWindow();
-    uint fgPid;
-    uint foregroundThread = GetWindowThreadProcessId(foreground, out fgPid);
-    uint thisThread = GetCurrentThreadId();
-    if (foregroundThread != thisThread) {
-      AttachThreadInput(foregroundThread, thisThread, true);
-      BringWindowToTop(hwnd);
-      SetForegroundWindow(hwnd);
-      AttachThreadInput(foregroundThread, thisThread, false);
-    } else {
-      BringWindowToTop(hwnd);
-      SetForegroundWindow(hwnd);
-    }
-
-    SetActiveWindow(hwnd);
-    SetFocus(hwnd);
-    return true;
-  }
-
-  public static bool CaptureWindow(IntPtr hwnd, string filePath) {
-    // Bring the window up from the notification area / tray.
-    BringToFront(hwnd);
-    System.Threading.Thread.Sleep(1500); // wait for window to come to foreground
-
-    RECT rect;
-    GetWindowRect(hwnd, out rect);
-    int left = rect.Left;
-    int top = rect.Top;
-    int width = rect.Right - rect.Left;
-    int height = rect.Bottom - rect.Top;
-
-    // If window bounds are invalid (e.g. non-interactive session), fall back
-    // to capturing the full active screen region.
-    if (width <= 0 || height <= 0) {
-      left = 0;
-      top = 0;
-      width = GetSystemMetrics(0);  // SM_CXSCREEN
-      height = GetSystemMetrics(1); // SM_CYSCREEN
-    }
-
-    using (Bitmap bmp = new Bitmap(width, height)) {
-      using (Graphics g = Graphics.FromImage(bmp)) {
-        g.CopyFromScreen(left, top, 0, 0, bmp.Size);
-      }
-      bmp.Save(filePath);
-    }
-    return true;
+    if (!response.ok) console.error('Discord webhook failed:', response.status);
+  } catch (error) {
+    console.error('Discord webhook failed:', error.message);
   }
 }
-"@
-$hwnd = [WinCapture]::FindMainWindow('${safeProcessName}')
-if ($hwnd -eq [IntPtr]::Zero) {
-  Write-Error "No visible window found for: ${safeProcessName}"
-  exit 1
-}
-if (-not [WinCapture]::CaptureWindow($hwnd, '${filePath}')) {
-  Write-Error "Failed to capture window for: ${safeProcessName}"
-  exit 1
-}
-`;
-    // Write script to a temp file to avoid Windows command-line length limit
-    const scriptFile = path.join(DATA_DIR, `capture-${Date.now()}.ps1`);
-    fs.writeFileSync(scriptFile, script, 'utf8');
-    exec(`powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptFile}"`, { windowsHide: true }, (err, stdout, stderr) => {
-      try { fs.unlinkSync(scriptFile); } catch (e) {}
-      if (err) {
-        console.error('captureScreen exec error:', err.message);
-        return reject(err);
-      }
-      if (!fs.existsSync(filePath)) {
-        console.error('captureScreen: file NOT created. stderr:', stderr);
-        return reject(new Error('Screenshot file not created'));
-      }
-      resolve(filePath);
-    });
-  });
+
+function discordErrorText(error) {
+  const messages = {
+    interactive_session_unavailable: 'không có Desktop Helper trong phiên người dùng đang đăng nhập',
+    window_not_found: 'không tìm thấy cửa sổ của tiến trình',
+    screenshot_failed: 'không thể chụp nội dung cửa sổ',
+    desktop_helper_timeout: 'Desktop Helper không phản hồi trong thời gian cho phép',
+    desktop_helper_secret_mismatch: 'Desktop Helper đang chạy với cấu hình cũ; hãy cài lại Agent hoặc đăng xuất rồi đăng nhập Windows',
+    window_activation_failed: 'không thể đưa cửa sổ ứng dụng lên phía trước'
+  };
+  return messages[error] || error || 'lỗi không xác định';
 }
 
-// Bring the process window to front + take a screenshot, retrying several times.
-// Some apps (e.g. UltraViewer, Parsec) take a while to show their window after
-// launch, or fail to come to the foreground on the first try. This retries
-// find-window + bring-to-front + capture until it succeeds or runs out of attempts.
-async function captureWithRetry(shotPath, processName, maxAttempts = 5, delayMs = 6000) {
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    console.log(`[Capture] Attempt ${attempt}/${maxAttempts} for "${processName}"...`);
-    try {
-      await captureScreen(shotPath, processName);
-      console.log(`[Capture] Screenshot captured on attempt ${attempt}: ${shotPath}`);
-      return shotPath;
-    } catch (err) {
-      console.log(`[Capture] Attempt ${attempt} failed for "${processName}": ${err.message}`);
-      if (attempt < maxAttempts) {
-        // Wait before retrying (bring to front again)
-        await new Promise(r => setTimeout(r, delayMs));
-      } else {
-        throw err;
-      }
+function formatDiscordEvent(hostName, payload) {
+  const processName = payload.processName ? `\`${payload.processName}\`` : 'ứng dụng';
+  const error = discordErrorText(payload.message);
+  switch (payload.eventType) {
+    case 'process.manual.launch':
+      return payload.captureScheduled ? null : `🚀 [${hostName}] Đã khởi chạy thủ công ${processName}.`;
+    case 'process.manual.already_running':
+      return payload.captureScheduled ? null : `ℹ️ [${hostName}] ${processName} đã chạy từ trước.`;
+    case 'process.manual.launch_failed':
+      return `❌ [${hostName}] Không thể khởi chạy thủ công ${processName}: ${error}.`;
+    case 'process.manual.screenshot_failed':
+      return `❌ [${hostName}] Không thể chụp cửa sổ ${processName} sau khi khởi chạy thủ công: ${error}.`;
+    case 'watchdog.process.down':
+      return `⚠️ [${hostName}] Watchdog phát hiện ${processName} đã ngừng chạy.`;
+    case 'watchdog.process.relaunched':
+      return `✅ [${hostName}] Watchdog đã khởi động lại ${processName}.`;
+    case 'watchdog.process.relaunch_failed':
+      return `❌ [${hostName}] Watchdog không thể khởi động lại ${processName}: ${error}.`;
+    case 'watchdog.screenshot.failed':
+      return `⚠️ [${hostName}] Không thể chụp cửa sổ ${processName}: ${error}.`;
+    default:
+      return payload.severity === 'error' ? `❌ [${hostName}] ${error}.` : null;
+  }
+}
+
+function insertEvent(agentId, message) {
+  const payload = message.payload || {};
+  const severity = payload.severity || 'info';
+  const occurredAt = payload.occurredAt || message.sentAt || new Date().toISOString();
+  const result = db.prepare(`
+    INSERT OR IGNORE INTO events(message_id, agent_id, type, severity, payload_json, occurred_at, received_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(message.messageId, agentId, payload.eventType || message.type, severity,
+    JSON.stringify(payload), occurredAt, new Date().toISOString());
+  if (result.changes) {
+    broadcastUi('ui.event', { ...payload, severity, occurredAt }, agentId);
+    if (severity === 'error' || payload.eventType?.startsWith('watchdog.') || payload.eventType?.startsWith('process.manual.')) {
+      const host = getHost(agentId);
+      const content = formatDiscordEvent(host?.display_name || host?.hostname || agentId, { ...payload, severity });
+      if (content) sendDiscord(content);
     }
   }
 }
 
-// ============ HISTORY PERSISTENCE ============
-function loadHistory() {
-  try {
-    if (fs.existsSync(HISTORY_FILE)) {
-      return JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
-    }
-  } catch (e) {
-    console.error('Error loading history:', e.message);
+function upsertLatestTelemetry(agentId, telemetry, sentAt) {
+  const current = db.prepare('SELECT telemetry_at FROM latest_state WHERE agent_id = ?').get(agentId);
+  if (current?.telemetry_at && Date.parse(current.telemetry_at) > Date.parse(sentAt)) return;
+  db.prepare(`
+    INSERT INTO latest_state(agent_id, telemetry_json, telemetry_at) VALUES (?, ?, ?)
+    ON CONFLICT(agent_id) DO UPDATE SET telemetry_json = excluded.telemetry_json, telemetry_at = excluded.telemetry_at
+  `).run(agentId, JSON.stringify(telemetry), sentAt);
+}
+
+function storeTelemetry(agentId, message) {
+  const telemetry = message.payload || {};
+  const timestamp = telemetry.timestamp || message.sentAt || new Date().toISOString();
+  upsertLatestTelemetry(agentId, telemetry, timestamp);
+  const timestampMs = Date.parse(timestamp);
+  const lastMs = lastTelemetryPersistedAt.get(agentId) || 0;
+  if (timestampMs - lastMs >= 10_000) {
+    const result = db.prepare(`
+      INSERT OR IGNORE INTO telemetry(agent_id, message_id, ts, cpu_usage, memory_percent, payload_json)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(agentId, message.messageId, timestamp, Number(telemetry.cpu?.usage || 0),
+      Number(telemetry.memory?.percent || 0), JSON.stringify(telemetry));
+    if (result.changes) lastTelemetryPersistedAt.set(agentId, timestampMs);
   }
-  return [];
+  broadcastUi('ui.telemetry', telemetry, agentId);
 }
 
-function saveHistory() {
-  try {
-    fs.writeFileSync(HISTORY_FILE, JSON.stringify(relaunchHistory, null, 2));
-  } catch (e) {
-    console.error('Error saving history:', e.message);
-  }
+function storeProcesses(agentId, message) {
+  const processes = Array.isArray(message.payload?.processes) ? message.payload.processes : [];
+  db.prepare(`
+    INSERT INTO latest_state(agent_id, processes_json, processes_at) VALUES (?, ?, ?)
+    ON CONFLICT(agent_id) DO UPDATE SET processes_json = excluded.processes_json, processes_at = excluded.processes_at
+  `).run(agentId, JSON.stringify(processes), message.sentAt || new Date().toISOString());
+  broadcastUi('ui.processes', { processes }, agentId);
 }
 
-function addHistoryEntry(entry) {
-  relaunchHistory.push(entry);
-  // Keep history bounded (e.g. last 100 entries)
-  if (relaunchHistory.length > 100) relaunchHistory.shift();
-  saveHistory();
+function storeScreenshot(agentId, message) {
+  const payload = message.payload || {};
+  const buffer = Buffer.from(payload.data || '', 'base64');
+  if (!buffer.length || buffer.length > MAX_SCREENSHOT_BYTES) throw new Error('Invalid screenshot size');
+  const screenshotId = id('shot-');
+  const filePath = path.join(SCREENSHOT_DIR, `${screenshotId}.png`);
+  fs.writeFileSync(filePath, buffer);
+  db.prepare(`
+    INSERT INTO screenshots(id, agent_id, command_id, process_name, file_path, size_bytes, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(screenshotId, agentId, payload.commandId || null, payload.processName || null,
+    filePath, buffer.length, new Date().toISOString());
+  const host = getHost(agentId);
+  const hostName = host?.display_name || host?.hostname || agentId;
+  const processName = payload.processName ? `\`${payload.processName}\`` : 'ứng dụng';
+  const content = payload.source === 'manual.launch'
+    ? `📸 [${hostName}] Ảnh chụp cửa sổ ${processName} sau khi khởi chạy thủ công.`
+    : `📸 [${hostName}] Ảnh chụp cửa sổ ${processName}.`;
+  sendDiscord(content,
+    { buffer, name: `${payload.processName || 'screenshot'}.png` });
+  broadcastUi('ui.screenshot', { id: screenshotId, processName: payload.processName }, agentId);
 }
 
-// ============ WATCHER ============
-let watcherInterval = null;
-let relaunchHistory = loadHistory();
-
-function checkMonitoredProcesses() {
-  const config = readConfig();
-  const monitored = config.monitoredProcesses || [];
-  if (monitored.length === 0) return;
-
-  getProcesses().then(processes => {
-    monitored.forEach(item => {
-      if (!item.enabled) return;
-      const running = processes.some(p => p.name.toLowerCase() === item.processName.toLowerCase());
-      if (!running) {
-        // Process is down, try to relaunch
-        const now = Date.now();
-        const lastRel = relaunchHistory.find(h => h.processName === item.processName);
-        const cooldown = 30000; // 30 seconds cooldown
-        if (!lastRel || (now - lastRel.lastAttempt) > cooldown) {
-          console.log(`[Watcher] Process "${item.processName}" is DOWN. Launching: ${item.filePath}`);
-          // Notify Discord that process is down, then wait 3s before relaunching
-          sendDiscordMessage(`⚠️ **Cảnh báo Watchdog**\nTiến trình \`${item.processName}\` ĐÃ DỪNG!\nĐang cố gắng khởi động lại: \`${item.filePath}\``);
-          setTimeout(() => {
-          startProcessRepo(item.filePath)
-            .then(() => {
-              addHistoryEntry({ processName: item.processName, lastAttempt: now, status: 'relaunched' });
-              broadcast({ type: 'relaunch', processName: item.processName, status: 'relaunched', time: new Date().toISOString() });
-              // Notify Discord of successful relaunch
-              sendDiscordMessage(`✅ **Watchdog đã khởi động lại**\nTiến trình \`${item.processName}\` đã được khởi động lại thành công.`);
-              // After 30 seconds, capture screenshot and send to Discord
-              console.log(`[Watcher] Scheduling screenshot for "${item.processName}" in 30s`);
-              setTimeout(() => {
-                console.log(`[Watcher] Capturing screenshot for "${item.processName}"...`);
-                const shotPath = path.join(DATA_DIR, `screenshot-${item.processName}-${Date.now()}.png`);
-                captureWithRetry(shotPath, item.processName)
-                  .then(() => {
-                    console.log(`[Watcher] Screenshot captured: ${shotPath}`);
-                    sendDiscordScreenshot(`📸 **Ảnh chụp sau khi khởi động lại**\nTiến trình \`${item.processName}\` - 30 giây sau khi khởi động lại.`, shotPath);
-                  })
-                  .catch(err => {
-                    console.error('Screenshot capture failed:', err.message);
-                    sendDiscordMessage(`❌ Không thể chụp ảnh màn hình cho \`${item.processName}\`: ${err.message}`);
-                  });
-              }, 30000);
-            })
-            .catch(e => {
-              addHistoryEntry({ processName: item.processName, lastAttempt: now, status: 'failed', error: e.message });
-              broadcast({ type: 'relaunch', processName: item.processName, status: 'failed', time: new Date().toISOString() });
-              // Notify Discord of failure
-              sendDiscordMessage(`❌ **Khởi động lại THẤT BẠI**\nTiến trình \`${item.processName}\` không thể khởi động lại.\nLỗi: \`${e.message}\``);
-            });
-          }, 3000); // 3 second delay before relaunch
-        }
-      }
-    });
-  }).catch(err => {
-    console.error('Watcher error:', err.message);
-  });
-}
-
-// ============ WEBSOCKET ============
-function broadcast(data) {
-  const message = JSON.stringify(data);
-  wss.clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(message);
-    }
-  });
-}
-
-wss.on('connection', (ws) => {
-  console.log('WebSocket client connected');
-  ws.on('close', () => console.log('WebSocket client disconnected'));
-});
-
-// Telemetry broadcast every 2 seconds
-setInterval(() => {
-  broadcast({ type: 'telemetry', data: getTelemetry() });
-}, 2000);
-
-// ============ API ROUTES ============
-app.get('/api/telemetry', authenticate, (req, res) => {
-  res.json(getTelemetry());
-});
-
-app.get('/api/processes', authenticate, (req, res) => {
-  getProcesses()
-    .then(procs => res.json(procs))
-    .catch(err => res.status(500).json({ error: err.message }));
-});
-
-app.post('/api/processes/:pid/kill', authenticate, requireAdmin, (req, res) => {
-  killProcess(req.params.pid)
-    .then(() => res.json({ success: true }))
-    .catch(err => res.status(500).json({ error: err.message }));
-});
-
-app.post('/api/processes/:pid/start', authenticate, requireAdmin, (req, res) => {
-  const { path } = req.body;
-  if (!path) return res.status(400).json({ error: 'Path required' });
-  startProcessRepo(path)
-    .then(() => res.json({ success: true }))
-    .catch(err => res.status(500).json({ error: err.message }));
-});
-
-// Config routes
-app.get('/api/config', authenticate, (req, res) => {
-  const config = readConfig();
-  if (req.user.role !== 'admin') {
-    res.json({ monitoredProcesses: config.monitoredProcesses.map(p => ({ ...p, filePath: undefined })) });
+function updateCommandResult(agentId, message) {
+  const payload = message.payload || {};
+  const command = db.prepare('SELECT * FROM commands WHERE id = ? AND agent_id = ?').get(payload.commandId, agentId);
+  if (!command) return;
+  const status = ['acknowledged', 'succeeded', 'failed'].includes(payload.status) ? payload.status : 'failed';
+  const now = new Date().toISOString();
+  if (status === 'acknowledged') {
+    db.prepare('UPDATE commands SET status = ?, acknowledged_at = ? WHERE id = ?').run(status, now, command.id);
   } else {
-    res.json(config);
+    db.prepare('UPDATE commands SET status = ?, completed_at = ?, result_json = ? WHERE id = ?')
+      .run(status, now, JSON.stringify(payload.result || { error: payload.error }), command.id);
   }
-});
-
-app.post('/api/config', authenticate, requireAdmin, (req, res) => {
-  const { monitoredProcesses, discordWebhook } = req.body;
-  if (!Array.isArray(monitoredProcesses)) {
-    return res.status(400).json({ error: 'Invalid config' });
-  }
-  const config = { monitoredProcesses, discordWebhook: discordWebhook || '' };
-  writeConfig(config);
-  res.json({ success: true, config });
-});
-
-app.get('/api/config/relaunch-history', authenticate, requireAdmin, (req, res) => {
-  res.json(relaunchHistory);
-});
-
-// Manual launch of a monitored process + Discord notification + screenshot
-// If the process is already running, just bring its window to front + screenshot.
-app.post('/api/processes/launch', authenticate, requireAdmin, async (req, res) => {
-  const { processName, filePath } = req.body;
-  if (!processName || !filePath) {
-    return res.status(400).json({ error: 'processName and filePath required' });
-  }
-  const now = Date.now();
-  // Check if the process is already running
-  let existing = false;
-  try {
-    const running = await getProcesses();
-    existing = running.some(p => p.name.toLowerCase() === processName.toLowerCase());
-  } catch (e) {
-    console.error('Error checking process:', e.message);
-  }
-
-  if (existing) {
-    // Process already exists: bring window to front + capture screenshot
-    console.log(`[Manual] Process "${processName}" already running. Opening window + screenshot.`);
-    sendDiscordMessage(`🪟 **Tiến trình đã chạy**\n\`${processName}\` đã đang chạy. Đang mở cửa sổ và chụp ảnh màn hình.`);
-    addHistoryEntry({ processName, lastAttempt: now, status: 'window-opened' });
-    broadcast({ type: 'relaunch', processName, status: 'window-opened', time: new Date().toISOString() });
-    // Wait 1.5s for the window to come to foreground, then screenshot
-    // (with retries to bring the window to front until it opens)
-    setTimeout(() => {
-      const shotPath = path.join(DATA_DIR, `screenshot-${processName}-${Date.now()}.png`);
-      captureWithRetry(shotPath, processName)
-        .then(() => {
-          sendDiscordScreenshot(`📸 **Ảnh chụp cửa sổ**\nTiến trình \`${processName}\` - đã mở cửa sổ và chụp ảnh.`, shotPath);
-        })
-        .catch(err => {
-          console.error('Window screenshot capture failed:', err.message);
-          sendDiscordMessage(`❌ Không thể chụp ảnh màn hình cho \`${processName}\`: ${err.message}`);
-        });
-    }, 1500);
-    return res.json({ success: true, alreadyRunning: true });
-  }
-
-  // Process not running: launch it
-  console.log(`[Manual] Launching process "${processName}" from ${filePath}`);
-  sendDiscordMessage(`🚀 **Khởi động thủ công**\nTiến trình \`${processName}\` đang được khởi động thủ công từ: \`${filePath}\``);
-  startProcessRepo(filePath)
-    .then(() => {
-      addHistoryEntry({ processName, lastAttempt: now, status: 'manual-launched' });
-      broadcast({ type: 'relaunch', processName, status: 'manual-launched', time: new Date().toISOString() });
-      sendDiscordMessage(`✅ **Đã khởi động thủ công**\nTiến trình \`${processName}\` đã được khởi động thành công.`);
-      // Screenshot after 30s (with retries to bring the window to front until it opens)
-      setTimeout(() => {
-        const shotPath = path.join(DATA_DIR, `screenshot-${processName}-${Date.now()}.png`);
-        captureWithRetry(shotPath, processName)
-          .then(() => {
-            sendDiscordScreenshot(`📸 **Ảnh chụp sau khởi động thủ công**\nTiến trình \`${processName}\` - 30 giây sau khi khởi động.`, shotPath);
-          })
-          .catch(err => {
-            console.error('Manual screenshot capture failed:', err.message);
-            sendDiscordMessage(`❌ Không thể chụp ảnh màn hình cho \`${processName}\`: ${err.message}`);
-          });
-      }, 30000);
-      res.json({ success: true });
-    })
-    .catch(err => {
-      sendDiscordMessage(`❌ **Khởi động thủ công THẤT BẠI**\nKhông thể khởi động \`${processName}\`.\nLỗi: \`${err.message}\``);
-      res.status(500).json({ error: err.message });
-    });
-});
-
-// Test endpoint for screenshot capture + Discord send
-app.post('/api/test-screenshot', authenticate, requireAdmin, async (req, res) => {
-  const { processName } = req.body;
-  if (!processName) return res.status(400).json({ error: 'processName required' });
-  const shotPath = path.join(DATA_DIR, `test-screenshot-${Date.now()}.png`);
-  try {
-    await captureScreen(shotPath, processName);
-    console.log('Test screenshot captured:', shotPath, 'size:', fs.statSync(shotPath).size);
-    await sendDiscordScreenshot(`🧪 **Test Screenshot** - ${processName}`, shotPath);
-    res.json({ success: true, path: shotPath });
-  } catch (err) {
-    console.error('Test screenshot error:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// User management
-app.get('/api/users', authenticate, requireAdmin, (req, res) => {
-  const users = readUsers().map(u => ({ username: u.username, role: u.role }));
-  res.json(users);
-});
-
-app.post('/api/users', authenticate, requireAdmin, (req, res) => {
-  const { username, password, role } = req.body;
-  if (!username || !password || !role) return res.status(400).json({ error: 'Missing fields' });
-  const users = readUsers();
-  if (users.find(u => u.username === username)) {
-    return res.status(400).json({ error: 'User exists' });
-  }
-  users.push({ username, password: bcrypt.hashSync(password, 10), role });
-  writeUsers(users);
-  res.json({ success: true });
-});
-
-app.delete('/api/users/:username', authenticate, requireAdmin, (req, res) => {
-  const users = readUsers();
-  const idx = users.findIndex(u => u.username === req.params.username);
-  if (idx === -1) return res.status(404).json({ error: 'User not found' });
-  if (users[idx].username === 'admin') return res.status(400).json({ error: 'Cannot delete admin' });
-  users.splice(idx, 1);
-  writeUsers(users);
-  res.json({ success: true });
-});
-
-app.post('/api/users/:username/password', authenticate, requireAdmin, (req, res) => {
-  const { password } = req.body;
-  if (!password) return res.status(400).json({ error: 'Password required' });
-  const users = readUsers();
-  const user = users.find(u => u.username === req.params.username);
-  if (!user) return res.status(404).json({ error: 'User not found' });
-  user.password = bcrypt.hashSync(password, 10);
-  writeUsers(users);
-  res.json({ success: true });
-});
-
-// ============ CRASH PROTECTION ============
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception:', err);
-  sendDiscordMessage(`❌ **Server Error**\n\`\`\`${err.message}\`\`\``);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
-
-// ============ SEEDER USER ============
-// Creates a 'seeder' user with a fixed password on first run,
-// then notifies Discord with the credentials + a condensed watchdog guide.
-const SEEDER_PASSWORD = 'mE59S67cjMs3';
-const DEPLOY_URL = 'https://monitor.nmhung1993.io.vn/';
-
-function ensureSeederUser() {
-  const users = readUsers();
-  const existing = users.find(u => u.username === 'seeder');
-  if (existing) {
-    // Ensure the seeder user has the fixed password (update if changed)
-    const isCorrect = bcrypt.compareSync(SEEDER_PASSWORD, existing.password);
-    if (!isCorrect) {
-      existing.password = bcrypt.hashSync(SEEDER_PASSWORD, 10);
-      writeUsers(users);
-    }
-    return { password: SEEDER_PASSWORD, created: false };
-  }
-  users.push({
-    username: 'seeder',
-    password: bcrypt.hashSync(SEEDER_PASSWORD, 10),
-    role: 'user'
-  });
-  writeUsers(users);
-  return { password: SEEDER_PASSWORD, created: true };
+  broadcastUi('ui.command', { commandId: command.id, status, result: payload.result, error: payload.error }, agentId);
 }
 
-// ============ START ============
-ensureDataFiles();
+function sendCommandToAgent(command) {
+  const ws = agentSockets.get(command.agent_id);
+  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+  db.prepare('UPDATE commands SET status = ?, sent_at = ? WHERE id = ?')
+    .run('sent', new Date().toISOString(), command.id);
+  sendJson(ws, envelope('server.command', {
+    commandId: command.id,
+    commandType: command.type,
+    data: parseJson(command.payload_json, {}),
+    expiresAt: command.expires_at
+  }, { agentId: command.agent_id }));
+  return true;
+}
 
-// Create seeder user if it doesn't exist
-const seederResult = ensureSeederUser();
+function dispatchPendingCommands(agentId) {
+  const commands = db.prepare(`
+    SELECT * FROM commands
+    WHERE agent_id = ? AND status IN ('queued', 'sent') AND expires_at > ?
+    ORDER BY requested_at ASC
+  `).all(agentId, new Date().toISOString());
+  for (const command of commands) sendCommandToAgent(command);
+}
 
-// Start watcher (only on interval - no immediate test run at startup)
-watcherInterval = setInterval(checkMonitoredProcesses, 10000);
-checkMonitoredProcesses();
+function createCommand(agentId, type, payload, username, timeoutMs = COMMAND_TIMEOUT_MS) {
+  const command = {
+    id: id('cmd-'),
+    agent_id: agentId,
+    type,
+    payload_json: JSON.stringify(payload || {}),
+    status: 'queued',
+    requested_by: username,
+    requested_at: new Date().toISOString(),
+    expires_at: new Date(Date.now() + timeoutMs).toISOString()
+  };
+  db.prepare(`
+    INSERT INTO commands(id, agent_id, type, payload_json, status, requested_by, requested_at, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(command.id, command.agent_id, command.type, command.payload_json, command.status,
+    command.requested_by, command.requested_at, command.expires_at);
+  sendCommandToAgent(command);
+  return command;
+}
 
-server.listen(PORT, () => {
-  console.log(`Windows Controller Web App running at http://localhost:${PORT}`);
-  console.log(`Default admin login: admin / admin123`);
-  console.log(`Default user login: user / user123`);
+function validateCommand(type, payload) {
+  if (!ALLOWED_COMMANDS.has(type)) return 'Unsupported command type';
+  if (type === 'process.kill' && (!Number.isInteger(Number(payload.pid)) || Number(payload.pid) <= 0)) return 'Valid PID required';
+  if (type === 'watchdog.launch' && !payload.ruleId) return 'ruleId required';
+  if (type === 'window.capture' && !payload.processName) return 'processName required';
+  return null;
+}
 
-  // Notify Discord with seeder credentials + concise watchdog guide (only on FIRST creation)
-  if (seederResult && seederResult.created) {
-    const pass = seederResult.password;
-    sendDiscordMessage(`🎉 **Windows Controller đã sẵn sàng!**\n\n🔐 **Đăng nhập**\n👤 User: \`seeder\`\n🔑 Pass: \`${pass}\`\n🌐 URL: ${DEPLOY_URL}\n\n🛡️ **Hướng dẫn Watchdog**\n1. Vào trang **Watchdog** → Thêm tiến trình (tên + file)\n2. Khi tiến trình dừng, hệ thống **tự khởi động lại**\n3. Nút **🚀 Launch** để khởi động thủ công\n4. Ảnh chụp màn hình gửi lên **Discord sau 30s**\n5. Cấu hình **Webhook** để nhận thông báo`);
+agentWss.on('connection', ws => {
+  ws.isAlive = true;
+  ws.isApproved = false;
+  const helloTimer = setTimeout(() => ws.close(4001, 'hello timeout'), 10_000);
+
+  ws.on('message', raw => {
+    let message;
+    try {
+      message = JSON.parse(raw.toString());
+    } catch {
+      return ws.close(4002, 'invalid json');
+    }
+
+    if (message.type === 'agent.hello') {
+      clearTimeout(helloTimer);
+      const payload = message.payload || {};
+      if (!payload.installId || !payload.token || !payload.hostname || !payload.fingerprint) {
+        return ws.close(4003, 'invalid hello');
+      }
+      const tokenHash = hashToken(payload.token);
+      let agent = db.prepare('SELECT * FROM agents WHERE install_id = ?').get(payload.installId);
+      const now = new Date().toISOString();
+      if (!agent) {
+        const agentId = id('agent-');
+        db.prepare(`
+          INSERT INTO agents(id, install_id, hostname, display_name, fingerprint, platform, version, status,
+            token_hash, capabilities_json, created_at, last_seen)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+        `).run(agentId, payload.installId, payload.hostname, payload.hostname, payload.fingerprint,
+          payload.platform || 'Windows', payload.version || 'unknown', tokenHash,
+          JSON.stringify(payload.capabilities || []), now, now);
+        agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(agentId);
+        attachLegacyDataToLocalAgent(db, agentId, payload.hostname);
+        broadcastUi('ui.agent.pending', serializeHost(getHost(agentId)));
+      } else {
+        if (agent.token_hash !== tokenHash) return ws.close(4004, 'invalid agent token');
+        if (agent.status === 'revoked') return ws.close(4005, 'agent revoked');
+        db.prepare(`
+          UPDATE agents SET hostname = ?, fingerprint = ?, platform = ?, version = ?, capabilities_json = ?, last_seen = ?
+          WHERE id = ?
+        `).run(payload.hostname, payload.fingerprint, payload.platform || agent.platform,
+          payload.version || agent.version, JSON.stringify(payload.capabilities || []), now, agent.id);
+        agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(agent.id);
+      }
+
+      ws.agentId = agent.id;
+      ws.installId = agent.install_id;
+      ws.lastSeenMs = Date.now();
+      if (agent.status === 'approved') {
+        ws.isApproved = true;
+        agentSockets.set(agent.id, ws);
+        pendingSockets.delete(agent.id);
+        sendJson(ws, envelope('server.approved', { agentId: agent.id }, { agentId: agent.id }));
+        pushWatchdogConfig(agent.id);
+        dispatchPendingCommands(agent.id);
+      } else {
+        pendingSockets.set(agent.id, ws);
+        sendJson(ws, envelope('server.pending', { agentId: agent.id }, { agentId: agent.id }));
+      }
+      broadcastUi('ui.host.status', serializeHost(getHost(agent.id)));
+      return;
+    }
+
+    if (!ws.agentId) return ws.close(4006, 'hello required');
+    updateAgentLastSeen(ws.agentId);
+    if (message.type === 'ping') return sendJson(ws, envelope('pong', {}, { agentId: ws.agentId }));
+    if (!ws.isApproved) return;
+
+    try {
+      if (message.type === 'agent.telemetry') storeTelemetry(ws.agentId, message);
+      else if (message.type === 'agent.processes') storeProcesses(ws.agentId, message);
+      else if (message.type === 'agent.event') insertEvent(ws.agentId, message);
+      else if (message.type === 'agent.command.result') updateCommandResult(ws.agentId, message);
+      else if (message.type === 'agent.screenshot') storeScreenshot(ws.agentId, message);
+      else if (message.type === 'agent.config.ack') {
+        broadcastUi('ui.config.ack', message.payload || {}, ws.agentId);
+      }
+    } catch (error) {
+      console.error(`Agent message error (${ws.agentId}):`, error.message);
+      sendJson(ws, envelope('server.error', { error: error.message }, { agentId: ws.agentId }));
+    }
+  });
+
+  ws.on('close', () => {
+    clearTimeout(helloTimer);
+    if (!ws.agentId) return;
+    if (agentSockets.get(ws.agentId) === ws) agentSockets.delete(ws.agentId);
+    if (pendingSockets.get(ws.agentId) === ws) pendingSockets.delete(ws.agentId);
+    broadcastUi('ui.host.status', serializeHost(getHost(ws.agentId)));
+  });
+});
+
+uiWss.on('connection', (ws, req, user) => {
+  ws.user = user;
+  ws.subscribedAgentId = null;
+  uiClients.add(ws);
+  ws.on('message', raw => {
+    try {
+      const message = JSON.parse(raw.toString());
+      if (message.type === 'ui.subscribe') ws.subscribedAgentId = message.payload?.agentId || null;
+      if (message.type === 'ping') sendJson(ws, envelope('pong'));
+    } catch {}
+  });
+  ws.on('close', () => uiClients.delete(ws));
+});
+
+server.on('upgrade', (req, socket, head) => {
+  const requestUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  if (requestUrl.pathname === '/ws/agent') {
+    return agentWss.handleUpgrade(req, socket, head, ws => agentWss.emit('connection', ws, req));
   }
+  if (requestUrl.pathname === '/ws/ui') {
+    try {
+      const user = jwt.verify(requestUrl.searchParams.get('token') || '', JWT_SECRET);
+      return uiWss.handleUpgrade(req, socket, head, ws => uiWss.emit('connection', ws, req, user));
+    } catch {
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      return socket.destroy();
+    }
+  }
+  socket.destroy();
+});
+
+app.get('/api/setup/status', (req, res) => {
+  const count = db.prepare('SELECT COUNT(*) AS count FROM users').get().count;
+  res.json({ required: count === 0 });
+});
+
+app.post('/api/setup', async (req, res) => {
+  const count = db.prepare('SELECT COUNT(*) AS count FROM users').get().count;
+  if (count !== 0) return res.status(409).json({ error: 'Setup already completed' });
+  const { username, password } = req.body || {};
+  if (!username || !password || password.length < 10) {
+    return res.status(400).json({ error: 'Username and password of at least 10 characters required' });
+  }
+  const passwordHash = await bcrypt.hash(password, 12);
+  db.prepare(`INSERT INTO users(username, password_hash, role, must_change_password, created_at) VALUES (?, ?, 'admin', 0, ?)`)
+    .run(username.trim(), passwordHash, new Date().toISOString());
+  res.json({ success: true });
+});
+
+app.post('/api/login', async (req, res) => {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  if (loginRateLimited(ip)) return res.status(429).json({ error: 'Too many login attempts' });
+  const { username, password } = req.body || {};
+  const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+  if (!user || !(await bcrypt.compare(password || '', user.password_hash))) {
+    recordLoginFailure(ip);
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
+  loginAttempts.delete(ip);
+  const token = jwt.sign({ username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
+  res.json({ token, username: user.username, role: user.role, mustChangePassword: Boolean(user.must_change_password) });
+});
+
+app.get('/api/v1/hosts', authenticate, (req, res) => {
+  const rows = db.prepare(`
+    SELECT a.*, l.telemetry_json, l.telemetry_at
+    FROM agents a LEFT JOIN latest_state l ON l.agent_id = a.id
+    WHERE a.status = 'approved'
+    ORDER BY a.display_name COLLATE NOCASE
+  `).all();
+  res.json(rows.map(serializeHost));
+});
+
+app.get('/api/v1/hosts/:id', authenticate, (req, res) => {
+  const row = getHost(req.params.id);
+  if (!row || row.status !== 'approved') return res.status(404).json({ error: 'Host not found' });
+  res.json(serializeHost(row));
+});
+
+app.get('/api/v1/hosts/:id/telemetry', authenticate, (req, res) => {
+  const from = req.query.from || new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const to = req.query.to || new Date().toISOString();
+  const limit = Math.min(Math.max(Number(req.query.limit) || 1000, 1), 5000);
+  const rows = db.prepare(`
+    SELECT ts, payload_json FROM telemetry WHERE agent_id = ? AND ts BETWEEN ? AND ? ORDER BY ts ASC LIMIT ?
+  `).all(req.params.id, from, to, limit);
+  res.json(rows.map(row => ({ timestamp: row.ts, ...parseJson(row.payload_json, {}) })));
+});
+
+app.get('/api/v1/hosts/:id/processes', authenticate, (req, res) => {
+  const host = getHost(req.params.id);
+  if (!host || host.status !== 'approved') return res.status(404).json({ error: 'Host not found' });
+  let commandId = null;
+  if (agentSockets.has(req.params.id)) {
+    commandId = createCommand(req.params.id, 'process.list', {}, req.user.username, 30_000).id;
+  }
+  const state = db.prepare('SELECT processes_json, processes_at FROM latest_state WHERE agent_id = ?').get(req.params.id);
+  let processes = parseJson(state?.processes_json, []);
+  if (req.user.role !== 'admin') processes = processes.map(process => ({ ...process, path: '' }));
+  res.json({ processes, updatedAt: state?.processes_at || null, commandId });
+});
+
+app.post('/api/v1/hosts/:id/commands', authenticate, requireAdmin, (req, res) => {
+  const host = getHost(req.params.id);
+  if (!host || host.status !== 'approved') return res.status(404).json({ error: 'Host not found' });
+  const { type, payload = {} } = req.body || {};
+  const error = validateCommand(type, payload);
+  if (error) return res.status(400).json({ error });
+  const command = createCommand(req.params.id, type, payload, req.user.username);
+  res.status(202).json({ id: command.id, status: command.status });
+});
+
+app.get('/api/v1/hosts/:id/commands', authenticate, (req, res) => {
+  const rows = db.prepare(`SELECT * FROM commands WHERE agent_id = ? ORDER BY requested_at DESC LIMIT 100`).all(req.params.id);
+  res.json(rows.map(row => ({
+    id: row.id,
+    type: row.type,
+    payload: req.user.role === 'admin' ? parseJson(row.payload_json, {}) : undefined,
+    status: row.status,
+    requestedBy: row.requested_by,
+    requestedAt: row.requested_at,
+    completedAt: row.completed_at,
+    result: parseJson(row.result_json, null)
+  })));
+});
+
+app.get('/api/v1/hosts/:id/watchdog', authenticate, (req, res) => {
+  const config = getWatchdog(req.params.id);
+  if (req.user.role !== 'admin') {
+    config.rules = config.rules.map(rule => ({ ...rule, filePath: undefined }));
+  }
+  res.json(config);
+});
+
+app.put('/api/v1/hosts/:id/watchdog', authenticate, requireAdmin, (req, res) => {
+  const host = getHost(req.params.id);
+  if (!host || host.status !== 'approved') return res.status(404).json({ error: 'Host not found' });
+  const rules = req.body?.rules;
+  if (!Array.isArray(rules)) return res.status(400).json({ error: 'rules array required' });
+  for (const rule of rules) {
+    if (!rule.id || !rule.processName || !rule.filePath || !['service', 'interactive'].includes(rule.runMode)) {
+      return res.status(400).json({ error: 'Each rule requires id, processName, filePath and valid runMode' });
+    }
+  }
+  const current = getWatchdog(req.params.id);
+  const version = current.version + 1;
+  const now = new Date().toISOString();
+  db.prepare(`
+    INSERT INTO watchdog_configs(agent_id, version, config_json, updated_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT(agent_id) DO UPDATE SET version = excluded.version, config_json = excluded.config_json, updated_at = excluded.updated_at
+  `).run(req.params.id, version, JSON.stringify({ rules }), now);
+  pushWatchdogConfig(req.params.id);
+  res.json({ version, rules, updatedAt: now });
+});
+
+app.get('/api/v1/hosts/:id/events', authenticate, (req, res) => {
+  const rows = db.prepare(`
+    SELECT id, type, severity, payload_json, occurred_at FROM events
+    WHERE agent_id = ? ORDER BY occurred_at DESC LIMIT 200
+  `).all(req.params.id);
+  res.json(rows.map(row => ({ id: row.id, type: row.type, severity: row.severity,
+    payload: parseJson(row.payload_json, {}), occurredAt: row.occurred_at })));
+});
+
+app.get('/api/v1/agents/pending', authenticate, requireAdmin, (req, res) => {
+  const rows = db.prepare(`
+    SELECT a.*, l.telemetry_json, l.telemetry_at FROM agents a
+    LEFT JOIN latest_state l ON l.agent_id = a.id WHERE a.status = 'pending' ORDER BY a.created_at
+  `).all();
+  res.json(rows.map(serializeHost));
+});
+
+app.post('/api/v1/agents/:id/approve', authenticate, requireAdmin, (req, res) => {
+  const agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(req.params.id);
+  if (!agent || agent.status !== 'pending') return res.status(404).json({ error: 'Pending agent not found' });
+  const now = new Date().toISOString();
+  db.prepare(`UPDATE agents SET status = 'approved', display_name = ?, approved_at = ?, revoked_at = NULL WHERE id = ?`)
+    .run(req.body?.displayName?.trim() || agent.hostname, now, agent.id);
+  const ws = pendingSockets.get(agent.id);
+  if (ws) {
+    ws.isApproved = true;
+    pendingSockets.delete(agent.id);
+    agentSockets.set(agent.id, ws);
+    sendJson(ws, envelope('server.approved', { agentId: agent.id }, { agentId: agent.id }));
+    pushWatchdogConfig(agent.id);
+    dispatchPendingCommands(agent.id);
+  }
+  broadcastUi('ui.host.status', serializeHost(getHost(agent.id)));
+  res.json(serializeHost(getHost(agent.id)));
+});
+
+app.post('/api/v1/agents/:id/revoke', authenticate, requireAdmin, (req, res) => {
+  const agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(req.params.id);
+  if (!agent) return res.status(404).json({ error: 'Agent not found' });
+  db.prepare(`UPDATE agents SET status = 'revoked', revoked_at = ? WHERE id = ?`).run(new Date().toISOString(), agent.id);
+  const ws = agentSockets.get(agent.id) || pendingSockets.get(agent.id);
+  if (ws) ws.close(4005, 'agent revoked');
+  agentSockets.delete(agent.id);
+  pendingSockets.delete(agent.id);
+  broadcastUi('ui.host.status', serializeHost(getHost(agent.id)));
+  res.json({ success: true });
+});
+
+app.get('/api/v1/users', authenticate, requireAdmin, (req, res) => {
+  res.json(db.prepare('SELECT username, role, must_change_password AS mustChangePassword, created_at AS createdAt FROM users ORDER BY username').all());
+});
+
+app.post('/api/v1/users', authenticate, requireAdmin, async (req, res) => {
+  const { username, password, role } = req.body || {};
+  if (!username || !password || password.length < 10 || !['admin', 'user'].includes(role)) {
+    return res.status(400).json({ error: 'Valid username, role and password of at least 10 characters required' });
+  }
+  try {
+    db.prepare('INSERT INTO users(username, password_hash, role, created_at) VALUES (?, ?, ?, ?)')
+      .run(username.trim(), await bcrypt.hash(password, 12), role, new Date().toISOString());
+    res.status(201).json({ success: true });
+  } catch {
+    res.status(409).json({ error: 'User already exists' });
+  }
+});
+
+app.delete('/api/v1/users/:username', authenticate, requireAdmin, (req, res) => {
+  if (req.params.username === req.user.username) return res.status(400).json({ error: 'Cannot delete current user' });
+  const result = db.prepare('DELETE FROM users WHERE username = ?').run(req.params.username);
+  if (!result.changes) return res.status(404).json({ error: 'User not found' });
+  res.json({ success: true });
+});
+
+app.post('/api/v1/users/:username/password', authenticate, async (req, res) => {
+  if (req.user.role !== 'admin' && req.user.username !== req.params.username) return res.status(403).json({ error: 'Forbidden' });
+  const password = req.body?.password;
+  if (!password || password.length < 10) return res.status(400).json({ error: 'Password must be at least 10 characters' });
+  const result = db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE username = ?')
+    .run(await bcrypt.hash(password, 12), req.params.username);
+  if (!result.changes) return res.status(404).json({ error: 'User not found' });
+  res.json({ success: true });
+});
+
+app.get('/api/v1/settings', authenticate, requireAdmin, (req, res) => {
+  const webhook = getSetting(db, 'discord_webhook', '');
+  res.json({ discordWebhookConfigured: Boolean(webhook), discordWebhook: webhook });
+});
+
+app.put('/api/v1/settings', authenticate, requireAdmin, (req, res) => {
+  setSetting(db, 'discord_webhook', req.body?.discordWebhook?.trim() || '');
+  res.json({ success: true });
+});
+
+app.get('/api/v1/screenshots/:id', authenticate, (req, res) => {
+  const row = db.prepare('SELECT * FROM screenshots WHERE id = ?').get(req.params.id);
+  if (!row || !fs.existsSync(row.file_path)) return res.status(404).json({ error: 'Screenshot not found' });
+  res.sendFile(row.file_path);
+});
+
+app.get('*', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
+
+function cleanupData() {
+  const now = Date.now();
+  db.prepare('DELETE FROM telemetry WHERE ts < ?').run(new Date(now - TELEMETRY_RETENTION_MS).toISOString());
+  db.prepare('DELETE FROM events WHERE occurred_at < ?').run(new Date(now - EVENT_RETENTION_MS).toISOString());
+  db.prepare(`UPDATE commands SET status = 'expired', completed_at = ? WHERE status IN ('queued', 'sent', 'acknowledged') AND expires_at < ?`)
+    .run(new Date().toISOString(), new Date().toISOString());
+  db.prepare('DELETE FROM commands WHERE requested_at < ?').run(new Date(now - EVENT_RETENTION_MS).toISOString());
+
+  const expiredScreenshots = db.prepare('SELECT id, file_path FROM screenshots WHERE created_at < ? ORDER BY created_at')
+    .all(new Date(now - SCREENSHOT_RETENTION_MS).toISOString());
+  for (const screenshot of expiredScreenshots) {
+    try { fs.unlinkSync(screenshot.file_path); } catch {}
+    db.prepare('DELETE FROM screenshots WHERE id = ?').run(screenshot.id);
+  }
+
+  let screenshots = db.prepare('SELECT id, file_path, size_bytes FROM screenshots ORDER BY created_at').all();
+  let totalSize = screenshots.reduce((sum, item) => sum + item.size_bytes, 0);
+  for (const screenshot of screenshots) {
+    if (totalSize <= 1024 * 1024 * 1024) break;
+    try { fs.unlinkSync(screenshot.file_path); } catch {}
+    db.prepare('DELETE FROM screenshots WHERE id = ?').run(screenshot.id);
+    totalSize -= screenshot.size_bytes;
+  }
+}
+
+function backupDatabase() {
+  const date = new Date().toISOString().slice(0, 10);
+  const backupPath = path.join(BACKUP_DIR, `windows-controller-${date}.db`);
+  if (fs.existsSync(backupPath)) return;
+  const sqlPath = backupPath.replace(/'/g, "''");
+  try {
+    db.exec(`VACUUM INTO '${sqlPath}'`);
+  } catch (error) {
+    console.error('Database backup failed:', error.message);
+  }
+}
+
+setInterval(() => {
+  const cutoff = Date.now() - AGENT_OFFLINE_MS;
+  for (const [agentId, ws] of agentSockets) {
+    if ((ws.lastSeenMs || 0) < cutoff) {
+      ws.terminate();
+      agentSockets.delete(agentId);
+      broadcastUi('ui.host.status', serializeHost(getHost(agentId)));
+    }
+  }
+}, 5_000).unref();
+
+setInterval(() => {
+  const now = new Date().toISOString();
+  const expired = db.prepare(`SELECT id, agent_id FROM commands WHERE status IN ('queued', 'sent', 'acknowledged') AND expires_at < ?`).all(now);
+  db.prepare(`UPDATE commands SET status = 'expired', completed_at = ? WHERE status IN ('queued', 'sent', 'acknowledged') AND expires_at < ?`).run(now, now);
+  for (const command of expired) broadcastUi('ui.command', { commandId: command.id, status: 'expired' }, command.agent_id);
+}, 5_000).unref();
+
+setInterval(cleanupData, 60 * 60 * 1000).unref();
+setInterval(backupDatabase, 24 * 60 * 60 * 1000).unref();
+cleanupData();
+backupDatabase();
+
+server.listen(PORT, HOST, () => {
+  console.log(`Windows Controller Central Server listening on http://${HOST}:${PORT}`);
+  console.log(`Database: ${DB_FILE}`);
+  if (db.prepare('SELECT COUNT(*) AS count FROM users').get().count === 0) {
+    console.log('First-run setup required at /');
+  }
+});
+
+function shutdown(exitCode = 0) {
+  for (const ws of agentSockets.values()) ws.close(1001, 'server shutdown');
+  for (const ws of uiClients) ws.close(1001, 'server shutdown');
+  const finish = () => {
+    try { db.close(); } catch {}
+    process.exit(exitCode);
+  };
+  if (server.listening) server.close(finish);
+  else finish();
+  setTimeout(() => process.exit(exitCode), 5000).unref();
+}
+
+server.on('error', error => {
+  console.error('Server error:', error);
+  shutdown(1);
+});
+process.on('SIGINT', () => shutdown(0));
+process.on('SIGTERM', () => shutdown(0));
+process.on('uncaughtException', error => {
+  console.error('Uncaught exception:', error);
+  shutdown(1);
+});
+process.on('unhandledRejection', error => {
+  console.error('Unhandled rejection:', error);
+  shutdown(1);
 });

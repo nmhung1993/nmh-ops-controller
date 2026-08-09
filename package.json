@@ -1,14 +1,18 @@
 {
   "name": "windows-controller-webapp",
   "version": "1.0.0",
-  "description": "Windows Controller Web App - Monitor system telemetry, processes, and auto-restart apps",
+  "description": "Centralized Windows fleet monitor and controller for trusted LANs",
   "main": "server/server.js",
   "scripts": {
     "start": "node server/server.js",
-    "dev": "node --watch server/server.js"
+    "dev": "node --watch server/server.js",
+    "agent": "node agent/agent.js",
+    "desktop-helper": "node agent/desktop-helper.js",
+    "check": "node --check server/server.js && node --check server/database.js && node --check agent/agent.js && node --check agent/windows.js && node --check agent/desktop-helper.js && node --check public/js/app.js",
+    "test": "node --test test/*.test.js"
   },
   "engines": {
-    "node": ">=14"
+    "node": ">=22.5"
   },
   "dependencies": {
     "express": "^4.19.2",

@@ -1,147 +1,151 @@
-# Windows Controller Web App
+# Windows Controller Fleet
 
-A web application to monitor Windows system telemetry, manage running processes, and automatically restart applications when monitored processes stop running.
+Windows Controller is a Central Server plus Windows Agent system for monitoring and controlling up to 20 Windows machines on a trusted LAN.
 
-## Features
+## Architecture
 
-- 📊 **Dashboard** - Real-time telemetry: CPU usage, memory, disk, network, uptime, OS info
-  - **Disk usage** displayed as a pie/doughnut chart
-  - **CPU, Memory, Network** displayed as live line charts with history tracking
-- ⚙️ **Processes** - List all running processes with PID, CPU, memory, path; search and kill processes (admin)
-- 🛡️ **Watchdog** - Configure monitored processes; if a process stops, automatically launch the specified file
-  - **Discord notifications** via webhook when a process goes down, is restarted, or fails to restart
-  - **Automatic screenshot** captured 30 seconds after a successful restart and sent to Discord
-- 👑 **Admin Panel** - Manage users (create, delete, set passwords), assign roles (admin/user)
-- 🔐 **Authentication** - Role-based access control (admin vs viewer)
-- 📡 **Real-time** - Live updates via WebSocket
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js (v14+)
-- Windows OS (uses PowerShell commands for telemetry)
-
-### Installation
-
-```bash
-npm install
+```text
+Browser -- HTTP/WebSocket --> Central Server
+                                ^
+                                | outbound WebSocket
+                       Windows Agent Service
+                                |
+                         local named pipe
+                                |
+                       Desktop Helper at logon
 ```
 
-### Run
+The Central Server no longer reads its own Windows processes directly. Install an agent on the Central Server machine as well, so it appears and behaves like every other managed host.
 
-```bash
-npm start
+## Requirements
+
+- Windows 10/11 or Windows Server
+- Node.js 22.5 or newer (Node.js 24 LTS recommended)
+- Administrator access for service and firewall installation
+- A trusted Private-profile LAN
+- A static IP or DHCP reservation for the Central Server
+
+The default deployment uses plain HTTP. Do not port-forward TCP 3003 or expose it to the Internet. Put the service behind HTTPS before using it outside a trusted LAN.
+
+## Development Run
+
+```powershell
+npm.cmd install
+npm.cmd start
 ```
 
-The app runs at `http://localhost:3003` (or `PORT` env var).
+Open `http://localhost:3003`. If no legacy users were imported, the first page creates the initial administrator. There are no default credentials.
 
-### Default Accounts
+To run an agent without installing a service:
 
-| Role | Username | Password |
-|------|----------|----------|
-| Admin | `admin` | `admin123` |
-| User | `user` | `user123` |
-
-## Usage
-
-### Dashboard
-Shows live CPU, memory, disk, network, uptime, and system info. Updates in real-time every 2 seconds.
-
-### Processes
-- View all running processes with PID, name, CPU seconds, memory usage (MB), and executable path
-- Search by name or path
-- **Admin only**: Kill processes
-
-### Watchdog
-- **Admin only**: Add monitored processes by specifying:
-  - Process name (e.g., `notepad`)
-  - Executable file path to launch when process is down (e.g., `C:\Windows\System32\notepad.exe`)
-  - Enable/disable the rule
-- The watcher checks every 10 seconds. If a monitored process is not running, it launches the file (with a 30-second cooldown to avoid loops).
-- View relaunch history.
-- **Discord integration** (admin only):
-  - Set a webhook URL in the Watchdog page
-  - Receives notifications: process down ⚠️, restart success ✅, restart failure ❌
-  - Captures a screenshot 30s after successful restart and sends it to Discord 📸
-
-### Admin Panel
-- **Admin only**: Manage users
-  - Create users with role (admin/user)
-  - Delete users
-  - Set passwords
-
-## API Endpoints
-
-| Method | Endpoint | Description | Auth |
-|--------|----------|-------------|------|
-| POST | `/api/login` | Login, get JWT token | None |
-| GET | `/api/telemetry` | System telemetry | User |
-| GET | `/api/processes` | Running processes | User |
-| POST | `/api/processes/:pid/kill` | Kill process | Admin |
-| POST | `/api/processes/:pid/start` | Start process by path | Admin |
-| GET | `/api/config` | Watchdog config | User |
-| POST | `/api/config` | Update watchdog config + Discord webhook | Admin |
-| GET | `/api/config/relaunch-history` | Relaunch history | Admin |
-| GET | `/api/users` | List users | Admin |
-| POST | `/api/users` | Create user | Admin |
-| DELETE | `/api/users/:username` | Delete user | Admin |
-| POST | `/api/users/:username/password` | Set password | Admin |
-
-## Docker Deployment (Limited)
-
-> ⚠️ **Important**: A Docker container **cannot** fully monitor a real Windows host machine. Docker isolates the container from the host, so:
-> - Telemetry (CPU/memory/disk/network) reports the **container's** state, not the host
-> - Process listing (`Get-Process`) and window screenshots only work on a Windows host
-> - Discord window capture will fail inside a container
-
-The included `Dockerfile` is provided for running the web UI in a containerized environment, but for **full functionality on a real Windows machine**, use the Windows autorun scripts.
-
-## Windows Autorun (Recommended)
-
-To run the server automatically at Windows startup (so it starts monitoring and the watchdog works from boot):
-
-1. Ensure Node.js is installed
-2. Run the installer:
-   ```
-   autorun\install-autorun.bat
-   ```
-3. This copies `start-hidden.vbs` to your Windows Startup folder and creates a shortcut
-4. The server will now start **hidden** at every login and run at `http://localhost:3003`
-
-To remove autorun, delete the `WindowsController` files from:
-```
-%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\
+```powershell
+Copy-Item agent\config.example.json agent\config.json
+# Update serverUrl in agent\config.json first.
+node agent\agent.js --config agent\config.json
 ```
 
-## Project Structure
+The agent appears in Admin > Pending agents. Compare its MachineGuid fingerprint with the installer output before approval.
 
-```
-├── server/
-│   └── server.js          # Backend: API, telemetry, processes, watcher, auth
-├── public/
-│   ├── index.html         # Frontend pages
-│   ├── css/
-│   │   └── style.css      # Styling
-│   ├── js/
-│   │   └── app.js         # Frontend logic
-│   └── lang/
-│       ├── en.json        # English translations
-│       └── vi.json        # Vietnamese translations
-├── autorun/
-│   ├── install-autorun.bat # Installs Windows startup autorun
-│   └── start-hidden.vbs    # Starts server hidden at login
-├── data/                  # Persisted config/users (created on first run)
-│   ├── config.json        # Watchdog config
-│   └── users.json         # User credentials (hashed)
-├── Dockerfile             # Limited Docker packaging (see note above)
-├── package.json
-└── README.md
+## Install Central Server
+
+Run an elevated PowerShell terminal:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\deploy\install-server.ps1 -Port 3003
 ```
 
-## Security Notes
+The installer:
 
-- Passwords are hashed with bcrypt
-- JWT tokens expire after 24 hours
-- Change the default passwords after first login
-- The JWT secret is stored in `server/server.js` - change it for production
+- copies the Central Server to `%ProgramData%\WindowsController\server`;
+- installs production dependencies;
+- downloads and configures WinSW;
+- installs an automatic Windows service;
+- opens TCP 3003 only for the Windows Private network profile;
+- imports legacy `users.json`, `config.json`, and `history.json` on first start.
+
+Set a DHCP reservation or static IP before installing agents. Open the displayed `http://<server-ip>:3003` address from another LAN machine to verify access.
+
+## Install an Agent
+
+Copy the `agent` directory to the target machine and run an elevated PowerShell terminal:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\agent\install-agent.ps1 -ServerUrl "http://192.168.1.10:3003"
+```
+
+The installer creates:
+
+- `Windows Controller Agent`, an automatic LocalSystem service;
+- a logon Scheduled Task for the Desktop Helper;
+- a DPAPI-protected per-machine agent token;
+- a Private-profile outbound firewall rule;
+- a fingerprint shown at the end of installation.
+
+The Desktop Helper is launched through `wscript.exe` with a hidden window, so no Node.js console should appear during normal service startup. Its diagnostic log is `%ProgramData%\WindowsController\agent\helper\desktop-helper.log`.
+
+Approve the pending agent in the Admin page. Repeat the same installation on the Central Server machine so it is monitored too.
+
+Uninstall while preserving state:
+
+```powershell
+.\agent\uninstall-agent.ps1
+```
+
+Add `-RemoveData` only when intentionally deleting enrollment state and cached watchdog configuration.
+
+## Runtime Behavior
+
+- Telemetry is sent every 2 seconds and persisted every 10 seconds.
+- Telemetry is retained for 7 days in SQLite WAL mode.
+- Events and command audit records are retained for 30 days.
+- Agent offline status is detected within 20 seconds.
+- An offline agent buffers 10 minutes of telemetry and up to 1,000 events.
+- Watchdog rules run every 10 seconds from the agent cache, even if Central Server is unavailable.
+- Commands are idempotent by `commandId` and expire after 60 seconds.
+- Full process lists are fetched only on demand.
+
+Interactive launch and window capture require a logged-in desktop session. The Agent Service handles telemetry and service-mode processes before login; the Desktop Helper handles GUI applications and screenshots after login.
+
+When an administrator presses **Launch** for an interactive watchdog rule, the agent checks whether the process already exists. A running application is restored and brought to the foreground; if no window exists, the executable is launched again so single-instance applications can reveal their UI. The agent then captures the window after 30 seconds (1.5 seconds when it was already running), retrying five times. Central Server sends one Vietnamese Discord notification with the screenshot; if capture fails, it sends one Vietnamese error notification instead. Capture uses `PrintWindow` with a screen-copy fallback. A `service`-mode rule cannot capture a desktop window because it runs in Session 0.
+
+## Security Model
+
+- New agents remain pending until an administrator approves their fingerprint.
+- Each agent has its own revocable random token; only its SHA-256 hash is stored centrally.
+- The local token is protected with machine-scope Windows DPAPI.
+- Browser WebSockets require JWT authentication.
+- Viewer accounts cannot approve agents, modify watchdog rules, send commands, or see executable paths.
+- No remote shell endpoint exists. Supported mutations are process kill, configured watchdog launch, and window capture.
+- Discord webhook configuration remains on Central Server and is never distributed to agents.
+
+Because HTTP was selected for this LAN deployment, credentials and tokens are not encrypted in transit. Treat every device on the LAN as trusted, and migrate to HTTPS if that assumption changes.
+
+## API Overview
+
+All fleet endpoints are host-scoped under `/api/v1`:
+
+- `GET /hosts`, `GET /hosts/:id`, `GET /hosts/:id/telemetry`
+- `GET /hosts/:id/processes`
+- `POST /hosts/:id/commands`
+- `GET|PUT /hosts/:id/watchdog`
+- `GET /hosts/:id/events`, `GET /hosts/:id/commands`
+- `GET /agents/pending`, `POST /agents/:id/approve`, `POST /agents/:id/revoke`
+
+Agent and browser realtime traffic use `/ws/agent` and `/ws/ui` on the same port.
+
+## Data and Backups
+
+Central data is stored in `data/windows-controller.db` for development or `%ProgramData%\WindowsController\server\data` for a service installation. A consistent SQLite backup is created daily in `data/backups`.
+
+Legacy JSON files are copied to `data/legacy-backup` before migration. Existing watchdog rules and relaunch history attach to the first enrolled agent whose hostname matches the Central Server hostname.
+
+## Tests
+
+```powershell
+npm.cmd run check
+npm.cmd test
+```
+
+The integration test starts an isolated Central Server, creates the first administrator, enrolls and approves a simulated agent, sends telemetry, completes a command, and revokes the agent.
