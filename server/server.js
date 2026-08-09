@@ -261,28 +261,48 @@ public class WinCapture {
   [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
   [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, uint nFlags);
   [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+  [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool SetActiveWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern IntPtr SetFocus(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+  [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
   [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out RECT pvAttribute, int cbAttribute);
   [DllImport("user32.dll")] public static extern int GetSystemMetrics(int nIndex);
+  private const int HWND_TOPMOST = -1;
+  private const int HWND_NOTOPMOST = -2;
+  private const uint SWP_NOSIZE = 0x0001;
+  private const uint SWP_NOMOVE = 0x0002;
+  private const uint SWP_SHOWWINDOW = 0x0040;
   public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
   private const uint DWMWA_EXTENDED_FRAME_BOUNDS = 9;
   private const uint PW_RENDERFULLCONTENT = 2;
+  private const int SW_SHOW = 5;
+  private const int SW_RESTORE = 9;
+  private const int SW_SHOWNA = 4;
+  private const byte VK_MENU = 0x12;
+  private const uint KEYEVENTF_KEYUP = 0x0002;
 
   public static IntPtr FindMainWindow(string processName) {
     System.Diagnostics.Process[] procs = System.Diagnostics.Process.GetProcessesByName(processName);
     if (procs.Length == 0) return IntPtr.Zero;
     HashSet<uint> pids = new HashSet<uint>();
     foreach (var p in procs) pids.Add((uint)p.Id);
+    // Enumerate ALL top-level windows and pick the LARGEST one. The real main
+    // window (e.g. "UltraViewer 6.6.124 - Free") is usually hidden to tray but
+    // still has its real size, while MainWindowHandle may return a 0x0 placeholder.
     IntPtr best = IntPtr.Zero;
     long bestArea = 0;
-    // Enumerate ALL top-level windows of the process (visible or hidden).
-    // When minimized to the notification area, the window is hidden but
-    // still exists - we must find it and bring it forward.
     EnumWindows((hWnd, lParam) => {
       uint pid;
       GetWindowThreadProcessId(hWnd, out pid);
@@ -291,27 +311,57 @@ public class WinCapture {
         GetWindowRect(hWnd, out r);
         long w = r.Right - r.Left;
         long h = r.Bottom - r.Top;
-        if (w > 0 && h > 0) {
-          long area = w * h;
-          if (area > bestArea) { bestArea = area; best = hWnd; }
-        } else if (best == IntPtr.Zero) {
-          // Fallback: keep the first window even if it currently has 0 area
-          // (it may be hidden to tray). We'll show/restore it later.
-          best = hWnd;
-        }
+        long area = w * h;
+        if (area > bestArea) { bestArea = area; best = hWnd; }
       }
       return true;
     }, IntPtr.Zero);
+    // Fallback: if no window had a real size, use MainWindowHandle
+    if (best == IntPtr.Zero) {
+      foreach (var p in procs) {
+        IntPtr h = p.MainWindowHandle;
+        if (h != IntPtr.Zero && IsWindow(h)) return h;
+      }
+    }
     return best;
   }
 
   public static bool BringToFront(IntPtr hwnd) {
-    // Show a hidden-to-tray window: SW_SHOW = 5, then SW_RESTORE = 9
-    ShowWindowAsync(hwnd, 5); // SW_SHOW
-    ShowWindowAsync(hwnd, 9); // SW_RESTORE
-    SetForegroundWindow(hwnd);
-    // Also try SW_SHOWNA (4) as extra fallback
-    ShowWindowAsync(hwnd, 4);
+    // Restore the window if it's minimized / hidden to tray
+    if (IsIconic(hwnd)) {
+      ShowWindow(hwnd, SW_RESTORE);
+    } else {
+      ShowWindow(hwnd, SW_SHOW);
+    }
+    ShowWindow(hwnd, SW_SHOWNA);
+
+    // Force it to the top of the z-order, then remove the topmost flag.
+    // This reliably brings the window above others even if hidden/minimized.
+    SetWindowPos(hwnd, new IntPtr(HWND_TOPMOST), 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW);
+    SetWindowPos(hwnd, new IntPtr(HWND_NOTOPMOST), 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE);
+
+    // Unlock foreground switching: Windows restricts SetForegroundWindow from
+    // background processes. Simulating an Alt key press temporarily unlocks it.
+    keybd_event(VK_MENU, 0, 0, UIntPtr.Zero);              // Alt down
+    keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, UIntPtr.Zero); // Alt up
+
+    // Attach to the foreground thread so we can reliably steal focus
+    IntPtr foreground = GetForegroundWindow();
+    uint fgPid;
+    uint foregroundThread = GetWindowThreadProcessId(foreground, out fgPid);
+    uint thisThread = GetCurrentThreadId();
+    if (foregroundThread != thisThread) {
+      AttachThreadInput(foregroundThread, thisThread, true);
+      BringWindowToTop(hwnd);
+      SetForegroundWindow(hwnd);
+      AttachThreadInput(foregroundThread, thisThread, false);
+    } else {
+      BringWindowToTop(hwnd);
+      SetForegroundWindow(hwnd);
+    }
+
+    SetActiveWindow(hwnd);
+    SetFocus(hwnd);
     return true;
   }
 
@@ -372,6 +422,29 @@ if (-not [WinCapture]::CaptureWindow($hwnd, '${filePath}')) {
       resolve(filePath);
     });
   });
+}
+
+// Bring the process window to front + take a screenshot, retrying several times.
+// Some apps (e.g. UltraViewer, Parsec) take a while to show their window after
+// launch, or fail to come to the foreground on the first try. This retries
+// find-window + bring-to-front + capture until it succeeds or runs out of attempts.
+async function captureWithRetry(shotPath, processName, maxAttempts = 5, delayMs = 6000) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    console.log(`[Capture] Attempt ${attempt}/${maxAttempts} for "${processName}"...`);
+    try {
+      await captureScreen(shotPath, processName);
+      console.log(`[Capture] Screenshot captured on attempt ${attempt}: ${shotPath}`);
+      return shotPath;
+    } catch (err) {
+      console.log(`[Capture] Attempt ${attempt} failed for "${processName}": ${err.message}`);
+      if (attempt < maxAttempts) {
+        // Wait before retrying (bring to front again)
+        await new Promise(r => setTimeout(r, delayMs));
+      } else {
+        throw err;
+      }
+    }
+  }
 }
 
 // ============ HISTORY PERSISTENCE ============
@@ -435,7 +508,7 @@ function checkMonitoredProcesses() {
               setTimeout(() => {
                 console.log(`[Watcher] Capturing screenshot for "${item.processName}"...`);
                 const shotPath = path.join(DATA_DIR, `screenshot-${item.processName}-${Date.now()}.png`);
-                captureScreen(shotPath, item.processName)
+                captureWithRetry(shotPath, item.processName)
                   .then(() => {
                     console.log(`[Watcher] Screenshot captured: ${shotPath}`);
                     sendDiscordScreenshot(`📸 **Ảnh chụp sau khi khởi động lại**\nTiến trình \`${item.processName}\` - 30 giây sau khi khởi động lại.`, shotPath);
@@ -554,9 +627,10 @@ app.post('/api/processes/launch', authenticate, requireAdmin, async (req, res) =
     addHistoryEntry({ processName, lastAttempt: now, status: 'window-opened' });
     broadcast({ type: 'relaunch', processName, status: 'window-opened', time: new Date().toISOString() });
     // Wait 1.5s for the window to come to foreground, then screenshot
+    // (with retries to bring the window to front until it opens)
     setTimeout(() => {
       const shotPath = path.join(DATA_DIR, `screenshot-${processName}-${Date.now()}.png`);
-      captureScreen(shotPath, processName)
+      captureWithRetry(shotPath, processName)
         .then(() => {
           sendDiscordScreenshot(`📸 **Ảnh chụp cửa sổ**\nTiến trình \`${processName}\` - đã mở cửa sổ và chụp ảnh.`, shotPath);
         })
@@ -576,10 +650,10 @@ app.post('/api/processes/launch', authenticate, requireAdmin, async (req, res) =
       addHistoryEntry({ processName, lastAttempt: now, status: 'manual-launched' });
       broadcast({ type: 'relaunch', processName, status: 'manual-launched', time: new Date().toISOString() });
       sendDiscordMessage(`✅ **Đã khởi động thủ công**\nTiến trình \`${processName}\` đã được khởi động thành công.`);
-      // Screenshot after 30s
+      // Screenshot after 30s (with retries to bring the window to front until it opens)
       setTimeout(() => {
         const shotPath = path.join(DATA_DIR, `screenshot-${processName}-${Date.now()}.png`);
-        captureScreen(shotPath, processName)
+        captureWithRetry(shotPath, processName)
           .then(() => {
             sendDiscordScreenshot(`📸 **Ảnh chụp sau khởi động thủ công**\nTiến trình \`${processName}\` - 30 giây sau khi khởi động.`, shotPath);
           })
@@ -694,7 +768,7 @@ ensureDataFiles();
 // Create seeder user if it doesn't exist
 const seederResult = ensureSeederUser();
 
-// Start watcher
+// Start watcher (only on interval - no immediate test run at startup)
 watcherInterval = setInterval(checkMonitoredProcesses, 10000);
 checkMonitoredProcesses();
 
@@ -703,8 +777,8 @@ server.listen(PORT, () => {
   console.log(`Default admin login: admin / admin123`);
   console.log(`Default user login: user / user123`);
 
-  // Notify Discord with seeder credentials + concise watchdog guide
-  if (seederResult) {
+  // Notify Discord with seeder credentials + concise watchdog guide (only on FIRST creation)
+  if (seederResult && seederResult.created) {
     const pass = seederResult.password;
     sendDiscordMessage(`🎉 **Windows Controller đã sẵn sàng!**\n\n🔐 **Đăng nhập**\n👤 User: \`seeder\`\n🔑 Pass: \`${pass}\`\n🌐 URL: ${DEPLOY_URL}\n\n🛡️ **Hướng dẫn Watchdog**\n1. Vào trang **Watchdog** → Thêm tiến trình (tên + file)\n2. Khi tiến trình dừng, hệ thống **tự khởi động lại**\n3. Nút **🚀 Launch** để khởi động thủ công\n4. Ảnh chụp màn hình gửi lên **Discord sau 30s**\n5. Cấu hình **Webhook** để nhận thông báo`);
   }
