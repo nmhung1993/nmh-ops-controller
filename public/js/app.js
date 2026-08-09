@@ -357,10 +357,9 @@ function updateTelemetry(t) {
   $('mem-total').textContent = `Total: ${formatBytes(t.memory.total)}`;
 
   $('uptime-value').textContent = formatUptime(t.uptime);
-  $('hostname-value').textContent = `Host: ${t.hostname}`;
 
   $('os-value').textContent = t.os || '--';
-  $('net-info').textContent = `${t.cpu.cores} cores`;
+  $('net-model').textContent = t.cpu.model || '';
 
   // Network
   $('net-recv').textContent = formatBytes(t.network.recvBytes);
@@ -492,13 +491,19 @@ async function killProc(pid, name) {
 }
 
 // ===== CONFIG / WATCHDOG =====
+function maskWebhook(url) {
+  if (!url) return '';
+  if (url.length <= 10) return '••••••••••';
+  return '••••••••••' + url.slice(-10);
+}
+
 async function loadConfig() {
   try {
     monitoredConfig = await api('/api/config');
     renderMonitored();
-    // Populate Discord webhook field
+    // Populate Discord webhook field (masked - show only last 10 chars)
     if (user.role === 'admin') {
-      $('discord-webhook-input').value = monitoredConfig.discordWebhook || '';
+      $('discord-webhook-input').value = maskWebhook(monitoredConfig.discordWebhook || '');
     }
   } catch (err) {
     console.error(err);
@@ -506,7 +511,9 @@ async function loadConfig() {
 }
 
 async function saveWebhook() {
-  const webhook = $('discord-webhook-input').value.trim();
+  const inputValue = $('discord-webhook-input').value.trim();
+  // If the value still contains the masked placeholder (••••), keep the original webhook
+  let webhook = inputValue.includes('••••') ? (monitoredConfig.discordWebhook || '') : inputValue;
   const items = monitoredConfig.monitoredProcesses || [];
   try {
     await api('/api/config', {
@@ -514,6 +521,8 @@ async function saveWebhook() {
       body: JSON.stringify({ monitoredProcesses: items, discordWebhook: webhook })
     });
     monitoredConfig.discordWebhook = webhook;
+    // Re-mask the input after saving
+    $('discord-webhook-input').value = maskWebhook(webhook);
     showToast(user.role === 'admin' ? 'Webhook saved' : 'Configuration saved', 'success');
   } catch (err) {
     showToast(err.message, 'error');
@@ -538,11 +547,33 @@ function renderMonitored() {
       </div>
       ${isAdmin ? `
       <div class="actions">
+        <button class="btn btn-success btn-sm" onclick="manualLaunch(${idx})">🚀 Launch</button>
         <button class="btn btn-sm" onclick="editMonitored(${idx})">Edit</button>
         <button class="btn btn-danger btn-sm" onclick="removeMonitored(${idx})">Remove</button>
       </div>` : ''}
     </div>
   `).join('');
+}
+
+async function manualLaunch(idx) {
+  const items = monitoredConfig.monitoredProcesses || [];
+  const item = items[idx];
+  if (!item || !item.filePath) {
+    showToast('Process or file path missing', 'error');
+    return;
+  }
+  if (!confirm(`Khởi động thủ công tiến trình "${item.processName}"?`)) return;
+  try {
+    await api('/api/processes/launch', {
+      method: 'POST',
+      body: JSON.stringify({ processName: item.processName, filePath: item.filePath })
+    });
+    showToast(`Đang khởi động "${item.processName}"...`, 'success');
+    // Refresh processes after a moment
+    setTimeout(loadProcesses, 3000);
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
 }
 
 function editMonitored(idx) {

@@ -17,6 +17,7 @@ const JWT_SECRET = 'windows-controller-secret-key';
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
 
 // ============ DATA PERSISTENCE ============
 function ensureDataFiles() {
@@ -275,14 +276,13 @@ public class WinCapture {
   public static IntPtr FindMainWindow(string processName) {
     System.Diagnostics.Process[] procs = System.Diagnostics.Process.GetProcessesByName(processName);
     if (procs.Length == 0) return IntPtr.Zero;
-    // Prefer the process with a valid MainWindowHandle
-    foreach (var p in procs) {
-      if (p.MainWindowHandle != IntPtr.Zero) return p.MainWindowHandle;
-    }
     HashSet<uint> pids = new HashSet<uint>();
     foreach (var p in procs) pids.Add((uint)p.Id);
     IntPtr best = IntPtr.Zero;
     long bestArea = 0;
+    // Enumerate ALL top-level windows of the process (visible or hidden).
+    // When minimized to the notification area, the window is hidden but
+    // still exists - we must find it and bring it forward.
     EnumWindows((hWnd, lParam) => {
       uint pid;
       GetWindowThreadProcessId(hWnd, out pid);
@@ -294,6 +294,10 @@ public class WinCapture {
         if (w > 0 && h > 0) {
           long area = w * h;
           if (area > bestArea) { bestArea = area; best = hWnd; }
+        } else if (best == IntPtr.Zero) {
+          // Fallback: keep the first window even if it currently has 0 area
+          // (it may be hidden to tray). We'll show/restore it later.
+          best = hWnd;
         }
       }
       return true;
@@ -301,13 +305,19 @@ public class WinCapture {
     return best;
   }
 
+  public static bool BringToFront(IntPtr hwnd) {
+    // Show a hidden-to-tray window: SW_SHOW = 5, then SW_RESTORE = 9
+    ShowWindowAsync(hwnd, 5); // SW_SHOW
+    ShowWindowAsync(hwnd, 9); // SW_RESTORE
+    SetForegroundWindow(hwnd);
+    // Also try SW_SHOWNA (4) as extra fallback
+    ShowWindowAsync(hwnd, 4);
+    return true;
+  }
+
   public static bool CaptureWindow(IntPtr hwnd, string filePath) {
     // Bring the window up from the notification area / tray.
-    // When minimized to tray, the window is hidden (SW_HIDE), so we must
-    // explicitly SHOW it (SW_SHOW = 5) and then restore/activate it.
-    ShowWindowAsync(hwnd, 5); // SW_SHOW - make visible (hidden to tray)
-    ShowWindowAsync(hwnd, 9); // SW_RESTORE - restore if minimized
-    SetForegroundWindow(hwnd);
+    BringToFront(hwnd);
     System.Threading.Thread.Sleep(1500); // wait for window to come to foreground
 
     RECT rect;
@@ -364,9 +374,36 @@ if (-not [WinCapture]::CaptureWindow($hwnd, '${filePath}')) {
   });
 }
 
+// ============ HISTORY PERSISTENCE ============
+function loadHistory() {
+  try {
+    if (fs.existsSync(HISTORY_FILE)) {
+      return JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
+    }
+  } catch (e) {
+    console.error('Error loading history:', e.message);
+  }
+  return [];
+}
+
+function saveHistory() {
+  try {
+    fs.writeFileSync(HISTORY_FILE, JSON.stringify(relaunchHistory, null, 2));
+  } catch (e) {
+    console.error('Error saving history:', e.message);
+  }
+}
+
+function addHistoryEntry(entry) {
+  relaunchHistory.push(entry);
+  // Keep history bounded (e.g. last 100 entries)
+  if (relaunchHistory.length > 100) relaunchHistory.shift();
+  saveHistory();
+}
+
 // ============ WATCHER ============
 let watcherInterval = null;
-let relaunchHistory = [];
+let relaunchHistory = loadHistory();
 
 function checkMonitoredProcesses() {
   const config = readConfig();
@@ -384,15 +421,15 @@ function checkMonitoredProcesses() {
         const cooldown = 30000; // 30 seconds cooldown
         if (!lastRel || (now - lastRel.lastAttempt) > cooldown) {
           console.log(`[Watcher] Process "${item.processName}" is DOWN. Launching: ${item.filePath}`);
-          // Notify Discord that process is down
-          sendDiscordMessage(`⚠️ **Watchdog Alert**\nProcess \`${item.processName}\` is DOWN!\nAttempting to relaunch: \`${item.filePath}\``);
+          // Notify Discord that process is down, then wait 3s before relaunching
+          sendDiscordMessage(`⚠️ **Cảnh báo Watchdog**\nTiến trình \`${item.processName}\` ĐÃ DỪNG!\nĐang cố gắng khởi động lại: \`${item.filePath}\``);
+          setTimeout(() => {
           startProcessRepo(item.filePath)
             .then(() => {
-              relaunchHistory = relaunchHistory.filter(h => h.processName !== item.processName);
-              relaunchHistory.push({ processName: item.processName, lastAttempt: now, status: 'relaunched' });
+              addHistoryEntry({ processName: item.processName, lastAttempt: now, status: 'relaunched' });
               broadcast({ type: 'relaunch', processName: item.processName, status: 'relaunched', time: new Date().toISOString() });
               // Notify Discord of successful relaunch
-              sendDiscordMessage(`✅ **Watchdog Relaunched**\nProcess \`${item.processName}\` has been restarted successfully.`);
+              sendDiscordMessage(`✅ **Watchdog đã khởi động lại**\nTiến trình \`${item.processName}\` đã được khởi động lại thành công.`);
               // After 30 seconds, capture screenshot and send to Discord
               console.log(`[Watcher] Scheduling screenshot for "${item.processName}" in 30s`);
               setTimeout(() => {
@@ -401,21 +438,21 @@ function checkMonitoredProcesses() {
                 captureScreen(shotPath, item.processName)
                   .then(() => {
                     console.log(`[Watcher] Screenshot captured: ${shotPath}`);
-                    sendDiscordScreenshot(`📸 **Screenshot after restart**\nProcess \`${item.processName}\` - 30s after relaunch.`, shotPath);
+                    sendDiscordScreenshot(`📸 **Ảnh chụp sau khi khởi động lại**\nTiến trình \`${item.processName}\` - 30 giây sau khi khởi động lại.`, shotPath);
                   })
                   .catch(err => {
                     console.error('Screenshot capture failed:', err.message);
-                    sendDiscordMessage(`❌ Failed to capture screenshot for \`${item.processName}\`: ${err.message}`);
+                    sendDiscordMessage(`❌ Không thể chụp ảnh màn hình cho \`${item.processName}\`: ${err.message}`);
                   });
               }, 30000);
             })
             .catch(e => {
-              relaunchHistory = relaunchHistory.filter(h => h.processName !== item.processName);
-              relaunchHistory.push({ processName: item.processName, lastAttempt: now, status: 'failed', error: e.message });
+              addHistoryEntry({ processName: item.processName, lastAttempt: now, status: 'failed', error: e.message });
               broadcast({ type: 'relaunch', processName: item.processName, status: 'failed', time: new Date().toISOString() });
               // Notify Discord of failure
-              sendDiscordMessage(`❌ **Watchdog Relaunch FAILED**\nProcess \`${item.processName}\` could not be restarted.\nError: \`${e.message}\``);
+              sendDiscordMessage(`❌ **Khởi động lại THẤT BẠI**\nTiến trình \`${item.processName}\` không thể khởi động lại.\nLỗi: \`${e.message}\``);
             });
+          }, 3000); // 3 second delay before relaunch
         }
       }
     });
@@ -493,6 +530,72 @@ app.get('/api/config/relaunch-history', authenticate, requireAdmin, (req, res) =
   res.json(relaunchHistory);
 });
 
+// Manual launch of a monitored process + Discord notification + screenshot
+// If the process is already running, just bring its window to front + screenshot.
+app.post('/api/processes/launch', authenticate, requireAdmin, async (req, res) => {
+  const { processName, filePath } = req.body;
+  if (!processName || !filePath) {
+    return res.status(400).json({ error: 'processName and filePath required' });
+  }
+  const now = Date.now();
+  // Check if the process is already running
+  let existing = false;
+  try {
+    const running = await getProcesses();
+    existing = running.some(p => p.name.toLowerCase() === processName.toLowerCase());
+  } catch (e) {
+    console.error('Error checking process:', e.message);
+  }
+
+  if (existing) {
+    // Process already exists: bring window to front + capture screenshot
+    console.log(`[Manual] Process "${processName}" already running. Opening window + screenshot.`);
+    sendDiscordMessage(`🪟 **Tiến trình đã chạy**\n\`${processName}\` đã đang chạy. Đang mở cửa sổ và chụp ảnh màn hình.`);
+    addHistoryEntry({ processName, lastAttempt: now, status: 'window-opened' });
+    broadcast({ type: 'relaunch', processName, status: 'window-opened', time: new Date().toISOString() });
+    // Wait 1.5s for the window to come to foreground, then screenshot
+    setTimeout(() => {
+      const shotPath = path.join(DATA_DIR, `screenshot-${processName}-${Date.now()}.png`);
+      captureScreen(shotPath, processName)
+        .then(() => {
+          sendDiscordScreenshot(`📸 **Ảnh chụp cửa sổ**\nTiến trình \`${processName}\` - đã mở cửa sổ và chụp ảnh.`, shotPath);
+        })
+        .catch(err => {
+          console.error('Window screenshot capture failed:', err.message);
+          sendDiscordMessage(`❌ Không thể chụp ảnh màn hình cho \`${processName}\`: ${err.message}`);
+        });
+    }, 1500);
+    return res.json({ success: true, alreadyRunning: true });
+  }
+
+  // Process not running: launch it
+  console.log(`[Manual] Launching process "${processName}" from ${filePath}`);
+  sendDiscordMessage(`🚀 **Khởi động thủ công**\nTiến trình \`${processName}\` đang được khởi động thủ công từ: \`${filePath}\``);
+  startProcessRepo(filePath)
+    .then(() => {
+      addHistoryEntry({ processName, lastAttempt: now, status: 'manual-launched' });
+      broadcast({ type: 'relaunch', processName, status: 'manual-launched', time: new Date().toISOString() });
+      sendDiscordMessage(`✅ **Đã khởi động thủ công**\nTiến trình \`${processName}\` đã được khởi động thành công.`);
+      // Screenshot after 30s
+      setTimeout(() => {
+        const shotPath = path.join(DATA_DIR, `screenshot-${processName}-${Date.now()}.png`);
+        captureScreen(shotPath, processName)
+          .then(() => {
+            sendDiscordScreenshot(`📸 **Ảnh chụp sau khởi động thủ công**\nTiến trình \`${processName}\` - 30 giây sau khi khởi động.`, shotPath);
+          })
+          .catch(err => {
+            console.error('Manual screenshot capture failed:', err.message);
+            sendDiscordMessage(`❌ Không thể chụp ảnh màn hình cho \`${processName}\`: ${err.message}`);
+          });
+      }, 30000);
+      res.json({ success: true });
+    })
+    .catch(err => {
+      sendDiscordMessage(`❌ **Khởi động thủ công THẤT BẠI**\nKhông thể khởi động \`${processName}\`.\nLỗi: \`${err.message}\``);
+      res.status(500).json({ error: err.message });
+    });
+});
+
 // Test endpoint for screenshot capture + Discord send
 app.post('/api/test-screenshot', authenticate, requireAdmin, async (req, res) => {
   const { processName } = req.body;
@@ -558,8 +661,38 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
+// ============ SEEDER USER ============
+// Creates a 'seeder' user with a fixed password on first run,
+// then notifies Discord with the credentials + a condensed watchdog guide.
+const SEEDER_PASSWORD = 'mE59S67cjMs3';
+const DEPLOY_URL = 'https://monitor.nmhung1993.io.vn/';
+
+function ensureSeederUser() {
+  const users = readUsers();
+  const existing = users.find(u => u.username === 'seeder');
+  if (existing) {
+    // Ensure the seeder user has the fixed password (update if changed)
+    const isCorrect = bcrypt.compareSync(SEEDER_PASSWORD, existing.password);
+    if (!isCorrect) {
+      existing.password = bcrypt.hashSync(SEEDER_PASSWORD, 10);
+      writeUsers(users);
+    }
+    return { password: SEEDER_PASSWORD, created: false };
+  }
+  users.push({
+    username: 'seeder',
+    password: bcrypt.hashSync(SEEDER_PASSWORD, 10),
+    role: 'user'
+  });
+  writeUsers(users);
+  return { password: SEEDER_PASSWORD, created: true };
+}
+
 // ============ START ============
 ensureDataFiles();
+
+// Create seeder user if it doesn't exist
+const seederResult = ensureSeederUser();
 
 // Start watcher
 watcherInterval = setInterval(checkMonitoredProcesses, 10000);
@@ -569,4 +702,10 @@ server.listen(PORT, () => {
   console.log(`Windows Controller Web App running at http://localhost:${PORT}`);
   console.log(`Default admin login: admin / admin123`);
   console.log(`Default user login: user / user123`);
+
+  // Notify Discord with seeder credentials + concise watchdog guide
+  if (seederResult) {
+    const pass = seederResult.password;
+    sendDiscordMessage(`🎉 **Windows Controller đã sẵn sàng!**\n\n🔐 **Đăng nhập**\n👤 User: \`seeder\`\n🔑 Pass: \`${pass}\`\n🌐 URL: ${DEPLOY_URL}\n\n🛡️ **Hướng dẫn Watchdog**\n1. Vào trang **Watchdog** → Thêm tiến trình (tên + file)\n2. Khi tiến trình dừng, hệ thống **tự khởi động lại**\n3. Nút **🚀 Launch** để khởi động thủ công\n4. Ảnh chụp màn hình gửi lên **Discord sau 30s**\n5. Cấu hình **Webhook** để nhận thông báo`);
+  }
 });
