@@ -93,7 +93,13 @@ function updateThemeControl() {
   const label = $('theme-label');
   if (!label) return;
   label.textContent = t(state.theme === 'dark' ? 'theme.switchToLight' : 'theme.switchToDark');
-  $('theme-toggle').title = label.textContent;
+  const toggle = $('theme-toggle');
+  toggle.title = label.textContent;
+  toggle.setAttribute('aria-label', label.textContent);
+  toggle.setAttribute('aria-pressed', String(state.theme === 'dark'));
+  toggle.querySelector('use')?.setAttribute('href', state.theme === 'dark' ? '#icon-sun' : '#icon-moon');
+  const themeColor = $('theme-color');
+  if (themeColor) themeColor.content = state.theme === 'dark' ? '#0a1214' : '#f3f6f2';
 }
 
 function translateError(error) {
