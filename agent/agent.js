@@ -13,13 +13,13 @@ const {
   getMachineFingerprint
 } = require('./windows');
 
-const VERSION = '2.1.3';
+const VERSION = '2.1.4';
 const DEFAULT_STATE_DIR = path.join(process.env.PROGRAMDATA || path.join(os.homedir(), 'AppData', 'Local'), 'WindowsController', 'agent');
 const CONFIG_FILE = getArgument('--config') || process.env.WC_AGENT_CONFIG || path.join(DEFAULT_STATE_DIR, 'config.json');
 const MAX_TELEMETRY_BUFFER = 300;
 const MAX_EVENT_BUFFER = 1000;
 const MAX_COMPLETED_COMMANDS = 500;
-const CONNECTION_ATTEMPT_TIMEOUT_MS = 10_000;
+const CONNECTION_ATTEMPT_TIMEOUT_MS = Number(process.env.WC_CONNECTION_ATTEMPT_TIMEOUT_MS || 10_000);
 
 let config;
 let state;
@@ -155,24 +155,28 @@ async function connect() {
   connectionStartedAt = Date.now();
   const attemptId = ++connectionAttemptId;
   let socket;
+  console.log(`Agent connecting to ${config.serverUrl}`);
+  connectionAttemptTimer = setTimeout(() => {
+    if (attemptId !== connectionAttemptId) return;
+    console.warn('Agent connection attempt timed out; forcing reconnect.');
+    connectionAttemptTimer = null;
+    connectionAttemptId += 1;
+    const staleSocket = ws;
+    ws = null;
+    connecting = false;
+    approved = false;
+    try { staleSocket?.terminate(); } catch {}
+    scheduleReconnect();
+  }, CONNECTION_ATTEMPT_TIMEOUT_MS);
   try {
     if (!cachedFingerprint) cachedFingerprint = await getMachineFingerprint();
     if (attemptId !== connectionAttemptId) return;
     socket = new WebSocket(wsUrl(config.serverUrl), { handshakeTimeout: 15_000 });
     ws = socket;
-    connectionAttemptTimer = setTimeout(() => {
-      if (attemptId !== connectionAttemptId || ws !== socket) return;
-      console.warn('Agent connection attempt timed out; forcing reconnect.');
-      connectionAttemptTimer = null;
-      connectionAttemptId += 1;
-      ws = null;
-      connecting = false;
-      approved = false;
-      try { socket.terminate(); } catch {}
-      scheduleReconnect();
-    }, CONNECTION_ATTEMPT_TIMEOUT_MS);
   } catch (error) {
     if (attemptId !== connectionAttemptId) return;
+    if (connectionAttemptTimer) clearTimeout(connectionAttemptTimer);
+    connectionAttemptTimer = null;
     connecting = false;
     console.error('Agent connection setup failed:', error.message);
     scheduleReconnect();
@@ -184,10 +188,9 @@ async function connect() {
       try { socket.terminate(); } catch {}
       return;
     }
-    if (connectionAttemptTimer) clearTimeout(connectionAttemptTimer);
-    connectionAttemptTimer = null;
     connecting = false;
     lastSocketActivityAt = Date.now();
+    console.log('Agent WebSocket opened; sending hello');
     sendRaw(createEnvelope('agent.hello', {
       installId: state.installId,
       token,
@@ -208,12 +211,16 @@ async function connect() {
       return;
     }
     if (message.type === 'server.pending') {
+      if (connectionAttemptTimer) clearTimeout(connectionAttemptTimer);
+      connectionAttemptTimer = null;
       reconnectDelay = 1000;
       approved = false;
       state.agentId = message.payload?.agentId || state.agentId;
       saveState();
       console.log(`Agent pending approval: ${state.agentId}`);
     } else if (message.type === 'server.approved') {
+      if (connectionAttemptTimer) clearTimeout(connectionAttemptTimer);
+      connectionAttemptTimer = null;
       reconnectDelay = 1000;
       approved = true;
       state.agentId = message.payload?.agentId || state.agentId;

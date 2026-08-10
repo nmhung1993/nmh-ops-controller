@@ -92,6 +92,58 @@ test('Home Assistant connector escapes a WebSocket attempt stuck in CONNECTING',
   }
 });
 
+test('Windows Agent reconnects after its retry attempt is stuck in CONNECTING', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wc-win-reconnect-'));
+  const configFile = path.join(tempDir, 'config.json');
+  let server;
+  let blackhole;
+  let child;
+  let helloCount = 0;
+  let output = '';
+  const blackholeSockets = new Set();
+  try {
+    server = await listenWebSocket(0, () => { helloCount += 1; });
+    const port = server.address().port;
+    fs.writeFileSync(configFile, JSON.stringify({ serverUrl: `http://127.0.0.1:${port}`, stateDir: tempDir }));
+    child = spawn(process.execPath, [path.join(root, 'agent', 'agent.js'), '--config', configFile], {
+      env: { ...process.env, WC_CONNECTION_ATTEMPT_TIMEOUT_MS: '500' }, stdio: ['ignore', 'pipe', 'pipe']
+    });
+    child.stdout.on('data', chunk => { output += chunk; });
+    child.stderr.on('data', chunk => { output += chunk; });
+    await waitFor(() => helloCount === 1);
+
+    for (const client of server.clients) client.close(1001, 'server shutdown');
+    await new Promise(resolve => server.close(resolve));
+    server = null;
+    blackhole = net.createServer(connection => blackholeSockets.add(connection));
+    await new Promise((resolve, reject) => {
+      blackhole.once('error', reject);
+      blackhole.listen(port, '127.0.0.1', resolve);
+    });
+    await waitFor(() => output.includes('connection attempt timed out'));
+    for (const connection of blackholeSockets) connection.destroy();
+    await new Promise(resolve => blackhole.close(resolve));
+    blackhole = null;
+
+    server = await listenWebSocket(port, () => { helloCount += 1; });
+    await waitFor(() => helloCount >= 2);
+    assert.match(output, /Agent reconnect scheduled in 1000ms/);
+    assert.match(output, /Agent connecting to/);
+    assert.match(output, /Agent WebSocket opened; sending hello/);
+  } finally {
+    if (child) child.kill();
+    if (server) {
+      for (const client of server.clients) client.terminate();
+      await new Promise(resolve => server.close(resolve));
+    }
+    if (blackhole) {
+      for (const connection of blackholeSockets) connection.destroy();
+      await new Promise(resolve => blackhole.close(resolve));
+    }
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test('desktop helper is launched through a hidden VBS host', () => {
   const installer = fs.readFileSync(path.join(root, 'agent', 'install-agent.ps1'), 'utf8');
   const launcher = fs.readFileSync(path.join(root, 'agent', 'start-helper-hidden.vbs'), 'utf8');
@@ -119,6 +171,8 @@ test('agent reconnects after failed setup and stale sockets without re-enrollmen
   assert.match(agent, /socket\.terminate\(\)/);
   assert.match(agent, /setInterval\(maintainConnection, 5_000\)/);
   assert.match(agent, /Agent \$\{VERSION\} starting/);
+  assert.match(agent, /Agent connecting to \$\{config\.serverUrl\}/);
+  assert.match(agent, /connectionAttemptTimer = setTimeout/);
   assert.match(installer, /Get-FileHash -LiteralPath \$agentSource/);
   assert.match(installer, /Installed Agent runtime does not match/);
   assert.match(installer, /Agent service is running but the Node\.js runtime did not stay alive/);
