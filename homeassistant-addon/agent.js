@@ -40,6 +40,7 @@ function scheduleReconnect() {
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
   const delay = reconnectDelay; reconnectDelay = Math.min(reconnectDelay * 2, 30_000);
   reconnectTimerAt = Date.now();
+  console.log(`Home Assistant connector reconnect scheduled in ${delay}ms`);
   reconnectTimer = setTimeout(() => { reconnectTimer = null; reconnectTimerAt = 0; connect(); }, delay);
 }
 function fingerprint() {
@@ -66,7 +67,7 @@ function connect() {
     console.error('Home Assistant connector error:', error.message);
     if (socket === current && current.readyState !== WebSocket.CLOSED) { try { current.terminate(); } catch {} }
   });
-  current.on('close', (code, reason) => { if (socket !== current) return; socket = null; approved = false; console.log(`Home Assistant connector disconnected (${code}): ${reason.toString()}`); scheduleReconnect(); });
+  current.on('close', (code, reason) => { if (socket !== current) return; socket = null; approved = false; if (code === 1001 && reason.toString().toLowerCase().includes('server shutdown')) reconnectDelay = 1000; console.log(`Home Assistant connector disconnected (${code}): ${reason.toString()}`); scheduleReconnect(); });
 }
 function maintainConnection() {
   if (!socket || socket.readyState === WebSocket.CLOSED) return scheduleReconnect();
@@ -174,6 +175,7 @@ async function telemetryTick() {
 function initialize() {
   config = readJson(CONFIG_FILE, null);
   if (!config?.central_server_url || !config?.home_assistant_url) throw new Error(`Invalid add-on options in ${CONFIG_FILE}`);
+  console.log(`Home Assistant connector ${VERSION} starting; server=${config.central_server_url}`);
   state = readJson(STATE_FILE, null) || { installId: crypto.randomUUID(), agentId: null, token: crypto.randomBytes(32).toString('base64url'), hostname: `homeassistant-${os.hostname()}`, sequence: 0, telemetryBuffer: [] };
   state.telemetryBuffer ||= []; state.sequence ||= 0; saveState();
   connect(); telemetryTick(); setInterval(telemetryTick, Math.max(2, Number(config.telemetry_interval_seconds || 5)) * 1000); setInterval(maintainConnection, 5000);

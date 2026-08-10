@@ -229,6 +229,7 @@ async function connect() {
     ws = null;
     connecting = false;
     approved = false;
+    if (code === 1001 && reason.toString().toLowerCase().includes('server shutdown')) reconnectDelay = 1000;
     console.log(`Agent disconnected (${code}): ${reason.toString()}`);
     scheduleReconnect();
   });
@@ -526,6 +527,7 @@ function initialize() {
     process.exit(1);
   }
   config.stateDir = config.stateDir || path.dirname(CONFIG_FILE);
+  console.log(`Windows Controller Agent ${VERSION} starting; server=${config.serverUrl}`);
   fs.mkdirSync(config.stateDir, { recursive: true });
   const stateFile = path.join(config.stateDir, 'state.json');
   state = readJson(stateFile, {

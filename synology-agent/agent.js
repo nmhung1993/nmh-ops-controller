@@ -82,6 +82,7 @@ function scheduleReconnect() {
   const delay = reconnectDelay;
   reconnectDelay = Math.min(reconnectDelay * 2, 30_000);
   reconnectTimerAt = Date.now();
+  console.log(`Synology Agent reconnect scheduled in ${delay}ms`);
   reconnectTimer = setTimeout(() => { reconnectTimer = null; reconnectTimerAt = 0; connect(); }, delay);
 }
 function connect() {
@@ -116,6 +117,7 @@ function connect() {
   current.on('close', (code, reason) => {
     if (socket !== current) return;
     socket = null; approved = false;
+    if (code === 1001 && reason.toString().toLowerCase().includes('server shutdown')) reconnectDelay = 1000;
     console.log(`Synology Agent disconnected (${code}): ${reason.toString()}`);
     scheduleReconnect();
   });
@@ -256,6 +258,7 @@ function initialize() {
   config = readJson(CONFIG_FILE, null);
   if (!config?.serverUrl) throw new Error(`Missing serverUrl in ${CONFIG_FILE}`);
   config.stateDir ||= path.join(path.dirname(CONFIG_FILE), 'state');
+  console.log(`Synology Agent ${VERSION} starting; server=${config.serverUrl}`);
   state = readJson(path.join(config.stateDir, 'state.json'), null) || { installId: crypto.randomUUID(), agentId: null, token: crypto.randomBytes(32).toString('base64url'), sequence: 0, telemetryBuffer: [], eventBuffer: [], resultBuffer: [], completedCommands: {}, watchdog: { version: 0, rules: [] } };
   state.telemetryBuffer ||= []; state.eventBuffer ||= []; state.resultBuffer ||= []; state.completedCommands ||= {}; state.watchdog ||= { version: 0, rules: [] }; state.sequence ||= 0; saveState();
   connect(); telemetryTick(); setInterval(telemetryTick, 2000); setInterval(watchdogTick, 10_000); setInterval(maintainConnection, 5000);

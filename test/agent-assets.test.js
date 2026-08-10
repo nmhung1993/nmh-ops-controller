@@ -16,6 +16,7 @@ test('desktop helper is launched through a hidden VBS host', () => {
 
 test('agent reconnects after failed setup and stale sockets without re-enrollment', () => {
   const agent = fs.readFileSync(path.join(root, 'agent', 'agent.js'), 'utf8');
+  const installer = fs.readFileSync(path.join(root, 'agent', 'install-agent.ps1'), 'utf8');
   assert.match(agent, /function scheduleReconnect\(/);
   assert.match(agent, /getMachineFingerprint\(\)/);
   assert.match(agent, /scheduleReconnect\(\);/);
@@ -31,6 +32,10 @@ test('agent reconnects after failed setup and stale sockets without re-enrollmen
   assert.match(agent, /reconnect timer was stale; replacing it/);
   assert.match(agent, /socket\.terminate\(\)/);
   assert.match(agent, /setInterval\(maintainConnection, 5_000\)/);
+  assert.match(agent, /Agent \$\{VERSION\} starting/);
+  assert.match(installer, /Get-FileHash -LiteralPath \$agentSource/);
+  assert.match(installer, /Installed Agent runtime does not match/);
+  assert.match(installer, /Agent service is running but the Node\.js runtime did not stay alive/);
 });
 
 test('server deployment waits for HTTP and refreshes the local agent connection', () => {

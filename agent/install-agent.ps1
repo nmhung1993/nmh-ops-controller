@@ -27,6 +27,11 @@ $helperConfig = Join-Path $helperDir 'helper.json'
 $pipeName = '\\.\pipe\windows-controller-desktop'
 $helperTaskName = 'Windows Controller Desktop Helper'
 $helperScript = Join-Path $runtimeDir 'desktop-helper.js'
+$agentSource = Join-Path $sourceDir 'agent.js'
+$agentRuntime = Join-Path $runtimeDir 'agent.js'
+$versionMatch = [regex]::Match((Get-Content -LiteralPath $agentSource -Raw), "const VERSION = '([^']+)'" )
+if (-not $versionMatch.Success) { throw 'Could not determine Agent version from agent.js.' }
+$agentVersion = $versionMatch.Groups[1].Value
 
 function Write-Utf8NoBom([string]$Path, [string]$Content) {
   $encoding = New-Object System.Text.UTF8Encoding($false)
@@ -125,11 +130,14 @@ foreach ($helperProcess in $helperProcesses) {
 if ($helperProcesses) { Start-Sleep -Milliseconds 500 }
 New-Item -ItemType Directory -Force -Path $runtimeDir, $stateDir, $helperDir, $captureDir | Out-Null
 Remove-ExistingService -Name $serviceName -Executable $serviceExe
-Copy-Item -LiteralPath (Join-Path $sourceDir 'agent.js') -Destination $runtimeDir -Force
+Copy-Item -LiteralPath $agentSource -Destination $runtimeDir -Force
 Copy-Item -LiteralPath (Join-Path $sourceDir 'windows.js') -Destination $runtimeDir -Force
 Copy-Item -LiteralPath (Join-Path $sourceDir 'desktop-helper.js') -Destination $runtimeDir -Force
 Copy-Item -LiteralPath (Join-Path $sourceDir 'start-helper-hidden.vbs') -Destination $runtimeDir -Force
 Copy-Item -LiteralPath (Join-Path $sourceDir 'package.json') -Destination $runtimeDir -Force
+if ((Get-FileHash -LiteralPath $agentSource).Hash -ne (Get-FileHash -LiteralPath $agentRuntime).Hash) {
+  throw 'Installed Agent runtime does not match the source agent.js.'
+}
 
 Push-Location $runtimeDir
 try {
@@ -195,6 +203,17 @@ Invoke-WinSWChecked -Executable $serviceExe -Operation 'start'
 if (-not (Wait-ServiceStatus -Name $serviceName -Status 'Running')) {
   throw "Service $serviceName did not reach the Running state. Check the WinSW logs in $InstallRoot."
 }
+$processDeadline = [DateTime]::UtcNow.AddSeconds(30)
+do {
+  $agentProcess = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($agentRuntime, [StringComparison]::OrdinalIgnoreCase) -ge 0 } |
+    Select-Object -First 1
+  if ($agentProcess) { break }
+  Start-Sleep -Milliseconds 500
+} while ([DateTime]::UtcNow -lt $processDeadline)
+if (-not $agentProcess) {
+  throw "Agent service is running but the Node.js runtime did not stay alive. Check $InstallRoot\WindowsControllerAgent.err.log."
+}
 
 $helperVbs = Join-Path $runtimeDir 'start-helper-hidden.vbs'
 $interactiveUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name
@@ -229,6 +248,7 @@ if (-not $SkipHardwareMonitor) {
 $fingerprint = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Cryptography').MachineGuid
 Write-Host ''
 Write-Host 'Agent installed and started.' -ForegroundColor Green
+Write-Host "Version:     $agentVersion"
 Write-Host "Server:      $ServerUrl"
 Write-Host "Hostname:    $env:COMPUTERNAME"
 Write-Host "Fingerprint: $fingerprint"
