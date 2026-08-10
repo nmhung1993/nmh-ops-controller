@@ -114,20 +114,40 @@
       </section>
 
       <section class="page" id="page-dashboard" hidden>
-        <div class="context-strip"><div><span class="signal-dot"></span><strong id="dashboard-host-name">--</strong></div><span id="host-updated-at" data-i18n="dashboard.waiting">Đang chờ dữ liệu từ Agent</span></div>
+        <div class="dashboard-hero">
+          <div class="hero-identity">
+            <span class="hero-glyph" id="hero-glyph">--</span>
+            <div class="hero-identity-meta">
+              <p class="eyebrow">CONTROLLED HOST / LIVE</p>
+              <h2 id="dashboard-host-name">--</h2>
+              <p class="hero-hostname" id="hero-hostname">--</p>
+            </div>
+          </div>
+          <div class="hero-stats">
+            <div class="hero-stat cpu"><span data-i18n="fleet.cpu">BỘ XỬ LÝ</span><strong id="hero-cpu">--</strong><i class="hero-trend" id="hero-cpu-trend"></i></div>
+            <div class="hero-stat memory"><span>RAM</span><strong id="hero-ram">--</strong><i class="hero-trend" id="hero-ram-trend"></i></div>
+            <div class="hero-stat uptime"><span data-i18n="dashboard.uptime">THỜI GIAN HOẠT ĐỘNG</span><strong id="hero-uptime">--</strong></div>
+            <div class="hero-stat temperature"><span data-i18n="dashboard.temperature">NHIỆT ĐỘ</span><strong id="hero-temp">--</strong></div>
+            <div class="hero-stat power"><span data-i18n="dashboard.power">CÔNG SUẤT ĐÃ ĐO</span><strong id="hero-power">--</strong></div>
+          </div>
+          <div class="hero-status">
+            <span class="status-pill" id="host-status-badge" data-i18n="common.offline">Mất kết nối</span>
+            <span class="hero-updated" id="host-updated-at" data-i18n="dashboard.waiting">Đang chờ dữ liệu từ Agent</span>
+          </div>
+        </div>
         <div class="metric-grid">
-          <article class="metric cpu"><div class="metric-icon"><svg class="icon"><use href="#icon-cpu"></use></svg></div><span data-i18n="dashboard.cpuLoad">MỨC SỬ DỤNG CPU</span><strong id="cpu-value">--</strong><small id="cpu-model" data-i18n="dashboard.waiting">Đang chờ dữ liệu từ Agent</small><div class="metric-track"><i id="cpu-meter"></i></div></article>
-          <article class="metric memory"><div class="metric-icon"><svg class="icon"><use href="#icon-memory"></use></svg></div><span data-i18n="dashboard.memory">BỘ NHỚ RAM</span><strong id="memory-value">--</strong><small id="memory-detail" data-i18n="dashboard.waiting">Đang chờ dữ liệu từ Agent</small><div class="metric-track"><i id="memory-meter"></i></div></article>
+          <article class="metric cpu"><div class="metric-icon"><svg class="icon"><use href="#icon-cpu"></use></svg></div><span data-i18n="dashboard.cpuLoad">MỨC SỬ DỤNG CPU</span><strong id="cpu-value">--</strong><small id="cpu-model" data-i18n="dashboard.waiting">Đang chờ dữ liệu từ Agent</small><div class="metric-track"><i id="cpu-meter"></i></div><svg class="sparkline" id="cpu-spark" viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true"></svg></article>
+          <article class="metric memory"><div class="metric-icon"><svg class="icon"><use href="#icon-memory"></use></svg></div><span data-i18n="dashboard.memory">BỘ NHỚ RAM</span><strong id="memory-value">--</strong><small id="memory-detail" data-i18n="dashboard.waiting">Đang chờ dữ liệu từ Agent</small><div class="metric-track"><i id="memory-meter"></i></div><svg class="sparkline memory" id="memory-spark" viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true"></svg></article>
           <article class="metric uptime"><div class="metric-icon"><svg class="icon"><use href="#icon-clock"></use></svg></div><span data-i18n="dashboard.uptime">THỜI GIAN HOẠT ĐỘNG</span><strong id="uptime-value">--</strong><small id="os-value" data-i18n="dashboard.waiting">Đang chờ dữ liệu từ Agent</small></article>
           <article class="metric network"><div class="metric-icon"><svg class="icon"><use href="#icon-network"></use></svg></div><span data-i18n="dashboard.network">LƯU LƯỢNG MẠNG</span><strong id="network-value">--</strong><small id="network-detail" data-i18n="dashboard.sendReceive">Tốc độ gửi / nhận</small></article>
           <article class="metric temperature"><div class="metric-icon"><svg class="icon"><use href="#icon-temperature"></use></svg></div><span data-i18n="dashboard.temperature">NHIỆT ĐỘ</span><strong id="temperature-value">--</strong><small id="temperature-detail" data-i18n="dashboard.sensorUnavailable">Không có cảm biến tương thích</small></article>
           <article class="metric power"><div class="metric-icon"><svg class="icon"><use href="#icon-power"></use></svg></div><span data-i18n="dashboard.power">CÔNG SUẤT ĐÃ ĐO</span><strong id="power-value">--</strong><small id="power-detail" data-i18n="dashboard.sensorUnavailable">Không có cảm biến tương thích</small></article>
         </div>
         <div class="dashboard-grid">
-          <article class="panel chart-panel"><div class="panel-title"><div><span class="panel-label">CPU / 60M</span><h3 data-i18n="dashboard.cpuTrend">Biến động CPU</h3></div><span data-i18n="dashboard.last60">Trong 60 phút gần nhất</span></div><svg class="line-chart" id="cpu-chart" viewBox="0 0 800 240" preserveAspectRatio="none" role="img" aria-label="CPU history"></svg></article>
-          <article class="panel chart-panel"><div class="panel-title"><div><span class="panel-label">RAM / 60M</span><h3 data-i18n="dashboard.memoryTrend">Biến động bộ nhớ</h3></div><span data-i18n="dashboard.last60">Trong 60 phút gần nhất</span></div><svg class="line-chart memory-line" id="memory-chart" viewBox="0 0 800 240" preserveAspectRatio="none" role="img" aria-label="Memory history"></svg></article>
+          <article class="panel chart-panel"><div class="panel-title"><div><span class="panel-label">CPU / 60M</span><h3 data-i18n="dashboard.cpuTrend">Biến động CPU</h3></div><div class="chart-meta"><span class="chart-chip" id="cpu-chart-max">--</span><span data-i18n="dashboard.last60">Trong 60 phút gần nhất</span></div></div><div class="chart-zone"><svg class="line-chart" id="cpu-chart" viewBox="0 0 800 240" preserveAspectRatio="none" role="img" aria-label="CPU history"></svg><div class="chart-tooltip" id="cpu-tooltip" hidden></div></div></article>
+          <article class="panel chart-panel"><div class="panel-title"><div><span class="panel-label">RAM / 60M</span><h3 data-i18n="dashboard.memoryTrend">Biến động bộ nhớ</h3></div><div class="chart-meta"><span class="chart-chip memory-chip" id="memory-chart-max">--</span><span data-i18n="dashboard.last60">Trong 60 phút gần nhất</span></div></div><div class="chart-zone"><svg class="line-chart memory-line" id="memory-chart" viewBox="0 0 800 240" preserveAspectRatio="none" role="img" aria-label="Memory history"></svg><div class="chart-tooltip" id="memory-tooltip" hidden></div></div></article>
           <article class="panel disk-panel"><div class="panel-title"><div><span class="panel-label">STORAGE</span><h3 data-i18n="dashboard.storage">Dung lượng lưu trữ</h3></div><span data-i18n="dashboard.fixedDisks">Các ổ đĩa cố định trên máy</span></div><div id="disk-list"></div></article>
-          <article class="panel machine-panel"><div class="panel-title"><div><span class="panel-label">IDENTITY</span><h3 data-i18n="dashboard.identity">Thông tin nhận dạng máy</h3></div><span class="status-pill" id="host-status-badge" data-i18n="common.offline">Mất kết nối</span></div><dl id="machine-details"></dl></article>
+          <article class="panel machine-panel"><div class="panel-title"><div><span class="panel-label">IDENTITY</span><h3 data-i18n="dashboard.identity">Thông tin nhận dạng máy</h3></div></div><dl id="machine-details"></dl></article>
           <article class="panel hardware-panel span-two"><div class="panel-title"><div><span class="panel-label">HARDWARE SENSORS</span><h3 data-i18n="dashboard.hardwareSensors">Nhiệt độ và công suất linh kiện</h3></div><span id="hardware-coverage" data-i18n="dashboard.hardwarePartial">Tổng công suất chỉ gồm các linh kiện đọc được</span></div><div class="sensor-grid" id="hardware-sensor-list"></div></article>
         </div>
       </section>

@@ -411,9 +411,36 @@ function renderFleet() {
   document.querySelectorAll('.revoke-host').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); revokeHost(button.dataset.host); }));
 }
 
+function setMetricState(element, value) {
+  element.classList.remove('warning', 'danger');
+  if (value >= 95) element.classList.add('danger');
+  else if (value >= 85) element.classList.add('warning');
+}
+
+function drawSparkline(svg, values, memory = false) {
+  if (!values.length) return svg.innerHTML = '';
+  const width = 100;
+  const height = 32;
+  const points = values.map((value, index) => `${(index / Math.max(values.length - 1, 1)) * width},${height - (Math.max(0, Math.min(100, value)) / 100) * height}`).join(' ');
+  svg.innerHTML = `<path class="spark-area" d="M0,${height} L${points.split(' ').join(' L')} L${width},${height} Z"></path><polyline points="${points}"></polyline>`;
+}
+
+function updateHero(host, telemetry, hardware) {
+  if ($('hero-glyph')) $('hero-glyph').textContent = initials(host?.displayName || '--').slice(0, 2);
+  if ($('hero-hostname')) $('hero-hostname').textContent = host?.hostname || '--';
+  if ($('hero-cpu')) $('hero-cpu').textContent = telemetry?.cpu ? `${telemetry.cpu.usage}%` : '--';
+  if ($('hero-ram')) $('hero-ram').textContent = telemetry?.memory ? `${telemetry.memory.percent}%` : '--';
+  if ($('hero-uptime')) $('hero-uptime').textContent = telemetry?.uptime ? formatUptime(telemetry.uptime) : '--';
+  const hottest = Array.isArray(hardware?.temperatures) ? hardware.temperatures.reduce((skip, sensor) => !skip || Number(sensor.celsius) > Number(skip.celsius) ? sensor : skip, null) : null;
+  if ($('hero-temp')) $('hero-temp').textContent = hottest ? formatTemperature(hottest.celsius) : '--';
+  if ($('hero-power')) $('hero-power').textContent = hardware?.power?.totalWatts !== null && hardware?.power?.totalWatts !== undefined ? formatWatts(hardware.power.totalWatts) : '--';
+}
+
 function renderDashboard() {
   const host = selectedHost();
   const telemetry = host?.telemetry;
+  const hardware = telemetry?.hardware || null;
+  updateHero(host, telemetry, hardware);
   if (!host || !telemetry) {
     for (const id of ['cpu-value', 'memory-value', 'uptime-value', 'network-value', 'temperature-value', 'power-value']) $(id).textContent = '--';
     $('cpu-model').textContent = t('dashboard.waiting');
@@ -442,18 +469,29 @@ function renderDashboard() {
   $('os-value').textContent = telemetry.os;
   $('network-value').textContent = `${formatBytes(telemetry.network.recvPerSecond)}/s`;
   $('network-detail').textContent = t('dashboard.sentRate', { rate: formatBytes(telemetry.network.sentPerSecond) });
-  renderHardware(telemetry.hardware || null);
+  renderHardware(hardware);
   $('host-status-badge').textContent = host.online ? t('common.online') : t('common.offline');
   $('host-status-badge').classList.toggle('online', host.online);
   if ($('dashboard-host-name')) $('dashboard-host-name').textContent = host.displayName;
   if ($('host-updated-at')) $('host-updated-at').textContent = t('dashboard.updatedAt', { time: formatDate(host.lastSeen) });
   if ($('cpu-meter')) $('cpu-meter').style.width = `${clampPercent(telemetry.cpu.usage)}%`;
   if ($('memory-meter')) $('memory-meter').style.width = `${clampPercent(telemetry.memory.percent)}%`;
+  setMetricState($('cpu-value').closest('.metric'), Number(telemetry.cpu.usage));
+  setMetricState($('memory-value').closest('.metric'), Number(telemetry.memory.percent));
   $('machine-details').innerHTML = `<dt>${escapeHtml(t('machine.displayName'))}</dt><dd>${escapeHtml(host.displayName)}</dd><dt>${escapeHtml(t('machine.hostname'))}</dt><dd>${escapeHtml(host.hostname)}</dd><dt>${escapeHtml(t('machine.platform'))}</dt><dd>${escapeHtml(host.platform)}</dd><dt>${escapeHtml(t('machine.agentVersion'))}</dt><dd>${escapeHtml(host.version)}</dd><dt>${escapeHtml(t('machine.lastSeen'))}</dt><dd>${escapeHtml(formatDate(host.lastSeen))}</dd><dt>${escapeHtml(t('machine.fingerprint'))}</dt><dd>${escapeHtml(host.fingerprint)}</dd>`;
   $('disk-list').innerHTML = (telemetry.disk || []).map(disk => {
     const percent = disk.total ? Math.round((disk.used / disk.total) * 100) : 0;
-    return `<div class="disk-row"><header><strong>${escapeHtml(disk.drive)}</strong><span>${formatBytes(disk.used)} / ${formatBytes(disk.total)} (${percent}%)</span></header><div class="bar"><i style="width:${percent}%"></i></div></div>`;
+    const stateClass = percent >= 90 ? ' danger' : percent >= 80 ? ' warning' : '';
+    return `<div class="disk-row${stateClass}"><header><strong>${escapeHtml(disk.drive)}</strong><span>${formatBytes(disk.used)} / ${formatBytes(disk.total)} (${percent}%)</span></header><div class="bar"><i style="width:${percent}%"></i></div></div>`;
   }).join('') || `<p>${escapeHtml(t('dashboard.noDisks'))}</p>`;
+}
+
+function tempState(celsius) {
+  const value = Number(celsius);
+  if (!Number.isFinite(value)) return '';
+  if (value >= 85) return ' hot';
+  if (value >= 70) return ' warm';
+  return '';
 }
 
 function renderHardware(hardware) {
@@ -462,6 +500,8 @@ function renderHardware(hardware) {
   const hottest = temperatures.reduce((current, sensor) => !current || Number(sensor.celsius) > Number(current.celsius) ? sensor : current, null);
   $('temperature-value').textContent = hottest ? formatTemperature(hottest.celsius) : '--';
   $('temperature-detail').textContent = hottest?.name || t('dashboard.sensorUnavailable');
+  const tempMetric = $('temperature-value').closest('.metric');
+  if (tempMetric) setMetricState(tempMetric, Number(hottest?.celsius || 0) >= 85 ? 85 : Number(hottest?.celsius || 0));
   $('power-value').textContent = hardware?.power?.totalWatts !== null && hardware?.power?.totalWatts !== undefined
     ? formatWatts(hardware.power.totalWatts)
     : '--';
@@ -478,7 +518,7 @@ function renderHardware(hardware) {
   $('hardware-sensor-list').innerHTML = components.size
     ? [...components.values()].map(component => `<article class="sensor-card ${escapeHtml(component.type || '')}">
       <header><h4>${escapeHtml(component.name || component.id)}</h4><span>${escapeHtml(t(`hardware.type.${component.type}`) === `hardware.type.${component.type}` ? component.type : t(`hardware.type.${component.type}`))}</span></header>
-      <div class="sensor-values"><div><span>${escapeHtml(t('hardware.temperature'))}</span><strong>${escapeHtml(formatTemperature(component.celsius))}</strong></div><div><span>${escapeHtml(t('hardware.power'))}</span><strong>${escapeHtml(formatWatts(component.watts))}</strong></div></div>
+      <div class="sensor-values"><div class="temp${tempState(component.celsius)}"><span>${escapeHtml(t('hardware.temperature'))}</span><strong>${escapeHtml(formatTemperature(component.celsius))}</strong></div><div><span>${escapeHtml(t('hardware.power'))}</span><strong>${escapeHtml(formatWatts(component.watts))}</strong></div></div>
       ${component.limitWatts !== null && component.limitWatts !== undefined ? `<p class="sensor-source">${escapeHtml(t('hardware.powerLimit', { value: formatWatts(component.limitWatts) }))}</p>` : ''}
       <p class="sensor-source">${escapeHtml(t('hardware.source', { source: component.source || 'unknown' }))}</p>
     </article>`).join('')
@@ -489,16 +529,52 @@ async function loadTelemetryHistory() {
   if (!state.selectedHostId) return;
   const from = new Date(Date.now() - 60 * 60 * 1000).toISOString();
   const points = await api(`/api/v1/hosts/${state.selectedHostId}/telemetry?from=${encodeURIComponent(from)}&limit=1000`);
-  drawLine($('cpu-chart'), points.map(point => Number(point.cpu?.usage || 0)));
-  drawLine($('memory-chart'), points.map(point => Number(point.memory?.percent || 0)));
+  const cpuValues = points.map(point => Number(point.cpu?.usage || 0));
+  const memoryValues = points.map(point => Number(point.memory?.percent || 0));
+  drawLine($('cpu-chart'), cpuValues, 'cpu');
+  drawLine($('memory-chart'), memoryValues, 'memory');
+  drawSparkline($('cpu-spark'), cpuValues);
+  drawSparkline($('memory-spark'), memoryValues, true);
+  if ($('cpu-chart-max')) $('cpu-chart-max').textContent = cpuValues.length ? `${Math.round(Math.max(...cpuValues))}%` : '--';
+  if ($('memory-chart-max')) $('memory-chart-max').textContent = memoryValues.length ? `${Math.round(Math.max(...memoryValues))}%` : '--';
 }
 
-function drawLine(svg, values) {
-  if (!values.length) return svg.innerHTML = '';
+function buildChartSvg(values, metric) {
+  if (!values.length) return '';
   const width = 800;
   const height = 240;
+  const axis = [0, 50, 100].map(level => {
+    const y = height - (level / 100) * height;
+    return `<line class="chart-axis" x1="0" y1="${y}" x2="${width}" y2="${y}"></line><text class="chart-axis-label" x="4" y="${y - 4}">${level}%</text>`;
+  }).join('');
   const points = values.map((value, index) => `${(index / Math.max(values.length - 1, 1)) * width},${height - (Math.max(0, Math.min(100, value)) / 100) * height}`).join(' ');
-  svg.innerHTML = `<polyline points="${points}"></polyline>`;
+  const area = `<path class="chart-area" d="M0,${height} L${points.split(' ').join(' L')} L${width},${height} Z"></path>`;
+  const last = values[values.length - 1];
+  const lastX = width;
+  const lastY = height - (Math.max(0, Math.min(100, last)) / 100) * height;
+  const dot = `<circle class="chart-dot" cx="${lastX}" cy="${lastY}" r="4"></circle>`;
+  return `${axis}${area}<polyline class="chart-line" points="${points}"></polyline>${dot}`;
+}
+
+function drawLine(svg, values, metric = 'cpu') {
+  svg.innerHTML = buildChartSvg(values, metric);
+  const zone = svg.closest('.chart-zone');
+  const tooltipId = metric === 'memory' ? 'memory-tooltip' : 'cpu-tooltip';
+  const tooltip = zone?.querySelector(`#${tooltipId}`);
+  if (!zone || !tooltip) return;
+  zone.addEventListener('mousemove', event => {
+    if (!values.length) return;
+    const rect = svg.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const ratio = Math.max(0, Math.min(1, x / rect.width));
+    const index = Math.round(ratio * (values.length - 1));
+    const value = values[index];
+    tooltip.textContent = `${metric === 'memory' ? 'RAM' : 'CPU'}: ${Math.round(value)}%`;
+    tooltip.hidden = false;
+    tooltip.style.left = `${ratio * 100}%`;
+    tooltip.style.top = `${Math.max(0, 100 - (Math.max(0, Math.min(100, value)) / 100) * 100)}%`;
+  });
+  zone.addEventListener('mouseleave', () => { tooltip.hidden = true; });
 }
 
 async function loadProcesses() {
