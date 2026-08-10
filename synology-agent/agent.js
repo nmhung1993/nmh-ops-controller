@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
 const WebSocket = require('ws');
 
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 const CONFIG_FILE = argument('--config') || process.env.WC_AGENT_CONFIG || '/volume1/@appdata/windows-controller-agent/config.json';
 const capabilities = ['telemetry', 'hardware-sensors', 'processes', 'process.kill', 'watchdog', 'watchdog.launch', 'linux', 'synology'];
 let config;
@@ -16,6 +16,7 @@ let socket = null;
 let approved = false;
 let reconnectDelay = 1000;
 let reconnectTimer = null;
+let reconnectTimerAt = 0;
 let connectionStartedAt = 0;
 let lastActivityAt = 0;
 let telemetryBusy = false;
@@ -75,10 +76,13 @@ function fingerprint() {
 }
 
 function scheduleReconnect() {
-  if (reconnectTimer || socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return;
+  if (socket?.readyState === WebSocket.OPEN) return;
+  if (reconnectTimer && Date.now() - reconnectTimerAt < 45_000) return;
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
   const delay = reconnectDelay;
   reconnectDelay = Math.min(reconnectDelay * 2, 30_000);
-  reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, delay);
+  reconnectTimerAt = Date.now();
+  reconnectTimer = setTimeout(() => { reconnectTimer = null; reconnectTimerAt = 0; connect(); }, delay);
 }
 function connect() {
   if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return;
@@ -105,7 +109,10 @@ function connect() {
     } else if (message.type === 'server.config') applyWatchdog(message.payload || {});
     else if (message.type === 'server.command') executeCommand(message.payload || {});
   });
-  current.on('error', error => console.error('Synology Agent connection error:', error.message));
+  current.on('error', error => {
+    console.error('Synology Agent connection error:', error.message);
+    if (socket === current && current.readyState !== WebSocket.CLOSED) { try { current.terminate(); } catch {} }
+  });
   current.on('close', (code, reason) => {
     if (socket !== current) return;
     socket = null; approved = false;

@@ -13,7 +13,7 @@ const {
   getMachineFingerprint
 } = require('./windows');
 
-const VERSION = '2.1.1';
+const VERSION = '2.1.2';
 const DEFAULT_STATE_DIR = path.join(process.env.PROGRAMDATA || path.join(os.homedir(), 'AppData', 'Local'), 'WindowsController', 'agent');
 const CONFIG_FILE = getArgument('--config') || process.env.WC_AGENT_CONFIG || path.join(DEFAULT_STATE_DIR, 'config.json');
 const MAX_TELEMETRY_BUFFER = 300;
@@ -27,9 +27,13 @@ let ws = null;
 let approved = false;
 let reconnectDelay = 1000;
 let reconnectTimer = null;
+let reconnectTimerAt = 0;
 let connecting = false;
+let connectionAttemptId = 0;
+let connectionAttemptTimer = null;
 let lastSocketActivityAt = 0;
 let connectionStartedAt = 0;
+let cachedFingerprint = null;
 let telemetryRunning = false;
 let watchdogRunning = false;
 const watchdogCooldowns = new Map();
@@ -145,16 +149,23 @@ function wsUrl(serverUrl) {
 }
 
 async function connect() {
-  if (connecting || ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING) return;
+  if (connecting || ws?.readyState === WebSocket.OPEN) return;
   connecting = true;
-  let fingerprint;
+  connectionStartedAt = Date.now();
+  const attemptId = ++connectionAttemptId;
   let socket;
   try {
-    fingerprint = await getMachineFingerprint();
+    if (!cachedFingerprint) cachedFingerprint = await getMachineFingerprint();
+    if (attemptId !== connectionAttemptId) return;
     socket = new WebSocket(wsUrl(config.serverUrl), { handshakeTimeout: 15_000 });
     ws = socket;
-    connectionStartedAt = Date.now();
+    connectionAttemptTimer = setTimeout(() => {
+      if (attemptId !== connectionAttemptId || ws !== socket) return;
+      console.warn('Agent connection attempt timed out; forcing reconnect.');
+      try { socket.terminate(); } catch {}
+    }, 20_000);
   } catch (error) {
+    if (attemptId !== connectionAttemptId) return;
     connecting = false;
     console.error('Agent connection setup failed:', error.message);
     scheduleReconnect();
@@ -162,13 +173,19 @@ async function connect() {
   }
 
   socket.on('open', () => {
+    if (attemptId !== connectionAttemptId) {
+      try { socket.terminate(); } catch {}
+      return;
+    }
+    if (connectionAttemptTimer) clearTimeout(connectionAttemptTimer);
+    connectionAttemptTimer = null;
     connecting = false;
     lastSocketActivityAt = Date.now();
     sendRaw(createEnvelope('agent.hello', {
       installId: state.installId,
       token,
       hostname: os.hostname(),
-      fingerprint,
+      fingerprint: cachedFingerprint,
       platform: `${os.type()} ${os.release()} ${os.arch()}`,
       version: VERSION,
       capabilities: ['telemetry', 'hardware-sensors', 'processes', 'process.kill', 'watchdog', 'watchdog.launch', 'service-launch', 'desktop-helper', 'window.capture', 'windows']
@@ -207,6 +224,8 @@ async function connect() {
 
   socket.on('close', (code, reason) => {
     if (ws !== socket) return;
+    if (connectionAttemptTimer) clearTimeout(connectionAttemptTimer);
+    connectionAttemptTimer = null;
     ws = null;
     connecting = false;
     approved = false;
@@ -214,15 +233,31 @@ async function connect() {
     scheduleReconnect();
   });
 
-  socket.on('error', error => console.error('Agent connection error:', error.message));
+  socket.on('error', error => {
+    console.error('Agent connection error:', error.message);
+    // Failed handshakes do not always produce a timely close event on Windows.
+    if (ws === socket && socket.readyState !== WebSocket.CLOSED) {
+      try { socket.terminate(); } catch {}
+    }
+  });
 }
 
 function scheduleReconnect() {
-  if (reconnectTimer || connecting || ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING) return;
+  if (ws?.readyState === WebSocket.OPEN) return;
+  if (reconnectTimer && Date.now() - reconnectTimerAt < 45_000) return;
+  if (reconnectTimer) {
+    console.warn('Agent reconnect timer was stale; replacing it.');
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  if (connecting) return;
   const delay = reconnectDelay;
   reconnectDelay = Math.min(reconnectDelay * 2, 30_000);
+  reconnectTimerAt = Date.now();
+  console.log(`Agent reconnect scheduled in ${delay}ms`);
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
+    reconnectTimerAt = 0;
     connect().catch(error => {
       console.error('Agent reconnect failed:', error.message);
       connecting = false;
@@ -232,6 +267,19 @@ function scheduleReconnect() {
 }
 
 function maintainConnection() {
+  if (connecting && connectionStartedAt && Date.now() - connectionStartedAt > 25_000) {
+    console.warn('Agent connection state was stale; resetting it.');
+    connecting = false;
+    connectionAttemptId += 1;
+    if (connectionAttemptTimer) clearTimeout(connectionAttemptTimer);
+    connectionAttemptTimer = null;
+    const staleSocket = ws;
+    ws = null;
+    approved = false;
+    try { staleSocket?.terminate(); } catch {}
+    scheduleReconnect();
+    return;
+  }
   if (!ws || ws.readyState === WebSocket.CLOSED) {
     scheduleReconnect();
     return;
@@ -241,6 +289,9 @@ function maintainConnection() {
       const staleSocket = ws;
       ws = null;
       connecting = false;
+      connectionAttemptId += 1;
+      if (connectionAttemptTimer) clearTimeout(connectionAttemptTimer);
+      connectionAttemptTimer = null;
       approved = false;
       try { staleSocket.terminate(); } catch {}
       scheduleReconnect();

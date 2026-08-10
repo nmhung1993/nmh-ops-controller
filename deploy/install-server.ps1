@@ -94,7 +94,6 @@ function Remove-ExistingService([string]$Name, [string]$Executable) {
 
 if (-not (Test-Path -LiteralPath $NodeExe)) { throw "Node.js 22.5+ was not found at $NodeExe" }
 New-Item -ItemType Directory -Force -Path $InstallRoot, (Join-Path $InstallRoot 'data') | Out-Null
-Remove-ExistingService -Name $serviceName -Executable $serviceExe
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'server') -Destination $InstallRoot -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'public') -Destination $InstallRoot -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'package.json') -Destination $InstallRoot -Force
@@ -119,6 +118,10 @@ try {
 if (-not (Test-Path -LiteralPath $serviceExe)) {
   Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/winsw/winsw/releases/download/v2.12.0/WinSW-x64.exe' -OutFile $serviceExe
 }
+
+# Keep the current server online during file preparation and dependency install.
+# The brief service replacement below is the only intentional outage.
+Remove-ExistingService -Name $serviceName -Executable $serviceExe
 
 $xmlNode = [Security.SecurityElement]::Escape($NodeExe)
 $xmlServer = [Security.SecurityElement]::Escape((Join-Path $InstallRoot 'server\server.js'))

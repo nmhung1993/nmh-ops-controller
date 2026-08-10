@@ -24,6 +24,12 @@ test('agent reconnects after failed setup and stale sockets without re-enrollmen
   assert.match(agent, /staleSocket\.terminate\(\)/);
   assert.match(agent, /ws\.terminate\(\)/);
   assert.match(agent, /Math\.min\(reconnectDelay \* 2, 30_000\)/);
+  assert.match(agent, /cachedFingerprint/);
+  assert.match(agent, /connectionAttemptId/);
+  assert.match(agent, /connection attempt timed out; forcing reconnect/);
+  assert.match(agent, /connection state was stale; resetting it/);
+  assert.match(agent, /reconnect timer was stale; replacing it/);
+  assert.match(agent, /socket\.terminate\(\)/);
   assert.match(agent, /setInterval\(maintainConnection, 5_000\)/);
 });
 
@@ -46,6 +52,8 @@ test('Synology and Home Assistant agents use the authenticated fleet protocol', 
     assert.match(agent, /agent\.telemetry/);
     assert.match(agent, /server\.approved/);
     assert.match(agent, /scheduleReconnect/);
+    assert.match(agent, /reconnectTimerAt/);
+    assert.match(agent, /current\.terminate\(\)/);
   }
   assert.match(synology, /process\.kill/);
   assert.match(synology, /watchdog\.launch/);
