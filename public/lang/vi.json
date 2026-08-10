@@ -69,6 +69,7 @@
   "fleet.cpu": "BỘ XỬ LÝ",
   "fleet.memory": "BỘ NHỚ",
   "fleet.power": "TỔNG CÔNG SUẤT",
+  "fleet.uptime": "THỜI GIAN HOẠT ĐỘNG",
   "fleet.summary.total": "Tổng số máy",
   "fleet.summary.totalHint": "Agent đã được phê duyệt",
   "fleet.summary.health": "Tình trạng hệ thống",

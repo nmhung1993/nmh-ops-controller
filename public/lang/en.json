@@ -69,6 +69,7 @@
   "fleet.cpu": "CPU",
   "fleet.memory": "MEMORY",
   "fleet.power": "TOTAL POWER",
+  "fleet.uptime": "UPTIME",
   "fleet.summary.total": "Total machines",
   "fleet.summary.totalHint": "Approved agents",
   "fleet.summary.health": "System health",

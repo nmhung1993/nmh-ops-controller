@@ -400,6 +400,14 @@ function updateFleetHostCard(host) {
   status.textContent = host.online ? t('common.online') : t('common.offline');
   card.querySelector('[data-role="cpu-value"]').textContent = hasCpu ? formatPercent(cpu) : '--';
   card.querySelector('[data-role="memory-value"]').textContent = hasMemory ? formatPercent(memory) : '--';
+  const memoryDetail = card.querySelector('[data-role="memory-detail"]');
+  const hasMemoryCapacity = Number(host.telemetry?.memory?.total) > 0;
+  if (memoryDetail) {
+    memoryDetail.hidden = !hasMemoryCapacity;
+    memoryDetail.textContent = hasMemoryCapacity ? `${formatBytes(host.telemetry.memory.used)} / ${formatBytes(host.telemetry.memory.total)}` : '';
+  }
+  const uptime = card.querySelector('[data-role="uptime"]');
+  if (uptime) uptime.textContent = host.telemetry?.uptime !== undefined ? formatUptime(host.telemetry.uptime) : '--';
   metrics?.classList.toggle('has-power', hasPower);
   if (powerMetric) powerMetric.hidden = !hasPower;
   if (hasPower && card.querySelector('[data-role="power-value"]')) card.querySelector('[data-role="power-value"]').textContent = formatWatts(totalWatts);
@@ -420,10 +428,11 @@ function renderFleet() {
     const cardLabel = `${host.displayName}, ${host.online ? t('common.online') : t('common.offline')}, CPU ${telemetry.cpu ? formatPercent(cpu) : '--'}, ${t('fleet.memory')} ${telemetry.memory ? formatPercent(memory) : '--'}${hasPower ? `, ${t('fleet.power')} ${formatWatts(totalWatts)}` : ''}`;
     return `<article class="host-card ${host.online ? 'online' : ''} ${needsAttention && host.online ? 'attention' : ''}" data-host="${host.id}" tabindex="0" role="button" aria-label="${escapeHtml(cardLabel)}" style="animation-delay:${index * 35}ms">
       <div class="host-card-main">
-        <div class="host-head"><div class="host-identity"><span class="host-glyph">${escapeHtml(initials(host.displayName))}</span><div><h3>${escapeHtml(host.displayName)}</h3></div></div><span class="status-pill ${host.online ? 'online' : ''}" data-role="status">${host.online ? escapeHtml(t('common.online')) : escapeHtml(t('common.offline'))}</span></div>
+        <div class="host-head"><div class="host-identity"><h3>${escapeHtml(host.displayName)}</h3></div><span class="status-pill ${host.online ? 'online' : ''}" data-role="status">${host.online ? escapeHtml(t('common.online')) : escapeHtml(t('common.offline'))}</span></div>
         <p class="host-meta">${escapeHtml(host.platform || 'Windows')} / Agent ${escapeHtml(host.version || '--')}</p>
       </div>
-      <div class="host-metrics ${hasPower ? 'has-power' : ''}"><div class="host-metric"><header><span>${escapeHtml(t('fleet.cpu'))}</span><span>CPU</span></header><strong data-role="cpu-value">${telemetry.cpu ? formatPercent(cpu) : '--'}</strong></div><div class="host-metric memory"><header><span>${escapeHtml(t('fleet.memory'))}</span><span>RAM</span></header><strong data-role="memory-value">${telemetry.memory ? formatPercent(memory) : '--'}</strong></div><div class="host-metric power" ${hasPower ? '' : 'hidden'}><header><span>${escapeHtml(t('fleet.power'))}</span><span>W</span></header><strong data-role="power-value">${hasPower ? formatWatts(totalWatts) : '--'}</strong></div></div>
+      <div class="host-metrics ${hasPower ? 'has-power' : ''}"><div class="host-metric"><header><span>${escapeHtml(t('fleet.cpu'))}</span><span>CPU</span></header><strong data-role="cpu-value">${telemetry.cpu ? formatPercent(cpu) : '--'}</strong></div><div class="host-metric memory"><header><span>${escapeHtml(t('fleet.memory'))}</span><span>RAM</span></header><strong data-role="memory-value">${telemetry.memory ? formatPercent(memory) : '--'}</strong><small data-role="memory-detail" ${Number(telemetry.memory?.total) > 0 ? '' : 'hidden'}>${Number(telemetry.memory?.total) > 0 ? `${formatBytes(telemetry.memory.used)} / ${formatBytes(telemetry.memory.total)}` : ''}</small></div><div class="host-metric power" ${hasPower ? '' : 'hidden'}><header><span>${escapeHtml(t('fleet.power'))}</span><span>W</span></header><strong data-role="power-value">${hasPower ? formatWatts(totalWatts) : '--'}</strong></div></div>
+      <div class="host-runtime"><span>${escapeHtml(t('fleet.uptime'))}</span><strong data-role="uptime">${telemetry.uptime !== undefined ? escapeHtml(formatUptime(telemetry.uptime)) : '--'}</strong></div>
       <footer class="host-footer"><span data-role="last-seen">${escapeHtml(t('fleet.lastSeen', { time: formatDate(host.lastSeen) }))}</span></footer>
     </article>`;
   }).join('');

@@ -60,7 +60,12 @@ test('redesigned operations shell keeps core accessibility and responsive afford
   assert.match(app, /fleet\.power/);
   assert.doesNotMatch(html, /class="metric-track"/);
   assert.doesNotMatch(css, /\.mini-track|\.metric-track/);
-  assert.match(css, /\.host-card \{[^}]*grid-template-rows: minmax\(0, 1fr\) auto auto/);
+  assert.match(css, /\.host-card \{[^}]*grid-template-rows: minmax\(0, 1fr\) auto auto auto/);
+  assert.doesNotMatch(css, /\.host-glyph/);
+  assert.doesNotMatch(app, /class="host-glyph"/);
+  assert.match(app, /data-role="memory-detail"/);
+  assert.match(app, /data-role="uptime"/);
+  assert.match(css, /\.host-runtime/);
   assert.match(css, /\.host-metrics:not\(\.has-power\)/);
   assert.match(css, /\.topbar-actions \{[^}]*flex-wrap: nowrap/);
   assert.doesNotMatch(app, /<small>\$\{escapeHtml\(host\.hostname\)\}<\/small>/);

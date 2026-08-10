@@ -218,15 +218,14 @@ input::placeholder { color: var(--faint); }
 .fleet-summary small { color: var(--faint); }
 .fleet-summary .attention strong { color: var(--amber); }
 .fleet-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(255px, 1fr)); gap: 11.9px; }
-.host-card { position: relative; display: grid; grid-template-rows: minmax(0, 1fr) auto auto; padding: 0; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow-sm); cursor: pointer; overflow: hidden; animation: card-in .35s ease both; transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
+.host-card { position: relative; display: grid; grid-template-rows: minmax(0, 1fr) auto auto auto; padding: 0; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow-sm); cursor: pointer; overflow: hidden; animation: card-in .35s ease both; transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
 .host-card:hover, .host-card:focus-visible { border-color: var(--accent); transform: translateY(-3px); box-shadow: var(--shadow-lg); }
 .host-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3.4px; background: var(--danger); }
 .host-card.online::before { background: var(--accent); }
 .host-card.attention::before { background: var(--amber); }
 .host-card-main { padding: 17px 17.85px 12.75px 20.4px; }
 .host-head { display: flex; align-items: start; justify-content: space-between; gap: 10.2px; }
-.host-identity { display: flex; gap: 9.35px; min-width: 0; }
-.host-glyph { display: grid; place-items: center; flex: 0 0 32.3px; height: 32.3px; color: var(--accent); border: 1px solid var(--line); background: var(--surface-muted); font: 700 9.35px "Bahnschrift", sans-serif; }
+.host-identity { min-width: 0; }
 .host-head h3 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 650 16.15px "Bahnschrift", sans-serif; }
 .host-head small { display: block; max-width: 100%; margin-top: 2.55px; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
 .status-pill { display: inline-flex; align-items: center; min-height: 20.4px; padding: 0 6.8px; color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 28%, transparent); background: var(--danger-soft); font: 750 7.65px "Bahnschrift", sans-serif; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
@@ -238,7 +237,9 @@ input::placeholder { color: var(--faint); }
 .host-metric header { display: flex; justify-content: space-between; gap: 4.25px; color: var(--muted); font: 700 7.65px "Bahnschrift", sans-serif; letter-spacing: .1em; }
 .host-metric header span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .host-metric strong { display: block; margin: 4.25px 0 6.8px; font: 650 20.4px "Bahnschrift", sans-serif; }
+.host-metric small { display: block; margin-top: -2.55px; overflow: hidden; color: var(--faint); font-size: 8.5px; text-overflow: ellipsis; white-space: nowrap; }
 .host-metric.power strong { color: var(--amber); }
+.host-runtime { display: flex; align-items: center; justify-content: space-between; gap: 12.75px; padding: 8.5px 13.6px 8.5px 18.7px; border-top: 1px solid var(--line); background: var(--surface); }.host-runtime span { color: var(--faint); font: 700 7.65px "Bahnschrift", sans-serif; letter-spacing: .1em; text-transform: uppercase; }.host-runtime strong { color: var(--muted); font-size: 9.35px; font-weight: 650; text-align: right; }
 .host-footer { display: flex; align-items: center; justify-content: space-between; padding: 8.5px 13.6px 8.5px 18.7px; border-top: 1px solid var(--line); background: var(--surface-muted); color: var(--muted); font-size: 9.35px; }
 .host-footer .row-actions { margin-left: auto; }
 .empty-state { padding: 61.2px 20.4px; text-align: center; border: 1px dashed var(--line-strong); background: color-mix(in srgb, var(--surface) 72%, transparent); }
@@ -396,7 +397,7 @@ dialog { width: min(459px, calc(100vw - 23.8px)); padding: 0; color: var(--ink);
 @media (max-width: 440px) {
   .auth-card { padding: 25.5px 17.85px; }.auth-story { padding: 21.25px 17.85px; }.auth-story h2 { font-size: 25.5px; }
   .topbar-actions { grid-template-columns: 1fr 37.4px; }.host-control select { font-size: 10.2px; }
-  .host-card-main { padding-inline: 16.15px; }.host-head { align-items: flex-start; }.host-glyph { display: none; }
+  .host-card-main { padding-inline: 16.15px; }.host-head { align-items: flex-start; }
   .row-actions .button { flex: 1; }
   .dialog-form { padding: 17.85px; }
 }
