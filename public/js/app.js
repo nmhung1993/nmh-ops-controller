@@ -156,6 +156,17 @@ function formatPercent(value) {
   return `${clampPercent(value).toFixed(1)}%`;
 }
 
+function formatCpuDetail(cpu = {}) {
+  const model = String(cpu.model || '').trim();
+  const hasModel = model && !['undefined', 'null'].includes(model.toLowerCase());
+  const cores = Number(cpu.cores);
+  const hasCores = Number.isFinite(cores) && cores > 0;
+  if (hasModel && hasCores) return t('dashboard.cpuDetail', { cores, model });
+  if (hasModel) return model;
+  if (hasCores) return t('dashboard.cpuCores', { cores });
+  return t('dashboard.processorUnavailable');
+}
+
 function initials(value) {
   return String(value || 'PC').split(/[\s_-]+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase() || 'PC';
 }
@@ -380,6 +391,8 @@ function updateFleetHostCard(host) {
   const hasMemory = Boolean(host.telemetry?.memory);
   const totalWatts = host.telemetry?.hardware?.power?.totalWatts;
   const hasPower = totalWatts !== null && totalWatts !== undefined && Number.isFinite(Number(totalWatts));
+  const metrics = card.querySelector('.host-metrics');
+  const powerMetric = card.querySelector('.host-metric.power');
   const status = card.querySelector('[data-role="status"]');
   card.classList.toggle('online', host.online);
   card.classList.toggle('attention', host.online && hostNeedsAttention(host));
@@ -387,9 +400,11 @@ function updateFleetHostCard(host) {
   status.textContent = host.online ? t('common.online') : t('common.offline');
   card.querySelector('[data-role="cpu-value"]').textContent = hasCpu ? formatPercent(cpu) : '--';
   card.querySelector('[data-role="memory-value"]').textContent = hasMemory ? formatPercent(memory) : '--';
-  card.querySelector('[data-role="power-value"]').textContent = hasPower ? formatWatts(totalWatts) : '--';
+  metrics?.classList.toggle('has-power', hasPower);
+  if (powerMetric) powerMetric.hidden = !hasPower;
+  if (hasPower && card.querySelector('[data-role="power-value"]')) card.querySelector('[data-role="power-value"]').textContent = formatWatts(totalWatts);
   card.querySelector('[data-role="last-seen"]').textContent = t('fleet.lastSeen', { time: formatDate(host.lastSeen) });
-  card.setAttribute('aria-label', `${host.displayName}, ${host.online ? t('common.online') : t('common.offline')}, CPU ${hasCpu ? formatPercent(cpu) : '--'}, ${t('fleet.memory')} ${hasMemory ? formatPercent(memory) : '--'}, ${t('fleet.power')} ${hasPower ? formatWatts(totalWatts) : '--'}`);
+  card.setAttribute('aria-label', `${host.displayName}, ${host.online ? t('common.online') : t('common.offline')}, CPU ${hasCpu ? formatPercent(cpu) : '--'}, ${t('fleet.memory')} ${hasMemory ? formatPercent(memory) : '--'}${hasPower ? `, ${t('fleet.power')} ${formatWatts(totalWatts)}` : ''}`);
 }
 
 function renderFleet() {
@@ -402,13 +417,13 @@ function renderFleet() {
     const totalWatts = telemetry.hardware?.power?.totalWatts;
     const hasPower = totalWatts !== null && totalWatts !== undefined && Number.isFinite(Number(totalWatts));
     const needsAttention = hostNeedsAttention(host);
-    const cardLabel = `${host.displayName}, ${host.online ? t('common.online') : t('common.offline')}, CPU ${telemetry.cpu ? formatPercent(cpu) : '--'}, ${t('fleet.memory')} ${telemetry.memory ? formatPercent(memory) : '--'}, ${t('fleet.power')} ${hasPower ? formatWatts(totalWatts) : '--'}`;
+    const cardLabel = `${host.displayName}, ${host.online ? t('common.online') : t('common.offline')}, CPU ${telemetry.cpu ? formatPercent(cpu) : '--'}, ${t('fleet.memory')} ${telemetry.memory ? formatPercent(memory) : '--'}${hasPower ? `, ${t('fleet.power')} ${formatWatts(totalWatts)}` : ''}`;
     return `<article class="host-card ${host.online ? 'online' : ''} ${needsAttention && host.online ? 'attention' : ''}" data-host="${host.id}" tabindex="0" role="button" aria-label="${escapeHtml(cardLabel)}" style="animation-delay:${index * 35}ms">
       <div class="host-card-main">
-        <div class="host-head"><div class="host-identity"><span class="host-glyph">${escapeHtml(initials(host.displayName))}</span><div><h3>${escapeHtml(host.displayName)}</h3><small>${escapeHtml(host.hostname)}</small></div></div><span class="status-pill ${host.online ? 'online' : ''}" data-role="status">${host.online ? escapeHtml(t('common.online')) : escapeHtml(t('common.offline'))}</span></div>
+        <div class="host-head"><div class="host-identity"><span class="host-glyph">${escapeHtml(initials(host.displayName))}</span><div><h3>${escapeHtml(host.displayName)}</h3></div></div><span class="status-pill ${host.online ? 'online' : ''}" data-role="status">${host.online ? escapeHtml(t('common.online')) : escapeHtml(t('common.offline'))}</span></div>
         <p class="host-meta">${escapeHtml(host.platform || 'Windows')} / Agent ${escapeHtml(host.version || '--')}</p>
       </div>
-      <div class="host-metrics"><div class="host-metric"><header><span>${escapeHtml(t('fleet.cpu'))}</span><span>CPU</span></header><strong data-role="cpu-value">${telemetry.cpu ? formatPercent(cpu) : '--'}</strong></div><div class="host-metric memory"><header><span>${escapeHtml(t('fleet.memory'))}</span><span>RAM</span></header><strong data-role="memory-value">${telemetry.memory ? formatPercent(memory) : '--'}</strong></div><div class="host-metric power"><header><span>${escapeHtml(t('fleet.power'))}</span><span>W</span></header><strong data-role="power-value">${hasPower ? formatWatts(totalWatts) : '--'}</strong></div></div>
+      <div class="host-metrics ${hasPower ? 'has-power' : ''}"><div class="host-metric"><header><span>${escapeHtml(t('fleet.cpu'))}</span><span>CPU</span></header><strong data-role="cpu-value">${telemetry.cpu ? formatPercent(cpu) : '--'}</strong></div><div class="host-metric memory"><header><span>${escapeHtml(t('fleet.memory'))}</span><span>RAM</span></header><strong data-role="memory-value">${telemetry.memory ? formatPercent(memory) : '--'}</strong></div><div class="host-metric power" ${hasPower ? '' : 'hidden'}><header><span>${escapeHtml(t('fleet.power'))}</span><span>W</span></header><strong data-role="power-value">${hasPower ? formatWatts(totalWatts) : '--'}</strong></div></div>
       <footer class="host-footer"><span data-role="last-seen">${escapeHtml(t('fleet.lastSeen', { time: formatDate(host.lastSeen) }))}</span>${isSuperAdmin() ? `<div class="row-actions"><button class="button compact danger revoke-host" type="button" data-host="${host.id}">${escapeHtml(t('fleet.revoke'))}</button></div>` : ''}</footer>
     </article>`;
   }).join('');
@@ -472,7 +487,7 @@ function renderDashboard() {
     return;
   }
   $('cpu-value').textContent = formatPercent(telemetry.cpu.usage);
-  $('cpu-model').textContent = t('dashboard.cpuDetail', { cores: telemetry.cpu.cores, model: telemetry.cpu.model });
+  $('cpu-model').textContent = formatCpuDetail(telemetry.cpu);
   $('memory-value').textContent = formatPercent(telemetry.memory.percent);
   $('memory-detail').textContent = t('dashboard.memoryUsage', { used: formatBytes(telemetry.memory.used), total: formatBytes(telemetry.memory.total) });
   $('uptime-value').textContent = formatUptime(telemetry.uptime);

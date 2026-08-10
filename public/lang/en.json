@@ -93,6 +93,8 @@
   "dashboard.noHardwareSensors": "This agent did not find a compatible hardware sensor provider.",
   "dashboard.waiting": "Waiting for telemetry",
   "dashboard.cpuDetail": "{cores} logical cores / {model}",
+  "dashboard.cpuCores": "{cores} logical cores",
+  "dashboard.processorUnavailable": "Processor information unavailable",
   "dashboard.sendReceive": "Send / receive",
   "dashboard.cpuTrend": "CPU trend",
   "dashboard.memoryTrend": "Memory trend",

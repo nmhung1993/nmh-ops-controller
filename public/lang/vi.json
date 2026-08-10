@@ -93,6 +93,8 @@
   "dashboard.noHardwareSensors": "Agent chưa tìm thấy nguồn cảm biến phần cứng tương thích trên máy này.",
   "dashboard.waiting": "Đang chờ dữ liệu từ Agent",
   "dashboard.cpuDetail": "{cores} luồng xử lý logic / {model}",
+  "dashboard.cpuCores": "{cores} luồng xử lý logic",
+  "dashboard.processorUnavailable": "Không xác định được thông tin bộ xử lý",
   "dashboard.sendReceive": "Tốc độ gửi / nhận",
   "dashboard.cpuTrend": "Biến động CPU",
   "dashboard.memoryTrend": "Biến động bộ nhớ",

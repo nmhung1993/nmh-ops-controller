@@ -79,6 +79,7 @@ input:focus-visible, select:focus-visible { outline: none; border-color: var(--f
 
 .preference-dock { position: fixed; z-index: 50; top: 13.6px; right: 17px; display: flex; gap: 6.8px; padding: 5.1px; border: 1px solid var(--line); background: color-mix(in srgb, var(--surface-raised) 90%, transparent); box-shadow: var(--shadow-sm); backdrop-filter: blur(15.3px); }
 .app-active .preference-dock { display: contents; }
+.app-active .preference-select, .app-active .theme-toggle { height: 44.2px; min-height: 44.2px; border-radius: 1.7px; }
 .preference-select {
   width: auto;
   min-width: 95.2px;
@@ -231,6 +232,7 @@ input::placeholder { color: var(--faint); }
 .status-pill.online { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); background: var(--accent-soft); }
 .host-meta { display: -webkit-box; min-height: 27.5px; margin: 13.6px 0 0; overflow: hidden; color: var(--muted); font-size: 10.2px; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .host-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line); background: var(--line); gap: 1px; }
+.host-metrics:not(.has-power) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .host-metric { min-width: 0; padding: 11.9px 10.2px 13.6px; background: var(--surface-raised); }
 .host-metric header { display: flex; justify-content: space-between; gap: 4.25px; color: var(--muted); font: 700 7.65px "Bahnschrift", sans-serif; letter-spacing: .1em; }
 .host-metric header span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
