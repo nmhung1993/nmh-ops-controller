@@ -95,7 +95,7 @@ test('agent enrollment, telemetry, commands and revoke flow', async t => {
   const pendingPromise = waitForMessage(agent, 'server.pending');
   agent.send(JSON.stringify({
     type: 'agent.hello', messageId: 'hello-1', sentAt: new Date().toISOString(), seq: 1,
-    payload: { installId: 'install-test-1', token: 'agent-secret', hostname: 'TEST-HOST', fingerprint: 'fingerprint-1', platform: 'Windows test', version: '2.0.0', capabilities: ['telemetry'] }
+    payload: { installId: 'install-test-1', token: 'agent-secret', hostname: 'TEST-HOST', fingerprint: 'fingerprint-1', platform: 'Windows test', version: '2.0.0', capabilities: ['telemetry', 'processes'] }
   }));
   const pendingMessage = await pendingPromise;
   const agentId = pendingMessage.payload.agentId;
@@ -159,6 +159,9 @@ test('agent enrollment, telemetry, commands and revoke flow', async t => {
   assert.match(discordError, /Không thể chụp cửa sổ/);
   assert.doesNotMatch(discordError, /Process|Screenshot|window not found/i);
 
+  response = await fetch(`${baseUrl}/api/v1/hosts/${agentId}`, { headers });
+  assert.deepEqual((await response.json()).capabilities, ['telemetry', 'processes']);
+
   const commandPromise = waitForMessage(agent, 'server.command');
   response = await fetch(`${baseUrl}/api/v1/hosts/${agentId}/commands`, {
     method: 'POST', headers, body: JSON.stringify({ type: 'process.kill', payload: { pid: 1234 } })
@@ -172,6 +175,12 @@ test('agent enrollment, telemetry, commands and revoke flow', async t => {
   await new Promise(resolve => setTimeout(resolve, 100));
   response = await fetch(`${baseUrl}/api/v1/hosts/${agentId}/commands`, { headers });
   assert.equal((await response.json())[0].status, 'succeeded');
+
+  response = await fetch(`${baseUrl}/api/v1/hosts/${agentId}/commands`, {
+    method: 'POST', headers, body: JSON.stringify({ type: 'window.capture', payload: { processName: 'DemoApp' } })
+  });
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error, 'capability_not_supported');
 
   const closePromise = new Promise(resolve => agent.once('close', resolve));
   response = await fetch(`${baseUrl}/api/v1/agents/${agentId}/revoke`, { method: 'POST', headers, body: '{}' });

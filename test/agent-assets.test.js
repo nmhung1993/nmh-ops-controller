@@ -14,6 +14,59 @@ test('desktop helper is launched through a hidden VBS host', () => {
   assert.match(launcher, /shell\.Run[\s\S]*,\s*0,\s*False/i, 'VBS window style must remain hidden');
 });
 
+test('agent reconnects after failed setup and stale sockets without re-enrollment', () => {
+  const agent = fs.readFileSync(path.join(root, 'agent', 'agent.js'), 'utf8');
+  assert.match(agent, /function scheduleReconnect\(/);
+  assert.match(agent, /getMachineFingerprint\(\)/);
+  assert.match(agent, /scheduleReconnect\(\);/);
+  assert.match(agent, /lastSocketActivityAt/);
+  assert.match(agent, /WebSocket\.CONNECTING \|\| ws\.readyState === WebSocket\.CLOSING/);
+  assert.match(agent, /staleSocket\.terminate\(\)/);
+  assert.match(agent, /ws\.terminate\(\)/);
+  assert.match(agent, /Math\.min\(reconnectDelay \* 2, 30_000\)/);
+  assert.match(agent, /setInterval\(maintainConnection, 5_000\)/);
+});
+
+test('server deployment waits for HTTP and refreshes the local agent connection', () => {
+  const installer = fs.readFileSync(path.join(root, 'deploy', 'install-server.ps1'), 'utf8');
+  assert.match(installer, /function Wait-HttpReady/);
+  assert.match(installer, /api\/setup\/status/);
+  assert.match(installer, /Restart-Service -Name 'WindowsControllerAgent'/);
+});
+
+test('Synology and Home Assistant agents use the authenticated fleet protocol', () => {
+  const synology = fs.readFileSync(path.join(root, 'synology-agent', 'agent.js'), 'utf8');
+  const synologyInstaller = fs.readFileSync(path.join(root, 'synology-agent', 'install-synology.sh'), 'utf8');
+  const homeAssistant = fs.readFileSync(path.join(root, 'homeassistant-addon', 'agent.js'), 'utf8');
+  const addOn = fs.readFileSync(path.join(root, 'homeassistant-addon', 'config.yaml'), 'utf8');
+  for (const agent of [synology, homeAssistant]) {
+    assert.match(agent, /agent\.hello/);
+    assert.match(agent, /agent\.telemetry/);
+    assert.match(agent, /server\.approved/);
+    assert.match(agent, /scheduleReconnect/);
+  }
+  assert.match(synology, /process\.kill/);
+  assert.match(synology, /watchdog\.launch/);
+  assert.match(synology, /resultBuffer/);
+  assert.match(synology, /const previous = state\.completedCommands\[commandId\]/);
+  assert.match(synologyInstaller, /\/usr\/local\/etc\/rc\.d/);
+  assert.match(synologyInstaller, /Node\.js 18\+/);
+  assert.match(synologyInstaller, /NPM_BIN/);
+  assert.match(homeAssistant, /SUPERVISOR_TOKEN/);
+  assert.match(homeAssistant, /homeAssistant:/);
+  assert.match(homeAssistant, /while \(state\.telemetryBuffer\.length/);
+  assert.match(addOn, /homeassistant_api: true/);
+});
+
+test('development launcher serves source assets with the installed database', () => {
+  const launcher = fs.readFileSync(path.join(root, 'deploy', 'start-dev-server.ps1'), 'utf8');
+  assert.match(launcher, /DATA_DIR/);
+  assert.match(launcher, /server\/server\.js/);
+  assert.match(launcher, /public/);
+  assert.match(launcher, /Stop-Service/);
+  assert.match(launcher, /Start-Service/);
+});
+
 test('WinSW installers wait for SCM and fail when a service operation fails', () => {
   const serverInstaller = fs.readFileSync(path.join(root, 'deploy', 'install-server.ps1'), 'utf8');
   const agentInstaller = fs.readFileSync(path.join(root, 'agent', 'install-agent.ps1'), 'utf8');

@@ -68,6 +68,7 @@
   "fleet.lastSeen": "Last seen: {time}",
   "fleet.cpu": "CPU",
   "fleet.memory": "MEMORY",
+  "fleet.power": "TOTAL POWER",
   "fleet.summary.total": "Total machines",
   "fleet.summary.totalHint": "Approved agents",
   "fleet.summary.health": "System health",
@@ -120,6 +121,9 @@
   "machine.agentVersion": "Agent version",
   "machine.lastSeen": "Last seen",
   "machine.fingerprint": "Fingerprint",
+  "machine.homeAssistantVersion": "Home Assistant version",
+  "machine.entityCount": "Entities",
+  "machine.unavailableEntities": "Unavailable entities",
   "machine.status": "Status",
   "machine.waiting": "Waiting for an approved online agent",
   "process.title": "Running processes",
@@ -132,6 +136,7 @@
   "process.memory": "Memory",
   "process.path": "Executable path",
   "process.none": "No process snapshot is available.",
+  "process.unsupported": "This platform does not expose process inspection.",
   "process.capture": "Capture",
   "process.kill": "Kill",
   "process.killConfirm": "Force-stop {name} (PID {pid})? Unsaved work in that process may be lost.",
@@ -142,6 +147,7 @@
   "watchdog.add": "Add rule",
   "watchdog.emptyTitle": "No watchdog rules",
   "watchdog.emptyDescription": "Add a rule for an application that must remain running.",
+  "watchdog.unsupported": "Watchdog is not supported by this platform connector.",
   "watchdog.enabled": "Enabled",
   "watchdog.disabled": "Disabled",
   "watchdog.launch": "Launch",
@@ -249,5 +255,6 @@
   "error.desktop_helper_timeout": "The desktop helper did not respond in time.",
   "error.watchdog_rule_not_found": "The selected watchdog rule no longer exists on the agent.",
   "error.command_expired": "The command expired before the agent could run it.",
-  "error.generic": "The request could not be completed."
+  "error.generic": "The request could not be completed.",
+  "error.capability_not_supported": "This command is not supported by the selected platform."
 }

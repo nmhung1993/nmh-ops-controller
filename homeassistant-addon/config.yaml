@@ -1,0 +1,33 @@
+name: Windows Controller Home Assistant Connector
+version: "1.0.0"
+slug: windows_controller_connector
+description: Publishes Home Assistant system and selected sensor telemetry to Windows Controller Fleet.
+arch:
+  - amd64
+  - aarch64
+  - armv7
+init: false
+startup: services
+boot: auto
+host_network: true
+homeassistant_api: true
+options:
+  central_server_url: "http://192.168.1.10:3003"
+  home_assistant_url: "http://supervisor/core"
+  home_assistant_token: ""
+  telemetry_interval_seconds: 5
+  cpu_entity_id: ""
+  memory_entity_id: ""
+  power_entity_ids: []
+  temperature_entity_ids: []
+schema:
+  central_server_url: url
+  home_assistant_url: url
+  home_assistant_token: password?
+  telemetry_interval_seconds: int(2,60)
+  cpu_entity_id: str?
+  memory_entity_id: str?
+  power_entity_ids:
+    - str
+  temperature_entity_ids:
+    - str

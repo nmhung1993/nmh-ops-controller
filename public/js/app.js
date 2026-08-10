@@ -338,6 +338,11 @@ function selectedHost() {
   return state.hosts.find(host => host.id === state.selectedHostId) || null;
 }
 
+function selectedHostSupports(...capabilities) {
+  const available = new Set(selectedHost()?.capabilities || []);
+  return capabilities.some(capability => available.has(capability));
+}
+
 function selectHost(hostId, destination = null) {
   state.selectedHostId = hostId;
   updateHostQuery();
@@ -369,17 +374,18 @@ function updateFleetHostCard(host) {
   const memory = clampPercent(host.telemetry?.memory?.percent);
   const hasCpu = Boolean(host.telemetry?.cpu);
   const hasMemory = Boolean(host.telemetry?.memory);
+  const totalWatts = host.telemetry?.hardware?.power?.totalWatts;
+  const hasPower = totalWatts !== null && totalWatts !== undefined && Number.isFinite(Number(totalWatts));
   const status = card.querySelector('[data-role="status"]');
   card.classList.toggle('online', host.online);
   card.classList.toggle('attention', host.online && hostNeedsAttention(host));
   status.classList.toggle('online', host.online);
   status.textContent = host.online ? t('common.online') : t('common.offline');
   card.querySelector('[data-role="cpu-value"]').textContent = hasCpu ? `${cpu}%` : '--';
-  card.querySelector('[data-role="cpu-meter"]').style.width = `${hasCpu ? cpu : 0}%`;
   card.querySelector('[data-role="memory-value"]').textContent = hasMemory ? `${memory}%` : '--';
-  card.querySelector('[data-role="memory-meter"]').style.width = `${hasMemory ? memory : 0}%`;
+  card.querySelector('[data-role="power-value"]').textContent = hasPower ? formatWatts(totalWatts) : '--';
   card.querySelector('[data-role="last-seen"]').textContent = t('fleet.lastSeen', { time: formatDate(host.lastSeen) });
-  card.setAttribute('aria-label', `${host.displayName}, ${host.online ? t('common.online') : t('common.offline')}, CPU ${hasCpu ? `${cpu}%` : '--'}, ${t('fleet.memory')} ${hasMemory ? `${memory}%` : '--'}`);
+  card.setAttribute('aria-label', `${host.displayName}, ${host.online ? t('common.online') : t('common.offline')}, CPU ${hasCpu ? `${cpu}%` : '--'}, ${t('fleet.memory')} ${hasMemory ? `${memory}%` : '--'}, ${t('fleet.power')} ${hasPower ? formatWatts(totalWatts) : '--'}`);
 }
 
 function renderFleet() {
@@ -389,14 +395,16 @@ function renderFleet() {
     const telemetry = host.telemetry || {};
     const cpu = clampPercent(telemetry.cpu?.usage);
     const memory = clampPercent(telemetry.memory?.percent);
+    const totalWatts = telemetry.hardware?.power?.totalWatts;
+    const hasPower = totalWatts !== null && totalWatts !== undefined && Number.isFinite(Number(totalWatts));
     const needsAttention = hostNeedsAttention(host);
-    const cardLabel = `${host.displayName}, ${host.online ? t('common.online') : t('common.offline')}, CPU ${telemetry.cpu ? `${cpu}%` : '--'}, ${t('fleet.memory')} ${telemetry.memory ? `${memory}%` : '--'}`;
+    const cardLabel = `${host.displayName}, ${host.online ? t('common.online') : t('common.offline')}, CPU ${telemetry.cpu ? `${cpu}%` : '--'}, ${t('fleet.memory')} ${telemetry.memory ? `${memory}%` : '--'}, ${t('fleet.power')} ${hasPower ? formatWatts(totalWatts) : '--'}`;
     return `<article class="host-card ${host.online ? 'online' : ''} ${needsAttention && host.online ? 'attention' : ''}" data-host="${host.id}" tabindex="0" role="button" aria-label="${escapeHtml(cardLabel)}" style="animation-delay:${index * 35}ms">
       <div class="host-card-main">
         <div class="host-head"><div class="host-identity"><span class="host-glyph">${escapeHtml(initials(host.displayName))}</span><div><h3>${escapeHtml(host.displayName)}</h3><small>${escapeHtml(host.hostname)}</small></div></div><span class="status-pill ${host.online ? 'online' : ''}" data-role="status">${host.online ? escapeHtml(t('common.online')) : escapeHtml(t('common.offline'))}</span></div>
         <p class="host-meta">${escapeHtml(host.platform || 'Windows')} / Agent ${escapeHtml(host.version || '--')}</p>
       </div>
-      <div class="host-metrics"><div class="host-metric"><header><span>${escapeHtml(t('fleet.cpu'))}</span><span>CPU</span></header><strong data-role="cpu-value">${telemetry.cpu ? `${cpu}%` : '--'}</strong><div class="mini-track"><i data-role="cpu-meter" style="width:${telemetry.cpu ? cpu : 0}%"></i></div></div><div class="host-metric memory"><header><span>${escapeHtml(t('fleet.memory'))}</span><span>RAM</span></header><strong data-role="memory-value">${telemetry.memory ? `${memory}%` : '--'}</strong><div class="mini-track"><i data-role="memory-meter" style="width:${telemetry.memory ? memory : 0}%"></i></div></div></div>
+      <div class="host-metrics"><div class="host-metric"><header><span>${escapeHtml(t('fleet.cpu'))}</span><span>CPU</span></header><strong data-role="cpu-value">${telemetry.cpu ? `${cpu}%` : '--'}</strong></div><div class="host-metric memory"><header><span>${escapeHtml(t('fleet.memory'))}</span><span>RAM</span></header><strong data-role="memory-value">${telemetry.memory ? `${memory}%` : '--'}</strong></div><div class="host-metric power"><header><span>${escapeHtml(t('fleet.power'))}</span><span>W</span></header><strong data-role="power-value">${hasPower ? formatWatts(totalWatts) : '--'}</strong></div></div>
       <footer class="host-footer"><span data-role="last-seen">${escapeHtml(t('fleet.lastSeen', { time: formatDate(host.lastSeen) }))}</span>${isSuperAdmin() ? `<div class="row-actions"><button class="button compact danger revoke-host" type="button" data-host="${host.id}">${escapeHtml(t('fleet.revoke'))}</button></div>` : ''}</footer>
     </article>`;
   }).join('');
@@ -455,8 +463,6 @@ function renderDashboard() {
     $('host-status-badge').classList.remove('online');
     if ($('dashboard-host-name')) $('dashboard-host-name').textContent = host?.displayName || '--';
     if ($('host-updated-at')) $('host-updated-at').textContent = t('dashboard.waiting');
-    if ($('cpu-meter')) $('cpu-meter').style.width = '0%';
-    if ($('memory-meter')) $('memory-meter').style.width = '0%';
     $('machine-details').innerHTML = `<dt>${escapeHtml(t('machine.status'))}</dt><dd>${escapeHtml(t('machine.waiting'))}</dd>`;
     $('disk-list').innerHTML = '';
     return;
@@ -474,11 +480,12 @@ function renderDashboard() {
   $('host-status-badge').classList.toggle('online', host.online);
   if ($('dashboard-host-name')) $('dashboard-host-name').textContent = host.displayName;
   if ($('host-updated-at')) $('host-updated-at').textContent = t('dashboard.updatedAt', { time: formatDate(host.lastSeen) });
-  if ($('cpu-meter')) $('cpu-meter').style.width = `${clampPercent(telemetry.cpu.usage)}%`;
-  if ($('memory-meter')) $('memory-meter').style.width = `${clampPercent(telemetry.memory.percent)}%`;
   setMetricState($('cpu-value').closest('.metric'), Number(telemetry.cpu.usage));
   setMetricState($('memory-value').closest('.metric'), Number(telemetry.memory.percent));
-  $('machine-details').innerHTML = `<dt>${escapeHtml(t('machine.displayName'))}</dt><dd>${escapeHtml(host.displayName)}</dd><dt>${escapeHtml(t('machine.hostname'))}</dt><dd>${escapeHtml(host.hostname)}</dd><dt>${escapeHtml(t('machine.platform'))}</dt><dd>${escapeHtml(host.platform)}</dd><dt>${escapeHtml(t('machine.agentVersion'))}</dt><dd>${escapeHtml(host.version)}</dd><dt>${escapeHtml(t('machine.lastSeen'))}</dt><dd>${escapeHtml(formatDate(host.lastSeen))}</dd><dt>${escapeHtml(t('machine.fingerprint'))}</dt><dd>${escapeHtml(host.fingerprint)}</dd>`;
+  const homeAssistantDetails = telemetry.homeAssistant
+    ? `<dt>${escapeHtml(t('machine.homeAssistantVersion'))}</dt><dd>${escapeHtml(telemetry.homeAssistant.version || '--')}</dd><dt>${escapeHtml(t('machine.entityCount'))}</dt><dd>${escapeHtml(telemetry.homeAssistant.entityCount ?? '--')}</dd><dt>${escapeHtml(t('machine.unavailableEntities'))}</dt><dd>${escapeHtml(telemetry.homeAssistant.unavailableEntityCount ?? '--')}</dd>`
+    : '';
+  $('machine-details').innerHTML = `<dt>${escapeHtml(t('machine.displayName'))}</dt><dd>${escapeHtml(host.displayName)}</dd><dt>${escapeHtml(t('machine.hostname'))}</dt><dd>${escapeHtml(host.hostname)}</dd><dt>${escapeHtml(t('machine.platform'))}</dt><dd>${escapeHtml(host.platform)}</dd><dt>${escapeHtml(t('machine.agentVersion'))}</dt><dd>${escapeHtml(host.version)}</dd><dt>${escapeHtml(t('machine.lastSeen'))}</dt><dd>${escapeHtml(formatDate(host.lastSeen))}</dd><dt>${escapeHtml(t('machine.fingerprint'))}</dt><dd>${escapeHtml(host.fingerprint)}</dd>${homeAssistantDetails}`;
   $('disk-list').innerHTML = (telemetry.disk || []).map(disk => {
     const percent = disk.total ? Math.round((disk.used / disk.total) * 100) : 0;
     const stateClass = percent >= 90 ? ' danger' : percent >= 80 ? ' warning' : '';
@@ -586,10 +593,17 @@ async function loadProcesses() {
 }
 
 function renderProcesses() {
+  if (!selectedHostSupports('processes')) {
+    if ($('process-count')) $('process-count').textContent = '0';
+    $('process-body').innerHTML = `<tr><td colspan="6">${escapeHtml(t('process.unsupported'))}</td></tr>`;
+    return;
+  }
   const query = $('process-search').value.trim().toLowerCase();
   const rows = state.processes.filter(process => !query || process.name.toLowerCase().includes(query) || (process.path || '').toLowerCase().includes(query));
   if ($('process-count')) $('process-count').textContent = rows.length;
-  $('process-body').innerHTML = rows.length ? rows.map(process => `<tr><td><div class="process-name"><span class="process-glyph">${escapeHtml(initials(process.name).slice(0, 1))}</span><strong>${escapeHtml(process.name)}</strong></div></td><td>${process.pid}</td><td>${Number(process.cpuPercent || 0).toFixed(1)}%</td><td>${Number(process.memoryMB || 0).toFixed(1)} MB</td><td class="path" title="${escapeHtml(process.path)}">${escapeHtml(process.path || '-')}</td><td><div class="row-actions">${canManageHosts() ? `<button class="button compact capture-process" type="button" data-name="${escapeHtml(process.name)}">${escapeHtml(t('process.capture'))}</button><button class="button compact danger kill-process" type="button" data-pid="${process.pid}" data-name="${escapeHtml(process.name)}">${escapeHtml(t('process.kill'))}</button>` : ''}</div></td></tr>`).join('') : `<tr><td colspan="6">${escapeHtml(t('process.none'))}</td></tr>`;
+  const canCapture = canManageHosts() && selectedHostSupports('window.capture', 'desktop-helper');
+  const canKill = canManageHosts() && selectedHostSupports('process.kill', 'processes');
+  $('process-body').innerHTML = rows.length ? rows.map(process => `<tr><td><div class="process-name"><span class="process-glyph">${escapeHtml(initials(process.name).slice(0, 1))}</span><strong>${escapeHtml(process.name)}</strong></div></td><td>${process.pid}</td><td>${Number(process.cpuPercent || 0).toFixed(1)}%</td><td>${Number(process.memoryMB || 0).toFixed(1)} MB</td><td class="path" title="${escapeHtml(process.path)}">${escapeHtml(process.path || '-')}</td><td><div class="row-actions">${canCapture ? `<button class="button compact capture-process" type="button" data-name="${escapeHtml(process.name)}">${escapeHtml(t('process.capture'))}</button>` : ''}${canKill ? `<button class="button compact danger kill-process" type="button" data-pid="${process.pid}" data-name="${escapeHtml(process.name)}">${escapeHtml(t('process.kill'))}</button>` : ''}</div></td></tr>`).join('') : `<tr><td colspan="6">${escapeHtml(t('process.none'))}</td></tr>`;
   document.querySelectorAll('.kill-process').forEach(button => button.addEventListener('click', () => killRemoteProcess(button.dataset.pid, button.dataset.name)));
   document.querySelectorAll('.capture-process').forEach(button => button.addEventListener('click', () => sendCommand('window.capture', { processName: button.dataset.name })));
 }
@@ -616,6 +630,13 @@ async function loadWatchdog() {
 }
 
 function renderWatchdog() {
+  const supported = selectedHostSupports('watchdog');
+  $('add-rule-button').hidden = !canManageHosts() || !supported;
+  if (!supported) {
+    if ($('rule-count')) $('rule-count').textContent = '0';
+    $('rule-list').innerHTML = `<div class="empty-state"><span class="empty-icon">--</span><h3>${escapeHtml(t('watchdog.unsupported'))}</h3></div>`;
+    return;
+  }
   if ($('rule-count')) $('rule-count').textContent = state.watchdog.rules.length;
   $('rule-list').innerHTML = state.watchdog.rules.length ? state.watchdog.rules.map(rule => `<article class="rule-card ${rule.enabled ? 'enabled' : ''}"><div><div class="rule-title"><h3>${escapeHtml(rule.processName)}</h3><span class="status-pill ${rule.enabled ? 'online' : ''}">${escapeHtml(t(rule.enabled ? 'watchdog.enabled' : 'watchdog.disabled'))}</span></div><p class="rule-meta"><span><i></i>${escapeHtml(t(rule.runMode === 'service' ? 'watchdog.service' : 'watchdog.interactive'))}</span><span><i></i>${escapeHtml(rule.captureAfterLaunch === false ? t('watchdog.captureDisabled') : t('watchdog.captureEnabled'))}</span><span><i></i>${escapeHtml(rule.filePath || t('common.pathHidden'))}</span></p></div><div class="row-actions">${canManageHosts() ? `<button class="button primary compact launch-rule" type="button" data-id="${rule.id}">${escapeHtml(t('watchdog.launch'))}</button><button class="button compact edit-rule" type="button" data-id="${rule.id}">${escapeHtml(t('common.edit'))}</button><button class="button compact danger delete-rule" type="button" data-id="${rule.id}">${escapeHtml(t('common.delete'))}</button>` : ''}</div></article>`).join('') : `<div class="empty-state"><span class="empty-icon">00</span><h3>${escapeHtml(t('watchdog.emptyTitle'))}</h3><p>${escapeHtml(t('watchdog.emptyDescription'))}</p></div>`;
   document.querySelectorAll('.launch-rule').forEach(button => button.addEventListener('click', () => sendCommand('watchdog.launch', { ruleId: button.dataset.id })));
@@ -630,8 +651,14 @@ function openRuleDialog(ruleId = null) {
   $('rule-name').value = rule?.processName || '';
   $('rule-path').value = rule?.filePath || '';
   $('rule-mode').value = rule?.runMode || 'interactive';
+  const interactiveSupported = selectedHostSupports('desktop-helper');
+  $('rule-mode').querySelector('option[value="interactive"]').disabled = !interactiveSupported;
+  if (!interactiveSupported && $('rule-mode').value === 'interactive') $('rule-mode').value = 'service';
   $('rule-enabled').checked = rule?.enabled !== false;
   $('rule-screenshot').checked = rule?.captureAfterLaunch !== false;
+  const captureSupported = selectedHostSupports('window.capture', 'desktop-helper');
+  $('rule-screenshot').disabled = !captureSupported;
+  if (!captureSupported) $('rule-screenshot').checked = false;
   $('rule-dialog').showModal();
 }
 

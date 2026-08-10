@@ -43,6 +43,18 @@ function Invoke-WinSWChecked([string]$Executable, [string]$Operation) {
   }
 }
 
+function Wait-HttpReady([int]$Port, [int]$TimeoutSeconds = 30) {
+  $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+  do {
+    try {
+      $response = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$Port/api/setup/status" -TimeoutSec 2
+      if ($response.StatusCode -eq 200) { return $true }
+    } catch {}
+    Start-Sleep -Milliseconds 500
+  } while ([DateTime]::UtcNow -lt $deadline)
+  return $false
+}
+
 function Remove-ExistingService([string]$Name, [string]$Executable) {
   $existingService = Get-Service -Name $Name -ErrorAction SilentlyContinue
   if (-not $existingService) { return }
@@ -133,6 +145,21 @@ Invoke-WinSWChecked -Executable $serviceExe -Operation 'install'
 Invoke-WinSWChecked -Executable $serviceExe -Operation 'start'
 if (-not (Wait-ServiceStatus -Name $serviceName -Status 'Running')) {
   throw "Service $serviceName did not reach the Running state. Check the WinSW logs in $InstallRoot."
+}
+if (-not (Wait-HttpReady -Port $Port)) {
+  throw "Central Server service is running but HTTP port $Port did not become ready. Check the WinSW logs in $InstallRoot."
+}
+
+# Force the co-located Agent to establish a fresh socket after a server deployment.
+$localAgent = Get-Service -Name 'WindowsControllerAgent' -ErrorAction SilentlyContinue
+if ($localAgent) {
+  Write-Host 'Restarting local Windows Controller Agent...' -ForegroundColor Cyan
+  if ($localAgent.Status -eq 'Running') {
+    Restart-Service -Name 'WindowsControllerAgent' -Force
+  } else {
+    Start-Service -Name 'WindowsControllerAgent'
+  }
+  (Get-Service -Name 'WindowsControllerAgent').WaitForStatus('Running', [TimeSpan]::FromSeconds(30))
 }
 
 Remove-NetFirewallRule -DisplayName 'Windows Controller Central Server' -ErrorAction SilentlyContinue

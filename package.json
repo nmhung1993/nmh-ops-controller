@@ -5,10 +5,11 @@
   "main": "server/server.js",
   "scripts": {
     "start": "node server/server.js",
-    "dev": "node --watch server/server.js",
+    "dev": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File deploy/start-dev-server.ps1",
+    "dev:standalone": "node --watch server/server.js",
     "agent": "node agent/agent.js",
     "desktop-helper": "node agent/desktop-helper.js",
-    "check": "node --check server/server.js && node --check server/database.js && node --check agent/agent.js && node --check agent/windows.js && node --check agent/desktop-helper.js && node --check public/js/app.js",
+    "check": "node --check server/server.js && node --check server/database.js && node --check agent/agent.js && node --check agent/windows.js && node --check agent/desktop-helper.js && node --check synology-agent/agent.js && node --check homeassistant-addon/agent.js && node --check public/js/app.js",
     "test": "node --test test/*.test.js"
   },
   "engines": {

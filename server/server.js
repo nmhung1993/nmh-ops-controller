@@ -15,8 +15,7 @@ const {
   migrateLegacyData,
   initializeHostAccess,
   attachLegacyDataToLocalAgent,
-  parseJson,
-  rowToAgent
+  parseJson
 } = require('./database');
 
 const PORT = Number(process.env.PORT || 3003);
@@ -28,6 +27,11 @@ const AGENT_OFFLINE_MS = 20_000;
 const COMMAND_TIMEOUT_MS = 60_000;
 const MAX_SCREENSHOT_BYTES = 10 * 1024 * 1024;
 const ALLOWED_COMMANDS = new Set(['process.kill', 'watchdog.launch', 'window.capture']);
+const COMMAND_CAPABILITIES = {
+  'process.kill': ['process.kill', 'processes'],
+  'watchdog.launch': ['watchdog.launch', 'watchdog'],
+  'window.capture': ['window.capture', 'desktop-helper']
+};
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const SCREENSHOT_DIR = path.join(DATA_DIR, 'screenshots');
@@ -137,7 +141,7 @@ function requireHostAccess(req, res, next) {
   if (!host || host.status !== 'approved' || !hasHostAccess(req.user, req.params.id)) {
     return res.status(404).json({ error: 'Host not found' });
   }
-  req.host = host;
+  req.managedHost = host;
   next();
 }
 
@@ -232,6 +236,11 @@ function getHost(agentId) {
     FROM agents a LEFT JOIN latest_state l ON l.agent_id = a.id
     WHERE a.id = ?
   `).get(agentId);
+}
+
+function hostSupports(row, ...capabilities) {
+  const available = new Set(parseJson(row?.capabilities_json, []));
+  return capabilities.some(capability => available.has(capability));
 }
 
 function getWatchdog(agentId) {
@@ -632,7 +641,7 @@ app.get('/api/v1/hosts', authenticate, (req, res) => {
 });
 
 app.get('/api/v1/hosts/:id', authenticate, requireHostAccess, (req, res) => {
-  res.json(serializeHost(req.host));
+  res.json(serializeHost(req.managedHost));
 });
 
 app.get('/api/v1/hosts/:id/telemetry', authenticate, requireHostAccess, (req, res) => {
@@ -647,7 +656,7 @@ app.get('/api/v1/hosts/:id/telemetry', authenticate, requireHostAccess, (req, re
 
 app.get('/api/v1/hosts/:id/processes', authenticate, requireHostAccess, (req, res) => {
   let commandId = null;
-  if (agentSockets.has(req.params.id)) {
+  if (agentSockets.has(req.params.id) && hostSupports(req.managedHost, 'processes')) {
     commandId = createCommand(req.params.id, 'process.list', {}, req.user.username, 30_000).id;
   }
   const state = db.prepare('SELECT processes_json, processes_at FROM latest_state WHERE agent_id = ?').get(req.params.id);
@@ -660,6 +669,9 @@ app.post('/api/v1/hosts/:id/commands', authenticate, requireHostAccess, requireH
   const { type, payload = {} } = req.body || {};
   const error = validateCommand(type, payload);
   if (error) return res.status(400).json({ error });
+  if (!hostSupports(req.managedHost, ...(COMMAND_CAPABILITIES[type] || []))) {
+    return res.status(409).json({ error: 'capability_not_supported' });
+  }
   const command = createCommand(req.params.id, type, payload, req.user.username);
   res.status(202).json({ id: command.id, status: command.status });
 });
@@ -687,6 +699,7 @@ app.get('/api/v1/hosts/:id/watchdog', authenticate, requireHostAccess, (req, res
 });
 
 app.put('/api/v1/hosts/:id/watchdog', authenticate, requireHostAccess, requireHostManager, (req, res) => {
+  if (!hostSupports(req.managedHost, 'watchdog')) return res.status(409).json({ error: 'capability_not_supported' });
   const rules = req.body?.rules;
   if (!Array.isArray(rules)) return res.status(400).json({ error: 'rules array required' });
   for (const rule of rules) {

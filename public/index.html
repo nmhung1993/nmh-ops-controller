@@ -8,7 +8,7 @@
   <script>
     document.documentElement.dataset.theme = localStorage.getItem('wc_theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   </script>
-  <link rel="stylesheet" href="css/style.css?v=2.0.2">
+  <link rel="stylesheet" href="css/style.css?v=2.1.0">
 </head>
 <body>
   <a class="skip-link" href="#main-content" data-i18n="accessibility.skipToContent">Chuyển đến nội dung chính</a>
@@ -136,8 +136,8 @@
           </div>
         </div>
         <div class="metric-grid">
-          <article class="metric cpu"><div class="metric-icon"><svg class="icon"><use href="#icon-cpu"></use></svg></div><span data-i18n="dashboard.cpuLoad">MỨC SỬ DỤNG CPU</span><strong id="cpu-value">--</strong><small id="cpu-model" data-i18n="dashboard.waiting">Đang chờ dữ liệu từ Agent</small><div class="metric-track"><i id="cpu-meter"></i></div><svg class="sparkline" id="cpu-spark" viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true"></svg></article>
-          <article class="metric memory"><div class="metric-icon"><svg class="icon"><use href="#icon-memory"></use></svg></div><span data-i18n="dashboard.memory">BỘ NHỚ RAM</span><strong id="memory-value">--</strong><small id="memory-detail" data-i18n="dashboard.waiting">Đang chờ dữ liệu từ Agent</small><div class="metric-track"><i id="memory-meter"></i></div><svg class="sparkline memory" id="memory-spark" viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true"></svg></article>
+          <article class="metric cpu"><div class="metric-icon"><svg class="icon"><use href="#icon-cpu"></use></svg></div><span data-i18n="dashboard.cpuLoad">MỨC SỬ DỤNG CPU</span><strong id="cpu-value">--</strong><small id="cpu-model" data-i18n="dashboard.waiting">Đang chờ dữ liệu từ Agent</small><svg class="sparkline" id="cpu-spark" viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true"></svg></article>
+          <article class="metric memory"><div class="metric-icon"><svg class="icon"><use href="#icon-memory"></use></svg></div><span data-i18n="dashboard.memory">BỘ NHỚ RAM</span><strong id="memory-value">--</strong><small id="memory-detail" data-i18n="dashboard.waiting">Đang chờ dữ liệu từ Agent</small><svg class="sparkline memory" id="memory-spark" viewBox="0 0 100 32" preserveAspectRatio="none" aria-hidden="true"></svg></article>
           <article class="metric uptime"><div class="metric-icon"><svg class="icon"><use href="#icon-clock"></use></svg></div><span data-i18n="dashboard.uptime">THỜI GIAN HOẠT ĐỘNG</span><strong id="uptime-value">--</strong><small id="os-value" data-i18n="dashboard.waiting">Đang chờ dữ liệu từ Agent</small></article>
           <article class="metric network"><div class="metric-icon"><svg class="icon"><use href="#icon-network"></use></svg></div><span data-i18n="dashboard.network">LƯU LƯỢNG MẠNG</span><strong id="network-value">--</strong><small id="network-detail" data-i18n="dashboard.sendReceive">Tốc độ gửi / nhận</small></article>
           <article class="metric temperature"><div class="metric-icon"><svg class="icon"><use href="#icon-temperature"></use></svg></div><span data-i18n="dashboard.temperature">NHIỆT ĐỘ</span><strong id="temperature-value">--</strong><small id="temperature-detail" data-i18n="dashboard.sensorUnavailable">Không có cảm biến tương thích</small></article>
@@ -187,6 +187,6 @@
   <dialog id="password-dialog"><form method="dialog" id="password-form" class="dialog-form"><div class="dialog-heading"><div><p class="eyebrow" data-i18n="password.eyebrow">CẬP NHẬT BẢO MẬT</p><h2 data-i18n="password.title">Đổi mật khẩu</h2></div></div><p data-i18n="password.description">Tài khoản cũ cần đổi mật khẩu.</p><label><span data-i18n="password.new">Mật khẩu mới</span><input id="new-password" type="password" minlength="10" required></label><div class="dialog-actions"><button class="button primary" value="default" data-i18n="password.update">Cập nhật mật khẩu</button></div></form></dialog>
 
   <div class="toast-region" id="toast-region" role="status" aria-live="polite"></div>
-  <script src="js/app.js?v=2.0.2"></script>
+  <script src="js/app.js?v=2.1.0"></script>
 </body>
 </html>

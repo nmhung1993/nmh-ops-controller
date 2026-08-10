@@ -68,6 +68,7 @@
   "fleet.lastSeen": "Liên lạc gần nhất: {time}",
   "fleet.cpu": "BỘ XỬ LÝ",
   "fleet.memory": "BỘ NHỚ",
+  "fleet.power": "TỔNG CÔNG SUẤT",
   "fleet.summary.total": "Tổng số máy",
   "fleet.summary.totalHint": "Agent đã được phê duyệt",
   "fleet.summary.health": "Tình trạng hệ thống",
@@ -120,6 +121,9 @@
   "machine.agentVersion": "Phiên bản Agent",
   "machine.lastSeen": "Liên lạc gần nhất",
   "machine.fingerprint": "Dấu vân tay thiết bị",
+  "machine.homeAssistantVersion": "Phiên bản Home Assistant",
+  "machine.entityCount": "Số lượng entity",
+  "machine.unavailableEntities": "Entity không khả dụng",
   "machine.status": "Trạng thái kết nối",
   "machine.waiting": "Đang chờ một Agent đã được duyệt và đang trực tuyến",
   "process.title": "Các tiến trình đang chạy",
@@ -132,6 +136,7 @@
   "process.memory": "Bộ nhớ",
   "process.path": "Đường dẫn tệp thực thi",
   "process.none": "Chưa có bản chụp danh sách tiến trình từ Agent.",
+  "process.unsupported": "Nền tảng này không hỗ trợ kiểm tra danh sách tiến trình.",
   "process.capture": "Chụp cửa sổ",
   "process.kill": "Buộc dừng",
   "process.killConfirm": "Buộc dừng {name} (PID {pid})? Dữ liệu chưa lưu trong tiến trình này có thể bị mất.",
@@ -142,6 +147,7 @@
   "watchdog.add": "Thêm quy tắc",
   "watchdog.emptyTitle": "Chưa có quy tắc giám sát",
   "watchdog.emptyDescription": "Hãy thêm quy tắc cho ứng dụng bắt buộc phải luôn hoạt động.",
+  "watchdog.unsupported": "Connector của nền tảng này không hỗ trợ Watchdog.",
   "watchdog.enabled": "Đang bật",
   "watchdog.disabled": "Đã tắt",
   "watchdog.launch": "Khởi chạy",
@@ -249,5 +255,6 @@
   "error.desktop_helper_timeout": "Desktop Helper không phản hồi trong thời gian cho phép.",
   "error.watchdog_rule_not_found": "Quy tắc giám sát đã chọn không còn tồn tại trên Agent.",
   "error.command_expired": "Lệnh đã hết hạn trước khi Agent có thể thực thi.",
-  "error.generic": "Không thể hoàn tất yêu cầu."
+  "error.generic": "Không thể hoàn tất yêu cầu.",
+  "error.capability_not_supported": "Nền tảng đang chọn không hỗ trợ lệnh này."
 }

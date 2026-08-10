@@ -222,7 +222,8 @@ Khi nâng cấp database cũ, tài khoản admin được tạo sớm nhất s�
 - Agent gửi telemetry mỗi 2 giây và ping mỗi 5 giây.
 - Central Server đánh dấu offline trong tối đa 20 giây.
 - Khi mất kết nối, Agent giữ tối đa 300 telemetry frame, tương đương khoảng 10 phút, và tối đa 1.000 event.
-- WebSocket reconnect dùng exponential backoff.
+- WebSocket reconnect dùng exponential backoff từ 1 đến 30 giây. Agent cũng tự retry khi bước tạo kết nối/fingerprint lỗi và chủ động đóng socket nếu không nhận phản hồi từ server trong 20 giây.
+- Khi nâng cấp mã Agent, chạy `install-agent.ps1` một lần để cập nhật runtime service. Sau đó các lần Central Server restart hoặc mất mạng không cần cài lại Agent.
 - Frame dùng envelope gồm `type`, `messageId`, `agentId`, `sentAt`, `seq`, `payload`.
 - Agent lưu tối đa 500 command đã hoàn tất để tránh thực thi lại cùng `commandId`.
 - Command hết hạn sau 60 giây và có trạng thái `queued`, `sent`, `acknowledged`, `succeeded`, `failed` hoặc `expired`.
@@ -391,10 +392,13 @@ Agent realtime dùng `/ws/agent`; browser realtime dùng `/ws/ui` trên cùng po
 
 ```powershell
 npm.cmd install
-npm.cmd start
+# Mở PowerShell bằng quyền Administrator nếu Central Server service đang chạy
+npm.cmd run dev
 ```
 
-Mở `http://localhost:3003`.
+Mở `http://localhost:3003`. Dev launcher tạm dừng service `WindowsControllerServer`, phục vụ trực tiếp `server/` và `public/` trong repository, nhưng vẫn dùng database tại `C:\ProgramData\WindowsController\server\data`. Vì vậy thay đổi CSS/HTML chỉ cần refresh trình duyệt, không cần chạy lại `install-server.ps1`, và Agent vẫn giữ nguyên danh tính/token đã được duyệt.
+
+Nhấn `Ctrl+C` để thoát dev mode; launcher sẽ tự khởi động lại Central Server service. Nếu không có service đã cài và muốn dùng database trong source, chạy `npm.cmd run dev:standalone`.
 
 Chạy Agent không cài service:
 
@@ -411,11 +415,87 @@ npm.cmd run check
 npm.cmd test
 ```
 
+## Synology DSM Agent
+
+Synology dùng Agent Linux riêng trong thư mục `synology-agent`. Agent này dùng cùng WebSocket enrollment/token với Agent Windows và hỗ trợ:
+
+- CPU delta từ `/proc/stat`, RAM từ `/proc/meminfo`, network rate từ `/proc/net/dev`;
+- volume từ `df`, process snapshot từ `ps`;
+- nhiệt độ/công suất nếu DSM expose sensor qua `/sys/class/thermal` hoặc `/sys/class/hwmon`;
+- `process.kill`, watchdog process và launch executable nền;
+- cache telemetry/event, heartbeat và reconnect exponential backoff.
+
+Không hỗ trợ Desktop Helper, interactive window, screenshot hoặc LibreHardwareMonitor.
+
+### Cài trên Synology
+
+1. Cài package Node.js 18+ trong Synology Package Center.
+2. Bật SSH, copy toàn bộ thư mục `synology-agent` lên NAS.
+3. Chạy bằng `root`:
+
+```sh
+sudo sh ./synology-agent/install-synology.sh \
+  --server-url http://192.168.1.10:3003
+```
+
+Mặc định Agent được cài tại `/volume1/@appdata/windows-controller-agent` và tạo startup script `/usr/local/etc/rc.d/WindowsControllerSynologyAgent.sh`.
+
+```sh
+# Trạng thái và log
+sudo /usr/local/etc/rc.d/WindowsControllerSynologyAgent.sh status
+tail -f /volume1/@appdata/windows-controller-agent/agent.log
+
+# Gỡ service nhưng giữ identity/token để có thể cài lại mà không enroll máy mới
+sudo sh ./synology-agent/uninstall-synology.sh
+```
+
+Sau khi Agent kết nối lần đầu, duyệt hostname/fingerprint trong trang Admin giống Agent Windows.
+
+## Home Assistant Connector
+
+Home Assistant dùng connector chỉ đọc qua REST API. Connector gửi CPU/RAM nếu đã có entity System Monitor, số lượng entity, entity unavailable và các sensor nhiệt độ/công suất được chọn. Connector không nhận lệnh process, watchdog, launch hoặc screenshot.
+
+### Home Assistant OS / Supervised Add-on
+
+1. Copy thư mục `homeassistant-addon` vào `/addons/windows_controller_connector` trên máy Home Assistant.
+2. Vào **Settings → Add-ons → Add-on Store**, mở menu và chọn **Check for updates**.
+3. Cài **Windows Controller Home Assistant Connector**.
+4. Điền `central_server_url`. Giữ `home_assistant_url` là `http://supervisor/core`; Supervisor token được cấp tự động.
+5. Chọn entity CPU/RAM và danh sách sensor muốn tổng hợp:
+
+```yaml
+cpu_entity_id: sensor.processor_use
+memory_entity_id: sensor.memory_use_percent
+power_entity_ids:
+  - sensor.server_total_power
+temperature_entity_ids:
+  - sensor.cpu_package_temperature
+```
+
+Chỉ thêm các power entity không chồng lặp vì `TOTAL POWER` là tổng của danh sách `power_entity_ids`.
+
+### Home Assistant Container/Core
+
+Tạo long-lived access token trong Home Assistant profile, sao chép `config.example.json`, sau đó chạy connector cạnh Home Assistant:
+
+```sh
+cd homeassistant-addon
+cp config.example.json config.json
+npm install --omit=dev
+node agent.js --config ./config.json
+```
+
+Nên quản lý process này bằng systemd, Docker restart policy hoặc process supervisor của host. Sau lần kết nối đầu tiên, approve connector trong Central Server.
+
+Central Server dùng trường `capabilities` để tự ẩn chức năng không tương thích. Vì vậy Home Assistant không hiển thị kill/screenshot/watchdog, còn Synology không hiển thị các thao tác cửa sổ Windows.
+
 ---
 
 ## English quick guide
 
 Windows Controller Fleet monitors and controls up to roughly 20 Windows hosts on a trusted LAN. Install the Central Server on one machine and install an Agent on every managed machine, including the Central Server itself.
+
+Optional platform connectors are included for Synology DSM (`synology-agent`) and Home Assistant (`homeassistant-addon`). Synology supports Linux telemetry, processes and watchdog rules. Home Assistant is read-only and publishes configured REST API entities; platform capabilities automatically hide unsupported Windows commands in the UI.
 
 ### Requirements
 

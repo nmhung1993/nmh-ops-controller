@@ -13,7 +13,7 @@ const {
   getMachineFingerprint
 } = require('./windows');
 
-const VERSION = '2.0.0';
+const VERSION = '2.1.1';
 const DEFAULT_STATE_DIR = path.join(process.env.PROGRAMDATA || path.join(os.homedir(), 'AppData', 'Local'), 'WindowsController', 'agent');
 const CONFIG_FILE = getArgument('--config') || process.env.WC_AGENT_CONFIG || path.join(DEFAULT_STATE_DIR, 'config.json');
 const MAX_TELEMETRY_BUFFER = 300;
@@ -26,6 +26,10 @@ let token;
 let ws = null;
 let approved = false;
 let reconnectDelay = 1000;
+let reconnectTimer = null;
+let connecting = false;
+let lastSocketActivityAt = 0;
+let connectionStartedAt = 0;
 let telemetryRunning = false;
 let watchdogRunning = false;
 const watchdogCooldowns = new Map();
@@ -141,11 +145,25 @@ function wsUrl(serverUrl) {
 }
 
 async function connect() {
-  const fingerprint = await getMachineFingerprint();
-  ws = new WebSocket(wsUrl(config.serverUrl));
+  if (connecting || ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING) return;
+  connecting = true;
+  let fingerprint;
+  let socket;
+  try {
+    fingerprint = await getMachineFingerprint();
+    socket = new WebSocket(wsUrl(config.serverUrl), { handshakeTimeout: 15_000 });
+    ws = socket;
+    connectionStartedAt = Date.now();
+  } catch (error) {
+    connecting = false;
+    console.error('Agent connection setup failed:', error.message);
+    scheduleReconnect();
+    return;
+  }
 
-  ws.on('open', () => {
-    reconnectDelay = 1000;
+  socket.on('open', () => {
+    connecting = false;
+    lastSocketActivityAt = Date.now();
     sendRaw(createEnvelope('agent.hello', {
       installId: state.installId,
       token,
@@ -153,11 +171,12 @@ async function connect() {
       fingerprint,
       platform: `${os.type()} ${os.release()} ${os.arch()}`,
       version: VERSION,
-      capabilities: ['telemetry', 'hardware-sensors', 'processes', 'watchdog', 'service-launch', 'desktop-helper']
+      capabilities: ['telemetry', 'hardware-sensors', 'processes', 'process.kill', 'watchdog', 'watchdog.launch', 'service-launch', 'desktop-helper', 'window.capture', 'windows']
     }));
   });
 
-  ws.on('message', raw => {
+  socket.on('message', raw => {
+    lastSocketActivityAt = Date.now();
     let message;
     try {
       message = JSON.parse(raw.toString());
@@ -165,11 +184,13 @@ async function connect() {
       return;
     }
     if (message.type === 'server.pending') {
+      reconnectDelay = 1000;
       approved = false;
       state.agentId = message.payload?.agentId || state.agentId;
       saveState();
       console.log(`Agent pending approval: ${state.agentId}`);
     } else if (message.type === 'server.approved') {
+      reconnectDelay = 1000;
       approved = true;
       state.agentId = message.payload?.agentId || state.agentId;
       saveState();
@@ -184,14 +205,55 @@ async function connect() {
     }
   });
 
-  ws.on('close', (code, reason) => {
+  socket.on('close', (code, reason) => {
+    if (ws !== socket) return;
+    ws = null;
+    connecting = false;
     approved = false;
     console.log(`Agent disconnected (${code}): ${reason.toString()}`);
-    setTimeout(connect, reconnectDelay);
-    reconnectDelay = Math.min(reconnectDelay * 2, 30_000);
+    scheduleReconnect();
   });
 
-  ws.on('error', error => console.error('Agent connection error:', error.message));
+  socket.on('error', error => console.error('Agent connection error:', error.message));
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer || connecting || ws?.readyState === WebSocket.OPEN || ws?.readyState === WebSocket.CONNECTING) return;
+  const delay = reconnectDelay;
+  reconnectDelay = Math.min(reconnectDelay * 2, 30_000);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connect().catch(error => {
+      console.error('Agent reconnect failed:', error.message);
+      connecting = false;
+      scheduleReconnect();
+    });
+  }, delay);
+}
+
+function maintainConnection() {
+  if (!ws || ws.readyState === WebSocket.CLOSED) {
+    scheduleReconnect();
+    return;
+  }
+  if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.CLOSING) {
+    if (connectionStartedAt && Date.now() - connectionStartedAt > 20_000) {
+      const staleSocket = ws;
+      ws = null;
+      connecting = false;
+      approved = false;
+      try { staleSocket.terminate(); } catch {}
+      scheduleReconnect();
+    }
+    return;
+  }
+  if (ws.readyState !== WebSocket.OPEN) return;
+  if (lastSocketActivityAt && Date.now() - lastSocketActivityAt > 20_000) {
+    console.warn('Agent connection timed out; reconnecting.');
+    ws.terminate();
+    return;
+  }
+  sendRaw(createEnvelope('ping'));
 }
 
 function applyWatchdogConfig(payload) {
@@ -439,11 +501,15 @@ function initialize() {
   state.sequence ||= 0;
   saveState();
 
-  connect().catch(error => console.error('Initial connection failed:', error.message));
+  connect().catch(error => {
+    console.error('Initial connection failed:', error.message);
+    connecting = false;
+    scheduleReconnect();
+  });
   collectTelemetryTick();
   setInterval(collectTelemetryTick, 2_000);
   setInterval(watchdogTick, 10_000);
-  setInterval(() => sendRaw(createEnvelope('ping')), 5_000);
+  setInterval(maintainConnection, 5_000);
 }
 
 initialize();

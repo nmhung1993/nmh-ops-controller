@@ -5,12 +5,15 @@ node_modules/
 
 # Data files (config, users, screenshots)
 data/
+**/config.json
+**/state/
 *.png
 *.ps1
 !agent/install-agent.ps1
 !agent/install-hardware-monitor.ps1
 !agent/uninstall-agent.ps1
 !deploy/install-server.ps1
+!deploy/start-dev-server.ps1
 
 # Logs
 *.log

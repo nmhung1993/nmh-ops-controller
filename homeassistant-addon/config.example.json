@@ -1,0 +1,10 @@
+{
+  "central_server_url": "http://192.168.1.10:3003",
+  "home_assistant_url": "http://homeassistant.local:8123",
+  "home_assistant_token": "PASTE_LONG_LIVED_ACCESS_TOKEN_HERE",
+  "telemetry_interval_seconds": 5,
+  "cpu_entity_id": "sensor.processor_use",
+  "memory_entity_id": "sensor.memory_use_percent",
+  "power_entity_ids": [],
+  "temperature_entity_ids": []
+}
