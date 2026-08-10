@@ -55,6 +55,8 @@ test('Synology and Home Assistant agents use the authenticated fleet protocol', 
   assert.match(synologyInstaller, /Node\.js 18\+/);
   assert.match(synologyInstaller, /NPM_BIN/);
   assert.match(homeAssistant, /SUPERVISOR_TOKEN/);
+  assert.match(homeAssistant, /X-Supervisor-Token/);
+  assert.match(homeAssistant, /home_assistant_http_401_use_long_lived_token/);
   assert.match(homeAssistant, /homeAssistant:/);
   assert.match(homeAssistant, /while \(state\.telemetryBuffer\.length/);
   assert.match(addOn, /homeassistant_api: true/);

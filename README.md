@@ -474,6 +474,8 @@ temperature_entity_ids:
 
 Chỉ thêm các power entity không chồng lặp vì `TOTAL POWER` là tổng của danh sách `power_entity_ids`.
 
+Nếu log báo `home_assistant_http_401_supervisor_token_rejected`, hãy kiểm tra add-on có bật `homeassistant_api: true`, URL chính xác là `http://supervisor/core` và add-on đã được **Rebuild** sau khi thay đổi manifest. Nếu chạy Home Assistant Container/Core bằng URL trực tiếp (ví dụ `http://homeassistant:8123`), không dùng `SUPERVISOR_TOKEN`; hãy tạo **Long-Lived Access Token** rồi điền vào `home_assistant_token`.
+
 Khi cập nhật source add-on, cần copy cả `Dockerfile`, `build.yaml`, `config.yaml`, `package.json`, `agent.js` và `run.sh`, sau đó chọn **Rebuild**. File `build.yaml` ánh xạ đúng Home Assistant base image cho `amd64`, `aarch64` và `armv7`.
 
 ### Home Assistant Container/Core

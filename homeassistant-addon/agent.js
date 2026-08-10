@@ -6,7 +6,7 @@ const os = require('os');
 const crypto = require('crypto');
 const WebSocket = require('ws');
 
-const VERSION = '1.0.1';
+const VERSION = '1.0.2';
 const CONFIG_FILE = argument('--config') || '/data/options.json';
 const STATE_FILE = process.env.WC_STATE_FILE || path.join(path.dirname(CONFIG_FILE), 'windows-controller-state.json');
 const capabilities = ['telemetry', 'hardware-sensors', 'homeassistant', 'homeassistant.entities'];
@@ -79,10 +79,22 @@ function flush() {
 
 function apiUrl(endpoint) { return `${config.home_assistant_url.replace(/\/$/, '')}/api/${endpoint.replace(/^\//, '')}`; }
 async function homeAssistantApi(endpoint) {
-  const token = config.home_assistant_token || process.env.SUPERVISOR_TOKEN;
+  const supervisorUrl = /^https?:\/\/supervisor(?:\/|$)/i.test(config.home_assistant_url);
+  const token = supervisorUrl
+    ? (process.env.SUPERVISOR_TOKEN || config.home_assistant_token)
+    : (config.home_assistant_token || process.env.SUPERVISOR_TOKEN);
   if (!token) throw new Error('home_assistant_token_missing');
-  const response = await fetch(apiUrl(endpoint), { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(15_000) });
-  if (!response.ok) throw new Error(`home_assistant_http_${response.status}`);
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  if (supervisorUrl) headers['X-Supervisor-Token'] = token;
+  const response = await fetch(apiUrl(endpoint), { headers, signal: AbortSignal.timeout(15_000) });
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error(supervisorUrl
+        ? 'home_assistant_http_401_supervisor_token_rejected'
+        : 'home_assistant_http_401_use_long_lived_token');
+    }
+    throw new Error(`home_assistant_http_${response.status}`);
+  }
   return response.json();
 }
 function numericState(entity) { const value = Number(entity?.state); return Number.isFinite(value) ? value : null; }
