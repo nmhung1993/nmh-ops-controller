@@ -8,7 +8,7 @@
   <script>
     document.documentElement.dataset.theme = localStorage.getItem('wc_theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   </script>
-  <link rel="stylesheet" href="css/style.css?v=2.1.0">
+  <link rel="stylesheet" href="css/style.css?v=2.1.1">
 </head>
 <body>
   <a class="skip-link" href="#main-content" data-i18n="accessibility.skipToContent">Chuyển đến nội dung chính</a>
@@ -187,6 +187,6 @@
   <dialog id="password-dialog"><form method="dialog" id="password-form" class="dialog-form"><div class="dialog-heading"><div><p class="eyebrow" data-i18n="password.eyebrow">CẬP NHẬT BẢO MẬT</p><h2 data-i18n="password.title">Đổi mật khẩu</h2></div></div><p data-i18n="password.description">Tài khoản cũ cần đổi mật khẩu.</p><label><span data-i18n="password.new">Mật khẩu mới</span><input id="new-password" type="password" minlength="10" required></label><div class="dialog-actions"><button class="button primary" value="default" data-i18n="password.update">Cập nhật mật khẩu</button></div></form></dialog>
 
   <div class="toast-region" id="toast-region" role="status" aria-live="polite"></div>
-  <script src="js/app.js?v=2.1.0"></script>
+  <script src="js/app.js?v=2.1.1"></script>
 </body>
 </html>

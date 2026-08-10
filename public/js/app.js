@@ -149,7 +149,11 @@ function formatDate(value) {
 }
 
 function clampPercent(value) {
-  return Math.max(0, Math.min(100, Number(value || 0)));
+  return Math.round(Math.max(0, Math.min(100, Number(value || 0))) * 10) / 10;
+}
+
+function formatPercent(value) {
+  return `${clampPercent(value).toFixed(1)}%`;
 }
 
 function initials(value) {
@@ -381,11 +385,11 @@ function updateFleetHostCard(host) {
   card.classList.toggle('attention', host.online && hostNeedsAttention(host));
   status.classList.toggle('online', host.online);
   status.textContent = host.online ? t('common.online') : t('common.offline');
-  card.querySelector('[data-role="cpu-value"]').textContent = hasCpu ? `${cpu}%` : '--';
-  card.querySelector('[data-role="memory-value"]').textContent = hasMemory ? `${memory}%` : '--';
+  card.querySelector('[data-role="cpu-value"]').textContent = hasCpu ? formatPercent(cpu) : '--';
+  card.querySelector('[data-role="memory-value"]').textContent = hasMemory ? formatPercent(memory) : '--';
   card.querySelector('[data-role="power-value"]').textContent = hasPower ? formatWatts(totalWatts) : '--';
   card.querySelector('[data-role="last-seen"]').textContent = t('fleet.lastSeen', { time: formatDate(host.lastSeen) });
-  card.setAttribute('aria-label', `${host.displayName}, ${host.online ? t('common.online') : t('common.offline')}, CPU ${hasCpu ? `${cpu}%` : '--'}, ${t('fleet.memory')} ${hasMemory ? `${memory}%` : '--'}, ${t('fleet.power')} ${hasPower ? formatWatts(totalWatts) : '--'}`);
+  card.setAttribute('aria-label', `${host.displayName}, ${host.online ? t('common.online') : t('common.offline')}, CPU ${hasCpu ? formatPercent(cpu) : '--'}, ${t('fleet.memory')} ${hasMemory ? formatPercent(memory) : '--'}, ${t('fleet.power')} ${hasPower ? formatWatts(totalWatts) : '--'}`);
 }
 
 function renderFleet() {
@@ -398,13 +402,13 @@ function renderFleet() {
     const totalWatts = telemetry.hardware?.power?.totalWatts;
     const hasPower = totalWatts !== null && totalWatts !== undefined && Number.isFinite(Number(totalWatts));
     const needsAttention = hostNeedsAttention(host);
-    const cardLabel = `${host.displayName}, ${host.online ? t('common.online') : t('common.offline')}, CPU ${telemetry.cpu ? `${cpu}%` : '--'}, ${t('fleet.memory')} ${telemetry.memory ? `${memory}%` : '--'}, ${t('fleet.power')} ${hasPower ? formatWatts(totalWatts) : '--'}`;
+    const cardLabel = `${host.displayName}, ${host.online ? t('common.online') : t('common.offline')}, CPU ${telemetry.cpu ? formatPercent(cpu) : '--'}, ${t('fleet.memory')} ${telemetry.memory ? formatPercent(memory) : '--'}, ${t('fleet.power')} ${hasPower ? formatWatts(totalWatts) : '--'}`;
     return `<article class="host-card ${host.online ? 'online' : ''} ${needsAttention && host.online ? 'attention' : ''}" data-host="${host.id}" tabindex="0" role="button" aria-label="${escapeHtml(cardLabel)}" style="animation-delay:${index * 35}ms">
       <div class="host-card-main">
         <div class="host-head"><div class="host-identity"><span class="host-glyph">${escapeHtml(initials(host.displayName))}</span><div><h3>${escapeHtml(host.displayName)}</h3><small>${escapeHtml(host.hostname)}</small></div></div><span class="status-pill ${host.online ? 'online' : ''}" data-role="status">${host.online ? escapeHtml(t('common.online')) : escapeHtml(t('common.offline'))}</span></div>
         <p class="host-meta">${escapeHtml(host.platform || 'Windows')} / Agent ${escapeHtml(host.version || '--')}</p>
       </div>
-      <div class="host-metrics"><div class="host-metric"><header><span>${escapeHtml(t('fleet.cpu'))}</span><span>CPU</span></header><strong data-role="cpu-value">${telemetry.cpu ? `${cpu}%` : '--'}</strong></div><div class="host-metric memory"><header><span>${escapeHtml(t('fleet.memory'))}</span><span>RAM</span></header><strong data-role="memory-value">${telemetry.memory ? `${memory}%` : '--'}</strong></div><div class="host-metric power"><header><span>${escapeHtml(t('fleet.power'))}</span><span>W</span></header><strong data-role="power-value">${hasPower ? formatWatts(totalWatts) : '--'}</strong></div></div>
+      <div class="host-metrics"><div class="host-metric"><header><span>${escapeHtml(t('fleet.cpu'))}</span><span>CPU</span></header><strong data-role="cpu-value">${telemetry.cpu ? formatPercent(cpu) : '--'}</strong></div><div class="host-metric memory"><header><span>${escapeHtml(t('fleet.memory'))}</span><span>RAM</span></header><strong data-role="memory-value">${telemetry.memory ? formatPercent(memory) : '--'}</strong></div><div class="host-metric power"><header><span>${escapeHtml(t('fleet.power'))}</span><span>W</span></header><strong data-role="power-value">${hasPower ? formatWatts(totalWatts) : '--'}</strong></div></div>
       <footer class="host-footer"><span data-role="last-seen">${escapeHtml(t('fleet.lastSeen', { time: formatDate(host.lastSeen) }))}</span>${isSuperAdmin() ? `<div class="row-actions"><button class="button compact danger revoke-host" type="button" data-host="${host.id}">${escapeHtml(t('fleet.revoke'))}</button></div>` : ''}</footer>
     </article>`;
   }).join('');
@@ -436,8 +440,8 @@ function drawSparkline(svg, values, memory = false) {
 function updateHero(host, telemetry, hardware) {
   if ($('hero-glyph')) $('hero-glyph').textContent = initials(host?.displayName || '--').slice(0, 2);
   if ($('hero-hostname')) $('hero-hostname').textContent = host?.hostname || '--';
-  if ($('hero-cpu')) $('hero-cpu').textContent = telemetry?.cpu ? `${telemetry.cpu.usage}%` : '--';
-  if ($('hero-ram')) $('hero-ram').textContent = telemetry?.memory ? `${telemetry.memory.percent}%` : '--';
+  if ($('hero-cpu')) $('hero-cpu').textContent = telemetry?.cpu ? formatPercent(telemetry.cpu.usage) : '--';
+  if ($('hero-ram')) $('hero-ram').textContent = telemetry?.memory ? formatPercent(telemetry.memory.percent) : '--';
   if ($('hero-uptime')) $('hero-uptime').textContent = telemetry?.uptime ? formatUptime(telemetry.uptime) : '--';
   const hottest = Array.isArray(hardware?.temperatures) ? hardware.temperatures.reduce((skip, sensor) => !skip || Number(sensor.celsius) > Number(skip.celsius) ? sensor : skip, null) : null;
   if ($('hero-temp')) $('hero-temp').textContent = hottest ? formatTemperature(hottest.celsius) : '--';
@@ -467,9 +471,9 @@ function renderDashboard() {
     $('disk-list').innerHTML = '';
     return;
   }
-  $('cpu-value').textContent = `${telemetry.cpu.usage}%`;
+  $('cpu-value').textContent = formatPercent(telemetry.cpu.usage);
   $('cpu-model').textContent = t('dashboard.cpuDetail', { cores: telemetry.cpu.cores, model: telemetry.cpu.model });
-  $('memory-value').textContent = `${telemetry.memory.percent}%`;
+  $('memory-value').textContent = formatPercent(telemetry.memory.percent);
   $('memory-detail').textContent = t('dashboard.memoryUsage', { used: formatBytes(telemetry.memory.used), total: formatBytes(telemetry.memory.total) });
   $('uptime-value').textContent = formatUptime(telemetry.uptime);
   $('os-value').textContent = telemetry.os;
@@ -487,9 +491,9 @@ function renderDashboard() {
     : '';
   $('machine-details').innerHTML = `<dt>${escapeHtml(t('machine.displayName'))}</dt><dd>${escapeHtml(host.displayName)}</dd><dt>${escapeHtml(t('machine.hostname'))}</dt><dd>${escapeHtml(host.hostname)}</dd><dt>${escapeHtml(t('machine.platform'))}</dt><dd>${escapeHtml(host.platform)}</dd><dt>${escapeHtml(t('machine.agentVersion'))}</dt><dd>${escapeHtml(host.version)}</dd><dt>${escapeHtml(t('machine.lastSeen'))}</dt><dd>${escapeHtml(formatDate(host.lastSeen))}</dd><dt>${escapeHtml(t('machine.fingerprint'))}</dt><dd>${escapeHtml(host.fingerprint)}</dd>${homeAssistantDetails}`;
   $('disk-list').innerHTML = (telemetry.disk || []).map(disk => {
-    const percent = disk.total ? Math.round((disk.used / disk.total) * 100) : 0;
+    const percent = clampPercent(disk.total ? (disk.used / disk.total) * 100 : 0);
     const stateClass = percent >= 90 ? ' danger' : percent >= 80 ? ' warning' : '';
-    return `<div class="disk-row${stateClass}"><header><strong>${escapeHtml(disk.drive)}</strong><span>${formatBytes(disk.used)} / ${formatBytes(disk.total)} (${percent}%)</span></header><div class="bar"><i style="width:${percent}%"></i></div></div>`;
+    return `<div class="disk-row${stateClass}"><header><strong>${escapeHtml(disk.drive)}</strong><span>${formatBytes(disk.used)} / ${formatBytes(disk.total)} (${formatPercent(percent)})</span></header><div class="bar"><i style="width:${percent}%"></i></div></div>`;
   }).join('') || `<p>${escapeHtml(t('dashboard.noDisks'))}</p>`;
 }
 
@@ -542,8 +546,8 @@ async function loadTelemetryHistory() {
   drawLine($('memory-chart'), memoryValues, 'memory');
   drawSparkline($('cpu-spark'), cpuValues);
   drawSparkline($('memory-spark'), memoryValues, true);
-  if ($('cpu-chart-max')) $('cpu-chart-max').textContent = cpuValues.length ? `${Math.round(Math.max(...cpuValues))}%` : '--';
-  if ($('memory-chart-max')) $('memory-chart-max').textContent = memoryValues.length ? `${Math.round(Math.max(...memoryValues))}%` : '--';
+  if ($('cpu-chart-max')) $('cpu-chart-max').textContent = cpuValues.length ? formatPercent(Math.max(...cpuValues)) : '--';
+  if ($('memory-chart-max')) $('memory-chart-max').textContent = memoryValues.length ? formatPercent(Math.max(...memoryValues)) : '--';
 }
 
 function buildChartSvg(values, metric) {
@@ -576,7 +580,7 @@ function drawLine(svg, values, metric = 'cpu') {
     const ratio = Math.max(0, Math.min(1, x / rect.width));
     const index = Math.round(ratio * (values.length - 1));
     const value = values[index];
-    tooltip.textContent = `${metric === 'memory' ? 'RAM' : 'CPU'}: ${Math.round(value)}%`;
+    tooltip.textContent = `${metric === 'memory' ? 'RAM' : 'CPU'}: ${formatPercent(value)}`;
     tooltip.hidden = false;
     tooltip.style.left = `${ratio * 100}%`;
     tooltip.style.top = `${Math.max(0, 100 - (Math.max(0, Math.min(100, value)) / 100) * 100)}%`;

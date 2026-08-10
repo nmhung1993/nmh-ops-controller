@@ -44,7 +44,7 @@ test('redesigned operations shell keeps core accessibility and responsive afford
   assert.match(app, /card\.addEventListener\('keydown'/);
   assert.match(app, /if \(host\) updateFleetHostCard\(host\)/);
   assert.match(css, /\.live-indicator \{[^}]*height: 44\.2px/);
-  assert.match(css, /\.app-active \.preference-dock \{[^}]*height: 44\.2px/);
+  assert.match(css, /\.app-active \.preference-dock \{[^}]*display: contents/);
   assert.match(css, /body \{[^}]*font-size: 12\.75px/);
   assert.match(css, /\.app-shell \{[^}]*min-height: 100vh[^}]*grid-template-columns: 227\.8px/);
   assert.doesNotMatch(css, /\bzoom\s*:/);
@@ -52,9 +52,13 @@ test('redesigned operations shell keeps core accessibility and responsive afford
   assert.match(css, /\[data-theme="dark"\] \.preference-select, \[data-theme="dark"\] \.host-control select \{ color-scheme: dark; \}/);
   assert.doesNotMatch(css, /\.metric:hover/);
   assert.match(app, /data-role="power-value"/);
+  assert.match(app, /function formatPercent\(value\)/);
+  assert.match(app, /clampPercent\(value\)\.toFixed\(1\)/);
   assert.match(app, /fleet\.power/);
   assert.doesNotMatch(html, /class="metric-track"/);
   assert.doesNotMatch(css, /\.mini-track|\.metric-track/);
+  assert.match(css, /\.host-card \{[^}]*grid-template-rows: minmax\(0, 1fr\) auto auto/);
+  assert.match(css, /\.topbar-actions \{[^}]*flex-wrap: nowrap/);
   assert.match(html, /id="temperature-value"/);
   assert.match(html, /id="power-value"/);
   assert.match(app, /function renderHardware\(/);
