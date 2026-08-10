@@ -39,6 +39,8 @@ test('Synology and Home Assistant agents use the authenticated fleet protocol', 
   const synologyInstaller = fs.readFileSync(path.join(root, 'synology-agent', 'install-synology.sh'), 'utf8');
   const homeAssistant = fs.readFileSync(path.join(root, 'homeassistant-addon', 'agent.js'), 'utf8');
   const addOn = fs.readFileSync(path.join(root, 'homeassistant-addon', 'config.yaml'), 'utf8');
+  const addOnBuild = fs.readFileSync(path.join(root, 'homeassistant-addon', 'build.yaml'), 'utf8');
+  const addOnDockerfile = fs.readFileSync(path.join(root, 'homeassistant-addon', 'Dockerfile'), 'utf8');
   for (const agent of [synology, homeAssistant]) {
     assert.match(agent, /agent\.hello/);
     assert.match(agent, /agent\.telemetry/);
@@ -56,6 +58,9 @@ test('Synology and Home Assistant agents use the authenticated fleet protocol', 
   assert.match(homeAssistant, /homeAssistant:/);
   assert.match(homeAssistant, /while \(state\.telemetryBuffer\.length/);
   assert.match(addOn, /homeassistant_api: true/);
+  assert.match(addOnBuild, /amd64:\s+ghcr\.io\/home-assistant\/amd64-base:/);
+  assert.match(addOnBuild, /aarch64:\s+ghcr\.io\/home-assistant\/aarch64-base:/);
+  assert.match(addOnDockerfile, /ARG BUILD_FROM=ghcr\.io\/home-assistant\/amd64-base:/);
 });
 
 test('development launcher serves source assets with the installed database', () => {

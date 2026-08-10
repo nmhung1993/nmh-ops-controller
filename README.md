@@ -474,6 +474,8 @@ temperature_entity_ids:
 
 Chỉ thêm các power entity không chồng lặp vì `TOTAL POWER` là tổng của danh sách `power_entity_ids`.
 
+Khi cập nhật source add-on, cần copy cả `Dockerfile`, `build.yaml`, `config.yaml`, `package.json`, `agent.js` và `run.sh`, sau đó chọn **Rebuild**. File `build.yaml` ánh xạ đúng Home Assistant base image cho `amd64`, `aarch64` và `armv7`.
+
 ### Home Assistant Container/Core
 
 Tạo long-lived access token trong Home Assistant profile, sao chép `config.example.json`, sau đó chạy connector cạnh Home Assistant:

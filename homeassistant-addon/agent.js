@@ -6,7 +6,7 @@ const os = require('os');
 const crypto = require('crypto');
 const WebSocket = require('ws');
 
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 const CONFIG_FILE = argument('--config') || '/data/options.json';
 const STATE_FILE = process.env.WC_STATE_FILE || path.join(path.dirname(CONFIG_FILE), 'windows-controller-state.json');
 const capabilities = ['telemetry', 'hardware-sensors', 'homeassistant', 'homeassistant.entities'];
