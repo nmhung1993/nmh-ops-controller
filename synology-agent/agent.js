@@ -7,8 +7,9 @@ const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
 const WebSocket = require('ws');
 
-const VERSION = '1.0.2';
+const VERSION = '1.0.3';
 const CONFIG_FILE = argument('--config') || process.env.WC_AGENT_CONFIG || '/volume1/@appdata/windows-controller-agent/config.json';
+const CONNECTION_ATTEMPT_TIMEOUT_MS = Number(process.env.WC_CONNECTION_ATTEMPT_TIMEOUT_MS || 10_000);
 const capabilities = ['telemetry', 'hardware-sensors', 'processes', 'process.kill', 'watchdog', 'watchdog.launch', 'linux', 'synology'];
 let config;
 let state;
@@ -17,6 +18,7 @@ let approved = false;
 let reconnectDelay = 1000;
 let reconnectTimer = null;
 let reconnectTimerAt = 0;
+let connectionAttemptTimer = null;
 let connectionStartedAt = 0;
 let lastActivityAt = 0;
 let telemetryBusy = false;
@@ -89,14 +91,25 @@ function scheduleReconnect() {
     catch (error) { console.error('Synology Agent connection setup failed:', error.message); socket = null; scheduleReconnect(); }
   }, delay);
 }
+function failConnection(current, reason) {
+  if (socket !== current) return;
+  if (connectionAttemptTimer) clearTimeout(connectionAttemptTimer);
+  connectionAttemptTimer = null;
+  socket = null; approved = false;
+  console.error(`Synology Agent connection failed: ${reason}`);
+  try { current.terminate(); } catch {}
+  scheduleReconnect();
+}
 function connect() {
   if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return;
   console.log(`Synology Agent connecting to ${config.serverUrl}`);
   const current = new WebSocket(websocketUrl(config.serverUrl), { handshakeTimeout: 15_000 });
   socket = current;
   connectionStartedAt = Date.now();
+  connectionAttemptTimer = setTimeout(() => failConnection(current, 'connection_attempt_timeout'), CONNECTION_ATTEMPT_TIMEOUT_MS);
   current.on('open', () => {
     lastActivityAt = Date.now();
+    console.log('Synology Agent WebSocket opened; sending hello');
     send(envelope('agent.hello', {
       installId: state.installId, token: state.token, hostname: os.hostname(), fingerprint: fingerprint(),
       platform: `Synology DSM / ${os.type()} ${os.release()} ${os.arch()}`, version: VERSION, capabilities
@@ -107,9 +120,11 @@ function connect() {
     let message;
     try { message = JSON.parse(raw.toString()); } catch { return; }
     if (message.type === 'server.pending') {
+      if (connectionAttemptTimer) clearTimeout(connectionAttemptTimer); connectionAttemptTimer = null;
       reconnectDelay = 1000; approved = false; state.agentId = message.payload?.agentId || state.agentId; saveState();
       console.log(`Synology Agent pending approval: ${state.agentId}`);
     } else if (message.type === 'server.approved') {
+      if (connectionAttemptTimer) clearTimeout(connectionAttemptTimer); connectionAttemptTimer = null;
       reconnectDelay = 1000; approved = true; state.agentId = message.payload?.agentId || state.agentId; saveState(); flush();
       console.log(`Synology Agent approved: ${state.agentId}`);
     } else if (message.type === 'server.config') applyWatchdog(message.payload || {});
@@ -117,13 +132,12 @@ function connect() {
   });
   current.on('error', error => {
     console.error('Synology Agent connection error:', error.message);
-    if (socket !== current) return;
-    socket = null; approved = false;
-    try { current.terminate(); } catch {}
-    scheduleReconnect();
+    failConnection(current, error.message);
   });
   current.on('close', (code, reason) => {
     if (socket !== current) return;
+    if (connectionAttemptTimer) clearTimeout(connectionAttemptTimer);
+    connectionAttemptTimer = null;
     socket = null; approved = false;
     if (code === 1001 && reason.toString().toLowerCase().includes('server shutdown')) reconnectDelay = 1000;
     console.log(`Synology Agent disconnected (${code}): ${reason.toString()}`);
@@ -133,13 +147,11 @@ function connect() {
 function maintainConnection() {
   if (!socket || socket.readyState === WebSocket.CLOSED) return scheduleReconnect();
   if ([WebSocket.CONNECTING, WebSocket.CLOSING].includes(socket.readyState)) {
-    if (Date.now() - connectionStartedAt > 20_000) { const stale = socket; socket = null; try { stale.terminate(); } catch {} scheduleReconnect(); }
+    if (Date.now() - connectionStartedAt > CONNECTION_ATTEMPT_TIMEOUT_MS) failConnection(socket, 'stale_connecting_socket');
     return;
   }
   if (Date.now() - lastActivityAt > 20_000) {
-    const stale = socket; socket = null; approved = false;
-    try { stale.terminate(); } catch {}
-    return scheduleReconnect();
+    return failConnection(socket, 'heartbeat_timeout');
   }
   send(envelope('ping'));
 }

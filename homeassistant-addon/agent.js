@@ -6,9 +6,10 @@ const os = require('os');
 const crypto = require('crypto');
 const WebSocket = require('ws');
 
-const VERSION = '1.0.5';
+const VERSION = '1.0.6';
 const CONFIG_FILE = argument('--config') || '/data/options.json';
 const STATE_FILE = process.env.WC_STATE_FILE || path.join(path.dirname(CONFIG_FILE), 'windows-controller-state.json');
+const CONNECTION_ATTEMPT_TIMEOUT_MS = Number(process.env.WC_CONNECTION_ATTEMPT_TIMEOUT_MS || 10_000);
 const capabilities = ['telemetry', 'hardware-sensors', 'homeassistant', 'homeassistant.entities'];
 let config;
 let state;
@@ -17,6 +18,7 @@ let approved = false;
 let reconnectDelay = 1000;
 let reconnectTimer = null;
 let reconnectTimerAt = 0;
+let connectionAttemptTimer = null;
 let connectionStartedAt = 0;
 let lastActivityAt = 0;
 let telemetryBusy = false;
@@ -51,42 +53,48 @@ function fingerprint() {
   const identity = `${config.home_assistant_url}|${state.installId}`;
   return crypto.createHash('sha256').update(identity).digest('hex');
 }
+function failConnection(current, reason) {
+  if (socket !== current) return;
+  if (connectionAttemptTimer) clearTimeout(connectionAttemptTimer);
+  connectionAttemptTimer = null;
+  socket = null; approved = false;
+  console.error(`Home Assistant connector connection failed: ${reason}`);
+  try { current.terminate(); } catch {}
+  scheduleReconnect();
+}
 function connect() {
   if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return;
   console.log(`Home Assistant connector connecting to ${config.central_server_url}`);
   const current = new WebSocket(websocketUrl(config.central_server_url), { handshakeTimeout: 15_000 });
   socket = current; connectionStartedAt = Date.now();
+  connectionAttemptTimer = setTimeout(() => failConnection(current, 'connection_attempt_timeout'), CONNECTION_ATTEMPT_TIMEOUT_MS);
   current.on('open', () => {
     lastActivityAt = Date.now();
+    console.log('Home Assistant connector WebSocket opened; sending hello');
     send(envelope('agent.hello', { installId: state.installId, token: state.token, hostname: state.hostname, fingerprint: fingerprint(), platform: 'Home Assistant', version: VERSION, capabilities }));
   });
   current.on('message', raw => {
     lastActivityAt = Date.now();
     let message; try { message = JSON.parse(raw.toString()); } catch { return; }
-    if (message.type === 'server.pending') { reconnectDelay = 1000; approved = false; state.agentId = message.payload?.agentId || state.agentId; saveState(); console.log(`Home Assistant connector pending approval: ${state.agentId}`); }
-    else if (message.type === 'server.approved') { reconnectDelay = 1000; approved = true; state.agentId = message.payload?.agentId || state.agentId; saveState(); flush(); console.log(`Home Assistant connector approved: ${state.agentId}`); }
+    if (message.type === 'server.pending') { if (connectionAttemptTimer) clearTimeout(connectionAttemptTimer); connectionAttemptTimer = null; reconnectDelay = 1000; approved = false; state.agentId = message.payload?.agentId || state.agentId; saveState(); console.log(`Home Assistant connector pending approval: ${state.agentId}`); }
+    else if (message.type === 'server.approved') { if (connectionAttemptTimer) clearTimeout(connectionAttemptTimer); connectionAttemptTimer = null; reconnectDelay = 1000; approved = true; state.agentId = message.payload?.agentId || state.agentId; saveState(); flush(); console.log(`Home Assistant connector approved: ${state.agentId}`); }
     else if (message.type === 'server.config') send(envelope('agent.config.ack', { version: Number(message.payload?.version || 0) }));
     else if (message.type === 'server.command') send(envelope('agent.command.result', { commandId: message.payload?.commandId, status: 'failed', error: 'capability_not_supported' }));
   });
   current.on('error', error => {
     console.error('Home Assistant connector error:', error.message);
-    if (socket !== current) return;
-    socket = null; approved = false;
-    try { current.terminate(); } catch {}
-    scheduleReconnect();
+    failConnection(current, error.message);
   });
-  current.on('close', (code, reason) => { if (socket !== current) return; socket = null; approved = false; if (code === 1001 && reason.toString().toLowerCase().includes('server shutdown')) reconnectDelay = 1000; console.log(`Home Assistant connector disconnected (${code}): ${reason.toString()}`); scheduleReconnect(); });
+  current.on('close', (code, reason) => { if (socket !== current) return; if (connectionAttemptTimer) clearTimeout(connectionAttemptTimer); connectionAttemptTimer = null; socket = null; approved = false; if (code === 1001 && reason.toString().toLowerCase().includes('server shutdown')) reconnectDelay = 1000; console.log(`Home Assistant connector disconnected (${code}): ${reason.toString()}`); scheduleReconnect(); });
 }
 function maintainConnection() {
   if (!socket || socket.readyState === WebSocket.CLOSED) return scheduleReconnect();
   if ([WebSocket.CONNECTING, WebSocket.CLOSING].includes(socket.readyState)) {
-    if (Date.now() - connectionStartedAt > 20_000) { const stale = socket; socket = null; try { stale.terminate(); } catch {} scheduleReconnect(); }
+    if (Date.now() - connectionStartedAt > CONNECTION_ATTEMPT_TIMEOUT_MS) failConnection(socket, 'stale_connecting_socket');
     return;
   }
   if (Date.now() - lastActivityAt > 20_000) {
-    const stale = socket; socket = null; approved = false;
-    try { stale.terminate(); } catch {}
-    return scheduleReconnect();
+    return failConnection(socket, 'heartbeat_timeout');
   }
   send(envelope('ping'));
 }

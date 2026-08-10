@@ -19,6 +19,7 @@ const CONFIG_FILE = getArgument('--config') || process.env.WC_AGENT_CONFIG || pa
 const MAX_TELEMETRY_BUFFER = 300;
 const MAX_EVENT_BUFFER = 1000;
 const MAX_COMPLETED_COMMANDS = 500;
+const CONNECTION_ATTEMPT_TIMEOUT_MS = 10_000;
 
 let config;
 let state;
@@ -169,7 +170,7 @@ async function connect() {
       approved = false;
       try { socket.terminate(); } catch {}
       scheduleReconnect();
-    }, 20_000);
+    }, CONNECTION_ATTEMPT_TIMEOUT_MS);
   } catch (error) {
     if (attemptId !== connectionAttemptId) return;
     connecting = false;

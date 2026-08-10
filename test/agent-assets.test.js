@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const net = require('net');
 const { spawn } = require('child_process');
 const { WebSocketServer } = require('ws');
 const { groupHardwareMonitorRows } = require('../agent/windows');
@@ -33,11 +34,13 @@ function listenWebSocket(port, onHello) {
   });
 }
 
-test('Home Assistant connector retries after a refused reconnect without waiting for close', async () => {
+test('Home Assistant connector escapes a WebSocket attempt stuck in CONNECTING', async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wc-ha-reconnect-'));
   const configFile = path.join(tempDir, 'options.json');
   const stateFile = path.join(tempDir, 'state.json');
   let server;
+  let blackhole;
+  const blackholeSockets = new Set();
   let child;
   try {
     server = await listenWebSocket(0, () => { helloCount += 1; });
@@ -51,7 +54,7 @@ test('Home Assistant connector retries after a refused reconnect without waiting
     let helloCount = 0;
     let output = '';
     child = spawn(process.execPath, [path.join(root, 'homeassistant-addon', 'agent.js'), '--config', configFile], {
-      env: { ...process.env, WC_STATE_FILE: stateFile }, stdio: ['ignore', 'pipe', 'pipe']
+      env: { ...process.env, WC_STATE_FILE: stateFile, WC_CONNECTION_ATTEMPT_TIMEOUT_MS: '500' }, stdio: ['ignore', 'pipe', 'pipe']
     });
     child.stdout.on('data', chunk => { output += chunk; });
     child.stderr.on('data', chunk => { output += chunk; });
@@ -60,17 +63,30 @@ test('Home Assistant connector retries after a refused reconnect without waiting
     for (const client of server.clients) client.close(1001, 'server shutdown');
     await new Promise(resolve => server.close(resolve));
     server = null;
-    await waitFor(() => output.includes('connector error:'));
+    blackhole = net.createServer(connection => blackholeSockets.add(connection));
+    await new Promise((resolve, reject) => {
+      blackhole.once('error', reject);
+      blackhole.listen(port, '127.0.0.1', resolve);
+    });
+    await waitFor(() => output.includes('connection_attempt_timeout'));
+    for (const connection of blackholeSockets) connection.destroy();
+    await new Promise(resolve => blackhole.close(resolve));
+    blackhole = null;
 
     server = await listenWebSocket(port, () => { helloCount += 1; });
     await waitFor(() => helloCount >= 2);
     assert.match(output, /reconnect scheduled in 1000ms/);
     assert.match(output, /connector connecting to/);
+    assert.match(output, /connection failed: connection_attempt_timeout/);
   } finally {
     if (child) child.kill();
     if (server) {
       for (const client of server.clients) client.terminate();
       await new Promise(resolve => server.close(resolve));
+    }
+    if (blackhole) {
+      for (const connection of blackholeSockets) connection.destroy();
+      await new Promise(resolve => blackhole.close(resolve));
     }
     fs.rmSync(tempDir, { recursive: true, force: true });
   }

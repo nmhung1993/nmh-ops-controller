@@ -1,6 +1,6 @@
 {
   "name": "windows-controller-homeassistant-connector",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "private": true,
   "main": "agent.js",
   "engines": { "node": ">=18" },
