@@ -6,7 +6,7 @@ const os = require('os');
 const crypto = require('crypto');
 const WebSocket = require('ws');
 
-const VERSION = '1.0.4';
+const VERSION = '1.0.5';
 const CONFIG_FILE = argument('--config') || '/data/options.json';
 const STATE_FILE = process.env.WC_STATE_FILE || path.join(path.dirname(CONFIG_FILE), 'windows-controller-state.json');
 const capabilities = ['telemetry', 'hardware-sensors', 'homeassistant', 'homeassistant.entities'];
@@ -41,7 +41,11 @@ function scheduleReconnect() {
   const delay = reconnectDelay; reconnectDelay = Math.min(reconnectDelay * 2, 30_000);
   reconnectTimerAt = Date.now();
   console.log(`Home Assistant connector reconnect scheduled in ${delay}ms`);
-  reconnectTimer = setTimeout(() => { reconnectTimer = null; reconnectTimerAt = 0; connect(); }, delay);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null; reconnectTimerAt = 0;
+    try { connect(); }
+    catch (error) { console.error('Home Assistant connector setup failed:', error.message); socket = null; scheduleReconnect(); }
+  }, delay);
 }
 function fingerprint() {
   const identity = `${config.home_assistant_url}|${state.installId}`;
@@ -49,6 +53,7 @@ function fingerprint() {
 }
 function connect() {
   if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return;
+  console.log(`Home Assistant connector connecting to ${config.central_server_url}`);
   const current = new WebSocket(websocketUrl(config.central_server_url), { handshakeTimeout: 15_000 });
   socket = current; connectionStartedAt = Date.now();
   current.on('open', () => {
@@ -65,7 +70,10 @@ function connect() {
   });
   current.on('error', error => {
     console.error('Home Assistant connector error:', error.message);
-    if (socket === current && current.readyState !== WebSocket.CLOSED) { try { current.terminate(); } catch {} }
+    if (socket !== current) return;
+    socket = null; approved = false;
+    try { current.terminate(); } catch {}
+    scheduleReconnect();
   });
   current.on('close', (code, reason) => { if (socket !== current) return; socket = null; approved = false; if (code === 1001 && reason.toString().toLowerCase().includes('server shutdown')) reconnectDelay = 1000; console.log(`Home Assistant connector disconnected (${code}): ${reason.toString()}`); scheduleReconnect(); });
 }
@@ -75,7 +83,11 @@ function maintainConnection() {
     if (Date.now() - connectionStartedAt > 20_000) { const stale = socket; socket = null; try { stale.terminate(); } catch {} scheduleReconnect(); }
     return;
   }
-  if (Date.now() - lastActivityAt > 20_000) return socket.terminate();
+  if (Date.now() - lastActivityAt > 20_000) {
+    const stale = socket; socket = null; approved = false;
+    try { stale.terminate(); } catch {}
+    return scheduleReconnect();
+  }
   send(envelope('ping'));
 }
 function queue(frame) { state.telemetryBuffer.push(frame); if (state.telemetryBuffer.length > 120) state.telemetryBuffer.shift(); saveState(); }

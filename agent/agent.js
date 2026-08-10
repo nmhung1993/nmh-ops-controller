@@ -13,7 +13,7 @@ const {
   getMachineFingerprint
 } = require('./windows');
 
-const VERSION = '2.1.2';
+const VERSION = '2.1.3';
 const DEFAULT_STATE_DIR = path.join(process.env.PROGRAMDATA || path.join(os.homedir(), 'AppData', 'Local'), 'WindowsController', 'agent');
 const CONFIG_FILE = getArgument('--config') || process.env.WC_AGENT_CONFIG || path.join(DEFAULT_STATE_DIR, 'config.json');
 const MAX_TELEMETRY_BUFFER = 300;
@@ -162,7 +162,13 @@ async function connect() {
     connectionAttemptTimer = setTimeout(() => {
       if (attemptId !== connectionAttemptId || ws !== socket) return;
       console.warn('Agent connection attempt timed out; forcing reconnect.');
+      connectionAttemptTimer = null;
+      connectionAttemptId += 1;
+      ws = null;
+      connecting = false;
+      approved = false;
       try { socket.terminate(); } catch {}
+      scheduleReconnect();
     }, 20_000);
   } catch (error) {
     if (attemptId !== connectionAttemptId) return;
@@ -236,10 +242,15 @@ async function connect() {
 
   socket.on('error', error => {
     console.error('Agent connection error:', error.message);
-    // Failed handshakes do not always produce a timely close event on Windows.
-    if (ws === socket && socket.readyState !== WebSocket.CLOSED) {
-      try { socket.terminate(); } catch {}
-    }
+    if (ws !== socket) return;
+    if (connectionAttemptTimer) clearTimeout(connectionAttemptTimer);
+    connectionAttemptTimer = null;
+    connectionAttemptId += 1;
+    ws = null;
+    connecting = false;
+    approved = false;
+    try { socket.terminate(); } catch {}
+    scheduleReconnect();
   });
 }
 
@@ -302,7 +313,13 @@ function maintainConnection() {
   if (ws.readyState !== WebSocket.OPEN) return;
   if (lastSocketActivityAt && Date.now() - lastSocketActivityAt > 20_000) {
     console.warn('Agent connection timed out; reconnecting.');
-    ws.terminate();
+    const staleSocket = ws;
+    ws = null;
+    connecting = false;
+    approved = false;
+    connectionAttemptId += 1;
+    try { staleSocket.terminate(); } catch {}
+    scheduleReconnect();
     return;
   }
   sendRaw(createEnvelope('ping'));

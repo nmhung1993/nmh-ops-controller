@@ -225,7 +225,7 @@ Register-ScheduledTask -TaskName $helperTaskName -Action $taskAction -Trigger $t
 Start-ScheduledTask -TaskName $helperTaskName
 
 Remove-NetFirewallRule -DisplayName 'Windows Controller Agent Outbound' -ErrorAction SilentlyContinue
-New-NetFirewallRule -DisplayName 'Windows Controller Agent Outbound' -Direction Outbound -Action Allow -Protocol TCP -RemotePort $serverUri.Port -Profile Private | Out-Null
+New-NetFirewallRule -DisplayName 'Windows Controller Agent Outbound' -Direction Outbound -Action Allow -Protocol TCP -RemotePort $serverUri.Port -Profile Any | Out-Null
 
 $hardwareStatus = 'Skipped by -SkipHardwareMonitor'
 if (-not $SkipHardwareMonitor) {

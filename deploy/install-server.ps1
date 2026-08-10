@@ -166,7 +166,9 @@ if ($localAgent) {
 }
 
 Remove-NetFirewallRule -DisplayName 'Windows Controller Central Server' -ErrorAction SilentlyContinue
-New-NetFirewallRule -DisplayName 'Windows Controller Central Server' -Direction Inbound -Action Allow -Protocol TCP -LocalPort $Port -Profile Private | Out-Null
+# Network profiles can be classified as Public/Domain by Windows even on a trusted
+# LAN. Restrict the rule to the local subnet instead of relying on one profile.
+New-NetFirewallRule -DisplayName 'Windows Controller Central Server' -Direction Inbound -Action Allow -Protocol TCP -LocalPort $Port -Profile Any -RemoteAddress LocalSubnet | Out-Null
 
 $privateAddresses = Get-NetIPAddress -AddressFamily IPv4 -AddressState Preferred |
   Where-Object { $_.IPAddress -notlike '127.*' -and $_.PrefixOrigin -ne 'WellKnown' } |

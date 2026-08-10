@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
 const WebSocket = require('ws');
 
-const VERSION = '1.0.1';
+const VERSION = '1.0.2';
 const CONFIG_FILE = argument('--config') || process.env.WC_AGENT_CONFIG || '/volume1/@appdata/windows-controller-agent/config.json';
 const capabilities = ['telemetry', 'hardware-sensors', 'processes', 'process.kill', 'watchdog', 'watchdog.launch', 'linux', 'synology'];
 let config;
@@ -83,10 +83,15 @@ function scheduleReconnect() {
   reconnectDelay = Math.min(reconnectDelay * 2, 30_000);
   reconnectTimerAt = Date.now();
   console.log(`Synology Agent reconnect scheduled in ${delay}ms`);
-  reconnectTimer = setTimeout(() => { reconnectTimer = null; reconnectTimerAt = 0; connect(); }, delay);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null; reconnectTimerAt = 0;
+    try { connect(); }
+    catch (error) { console.error('Synology Agent connection setup failed:', error.message); socket = null; scheduleReconnect(); }
+  }, delay);
 }
 function connect() {
   if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) return;
+  console.log(`Synology Agent connecting to ${config.serverUrl}`);
   const current = new WebSocket(websocketUrl(config.serverUrl), { handshakeTimeout: 15_000 });
   socket = current;
   connectionStartedAt = Date.now();
@@ -112,7 +117,10 @@ function connect() {
   });
   current.on('error', error => {
     console.error('Synology Agent connection error:', error.message);
-    if (socket === current && current.readyState !== WebSocket.CLOSED) { try { current.terminate(); } catch {} }
+    if (socket !== current) return;
+    socket = null; approved = false;
+    try { current.terminate(); } catch {}
+    scheduleReconnect();
   });
   current.on('close', (code, reason) => {
     if (socket !== current) return;
@@ -128,7 +136,11 @@ function maintainConnection() {
     if (Date.now() - connectionStartedAt > 20_000) { const stale = socket; socket = null; try { stale.terminate(); } catch {} scheduleReconnect(); }
     return;
   }
-  if (Date.now() - lastActivityAt > 20_000) return socket.terminate();
+  if (Date.now() - lastActivityAt > 20_000) {
+    const stale = socket; socket = null; approved = false;
+    try { stale.terminate(); } catch {}
+    return scheduleReconnect();
+  }
   send(envelope('ping'));
 }
 

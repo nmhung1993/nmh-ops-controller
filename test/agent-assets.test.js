@@ -2,9 +2,79 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+const { spawn } = require('child_process');
+const { WebSocketServer } = require('ws');
 const { groupHardwareMonitorRows } = require('../agent/windows');
 
 const root = path.join(__dirname, '..');
+
+function waitFor(predicate, timeoutMs = 10_000) {
+  return new Promise((resolve, reject) => {
+    const deadline = Date.now() + timeoutMs;
+    const timer = setInterval(() => {
+      if (predicate()) { clearInterval(timer); resolve(); }
+      else if (Date.now() >= deadline) { clearInterval(timer); reject(new Error('Timed out waiting for condition')); }
+    }, 50);
+  });
+}
+
+function listenWebSocket(port, onHello) {
+  return new Promise((resolve, reject) => {
+    const server = new WebSocketServer({ port });
+    server.once('listening', () => resolve(server));
+    server.once('error', reject);
+    server.on('connection', client => client.on('message', raw => {
+      const message = JSON.parse(raw.toString());
+      if (message.type !== 'agent.hello') return;
+      onHello();
+      client.send(JSON.stringify({ type: 'server.approved', payload: { agentId: 'agent-reconnect-test' } }));
+    }));
+  });
+}
+
+test('Home Assistant connector retries after a refused reconnect without waiting for close', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wc-ha-reconnect-'));
+  const configFile = path.join(tempDir, 'options.json');
+  const stateFile = path.join(tempDir, 'state.json');
+  let server;
+  let child;
+  try {
+    server = await listenWebSocket(0, () => { helloCount += 1; });
+    const port = server.address().port;
+    fs.writeFileSync(configFile, JSON.stringify({
+      central_server_url: `http://127.0.0.1:${port}`,
+      home_assistant_url: 'http://127.0.0.1:1',
+      home_assistant_token: 'test',
+      telemetry_interval_seconds: 60
+    }));
+    let helloCount = 0;
+    let output = '';
+    child = spawn(process.execPath, [path.join(root, 'homeassistant-addon', 'agent.js'), '--config', configFile], {
+      env: { ...process.env, WC_STATE_FILE: stateFile }, stdio: ['ignore', 'pipe', 'pipe']
+    });
+    child.stdout.on('data', chunk => { output += chunk; });
+    child.stderr.on('data', chunk => { output += chunk; });
+    await waitFor(() => helloCount === 1);
+
+    for (const client of server.clients) client.close(1001, 'server shutdown');
+    await new Promise(resolve => server.close(resolve));
+    server = null;
+    await waitFor(() => output.includes('connector error:'));
+
+    server = await listenWebSocket(port, () => { helloCount += 1; });
+    await waitFor(() => helloCount >= 2);
+    assert.match(output, /reconnect scheduled in 1000ms/);
+    assert.match(output, /connector connecting to/);
+  } finally {
+    if (child) child.kill();
+    if (server) {
+      for (const client of server.clients) client.terminate();
+      await new Promise(resolve => server.close(resolve));
+    }
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
 
 test('desktop helper is launched through a hidden VBS host', () => {
   const installer = fs.readFileSync(path.join(root, 'agent', 'install-agent.ps1'), 'utf8');
@@ -23,7 +93,7 @@ test('agent reconnects after failed setup and stale sockets without re-enrollmen
   assert.match(agent, /lastSocketActivityAt/);
   assert.match(agent, /WebSocket\.CONNECTING \|\| ws\.readyState === WebSocket\.CLOSING/);
   assert.match(agent, /staleSocket\.terminate\(\)/);
-  assert.match(agent, /ws\.terminate\(\)/);
+  assert.match(agent, /try \{ socket\.terminate\(\); \} catch \{\}/);
   assert.match(agent, /Math\.min\(reconnectDelay \* 2, 30_000\)/);
   assert.match(agent, /cachedFingerprint/);
   assert.match(agent, /connectionAttemptId/);
@@ -36,6 +106,7 @@ test('agent reconnects after failed setup and stale sockets without re-enrollmen
   assert.match(installer, /Get-FileHash -LiteralPath \$agentSource/);
   assert.match(installer, /Installed Agent runtime does not match/);
   assert.match(installer, /Agent service is running but the Node\.js runtime did not stay alive/);
+  assert.match(installer, /Windows Controller Agent Outbound[\s\S]*-Profile Any/);
 });
 
 test('server deployment waits for HTTP and refreshes the local agent connection', () => {
@@ -43,6 +114,8 @@ test('server deployment waits for HTTP and refreshes the local agent connection'
   assert.match(installer, /function Wait-HttpReady/);
   assert.match(installer, /api\/setup\/status/);
   assert.match(installer, /Restart-Service -Name 'WindowsControllerAgent'/);
+  assert.match(installer, /-Profile Any -RemoteAddress LocalSubnet/);
+  assert.doesNotMatch(installer, /-Profile Private \|/);
 });
 
 test('Synology and Home Assistant agents use the authenticated fleet protocol', () => {

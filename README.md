@@ -54,7 +54,7 @@ Windows Agent Service
 - Windows 10/11 hoặc Windows Server.
 - Node.js `22.5+`; khuyến nghị Node.js 24 LTS.
 - Tài khoản Administrator để cài service, Scheduled Task, firewall và PawnIO.
-- Windows Network Profile của LAN đặt là **Private**.
+- Windows Firewall cho phép TCP 3003 từ **LocalSubnet**; profile Public/Domain vẫn dùng được nếu LAN được quản trị tin cậy.
 - Central Server nên có static IP hoặc DHCP reservation.
 - Kết nối Internet trong lần cài đầu để tải npm package, WinSW, LibreHardwareMonitor và .NET runtime. LibreHardwareMonitor có thể dùng ZIP offline, nhưng các dependency khác vẫn phải có sẵn.
 
@@ -81,7 +81,7 @@ Installer server sẽ:
 - tải WinSW nếu máy chưa có bản dành cho ứng dụng;
 - tạo service tự khởi động `Windows Controller Central Server`;
 - bind webapp tại `0.0.0.0:3003`;
-- mở inbound TCP 3003 chỉ cho Windows Private profile;
+- mở inbound TCP 3003 cho LocalSubnet trên mọi Windows network profile (không mở toàn Internet);
 - tạo SQLite, JWT secret ngẫu nhiên và thư mục backup;
 - import dữ liệu JSON cũ ở lần chạy đầu nếu có.
 
@@ -300,7 +300,7 @@ Get-Content 'C:\ProgramData\WindowsController\agent\WindowsControllerAgent.err.l
 Test-NetConnection 192.168.1.10 -Port 3003
 ```
 
-Kiểm tra `ServerUrl`, Private network profile, firewall server và việc browser có mở được URL server từ máy Agent hay không.
+Kiểm tra `ServerUrl`, firewall server, LocalSubnet và việc browser có mở được URL server từ máy Agent hay không.
 
 ### Không có nhiệt độ/công suất
 
@@ -512,7 +512,7 @@ Optional platform connectors are included for Synology DSM (`synology-agent`) an
 - Windows 10/11 or Windows Server
 - Node.js 22.5+ (Node.js 24 LTS recommended)
 - Administrator rights
-- Trusted Private-profile LAN
+- Trusted LAN; inbound TCP is limited to the Windows `LocalSubnet` firewall scope
 - Static IP or DHCP reservation for the Central Server
 
 ### Install the Central Server
