@@ -173,6 +173,7 @@ function formatHostCpuModel(cpu = {}) {
   return raw
     .replace(/\((?:R|TM)\)/gi, '')
     .replace(/^Intel\s+(?:Core|Xeon|Atom)(?:\s+CPU)?\s+/i, '')
+    .replace(/\bCPU\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -357,6 +358,7 @@ function renderHostSelect() {
   const online = state.hosts.filter(host => host.online).length;
   $('online-count').textContent = online;
   $('offline-count').textContent = state.hosts.length - online;
+  updateCapabilityNavigation();
 }
 
 function selectedHost() {
@@ -366,6 +368,15 @@ function selectedHost() {
 function selectedHostSupports(...capabilities) {
   const available = new Set(selectedHost()?.capabilities || []);
   return capabilities.some(capability => available.has(capability));
+}
+
+function updateCapabilityNavigation() {
+  document.querySelectorAll('#main-nav [data-capability]').forEach(link => {
+    link.hidden = !selectedHostSupports(link.dataset.capability);
+  });
+  const page = currentPage();
+  const currentLink = document.querySelector(`#main-nav [data-page="${CSS.escape(page)}"]`);
+  if (currentLink?.hidden) location.hash = '#dashboard';
 }
 
 function selectHost(hostId, destination = null) {
@@ -422,7 +433,8 @@ function updateFleetHostCard(host) {
   const cpuModelElement = card.querySelector('[data-role="cpu-model"]');
   if (cpuModelElement) {
     cpuModelElement.hidden = !cpuModel;
-    cpuModelElement.textContent = cpuModel ? `${t('fleet.processor')}: ${cpuModel}` : '';
+    cpuModelElement.textContent = cpuModel;
+    cpuModelElement.title = cpuModel;
   }
   metrics?.classList.toggle('has-power', hasPower);
   if (powerMetric) powerMetric.hidden = !hasPower;
@@ -447,10 +459,9 @@ function renderFleet() {
       <div class="host-card-main">
         <div class="host-head"><div class="host-identity"><h3>${escapeHtml(host.displayName)}</h3></div><span class="status-pill ${host.online ? 'online' : ''}" data-role="status">${host.online ? escapeHtml(t('common.online')) : escapeHtml(t('common.offline'))}</span></div>
         <p class="host-meta">${escapeHtml(host.platform || 'Windows')} / Agent ${escapeHtml(host.version || '--')}</p>
-        <p class="host-cpu" data-role="cpu-model" ${cpuModel ? '' : 'hidden'}>${cpuModel ? `${escapeHtml(t('fleet.processor'))}: ${escapeHtml(cpuModel)}` : ''}</p>
+        <div class="host-runtime"><span>${escapeHtml(t('fleet.uptime'))}</span><strong data-role="uptime">${telemetry.uptime !== undefined ? escapeHtml(formatUptime(telemetry.uptime)) : '--'}</strong></div>
       </div>
-      <div class="host-metrics ${hasPower ? 'has-power' : ''}"><div class="host-metric"><header><span>${escapeHtml(t('fleet.cpu'))}</span><span>CPU</span></header><strong data-role="cpu-value">${telemetry.cpu ? formatPercent(cpu) : '--'}</strong></div><div class="host-metric memory"><header><span>${escapeHtml(t('fleet.memory'))}</span><span>RAM</span></header><strong data-role="memory-value">${telemetry.memory ? formatPercent(memory) : '--'}</strong><small data-role="memory-detail" ${Number(telemetry.memory?.total) > 0 ? '' : 'hidden'}>${Number(telemetry.memory?.total) > 0 ? `${formatBytes(telemetry.memory.used)} / ${formatBytes(telemetry.memory.total)}` : ''}</small></div><div class="host-metric power" ${hasPower ? '' : 'hidden'}><header><span>${escapeHtml(t('fleet.power'))}</span><span>W</span></header><strong data-role="power-value">${hasPower ? formatWatts(totalWatts) : '--'}</strong></div></div>
-      <div class="host-runtime"><span>${escapeHtml(t('fleet.uptime'))}</span><strong data-role="uptime">${telemetry.uptime !== undefined ? escapeHtml(formatUptime(telemetry.uptime)) : '--'}</strong></div>
+      <div class="host-metrics ${hasPower ? 'has-power' : ''}"><div class="host-metric"><header><span>${escapeHtml(t('fleet.cpu'))}</span><span>CPU</span></header><strong data-role="cpu-value">${telemetry.cpu ? formatPercent(cpu) : '--'}</strong><small class="cpu-model" data-role="cpu-model" title="${escapeHtml(cpuModel)}" ${cpuModel ? '' : 'hidden'}>${cpuModel ? escapeHtml(cpuModel) : ''}</small></div><div class="host-metric memory"><header><span>${escapeHtml(t('fleet.memory'))}</span><span>RAM</span></header><strong data-role="memory-value">${telemetry.memory ? formatPercent(memory) : '--'}</strong><small data-role="memory-detail" ${Number(telemetry.memory?.total) > 0 ? '' : 'hidden'}>${Number(telemetry.memory?.total) > 0 ? `${formatBytes(telemetry.memory.used)} / ${formatBytes(telemetry.memory.total)}` : ''}</small></div><div class="host-metric power" ${hasPower ? '' : 'hidden'}><header><span>${escapeHtml(t('fleet.power'))}</span><span>W</span></header><strong data-role="power-value">${hasPower ? formatWatts(totalWatts) : '--'}</strong></div></div>
       <footer class="host-footer"><span data-role="last-seen">${escapeHtml(t('fleet.lastSeen', { time: formatDate(host.lastSeen) }))}</span></footer>
     </article>`;
   }).join('');

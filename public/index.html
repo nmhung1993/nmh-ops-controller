@@ -8,7 +8,7 @@
   <script>
     document.documentElement.dataset.theme = localStorage.getItem('wc_theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   </script>
-  <link rel="stylesheet" href="css/style.css?v=2.2.2">
+  <link rel="stylesheet" href="css/style.css?v=2.2.5">
 </head>
 <body>
   <a class="skip-link" href="#main-content" data-i18n="accessibility.skipToContent">Chuyển đến nội dung chính</a>
@@ -83,8 +83,8 @@
       <nav id="main-nav" aria-label="Primary navigation">
         <a href="#fleet" data-page="fleet"><svg class="icon" aria-hidden="true"><use href="#icon-fleet"></use></svg><span data-i18n="nav.fleet">Danh sách máy</span></a>
         <a href="#dashboard" data-page="dashboard"><svg class="icon" aria-hidden="true"><use href="#icon-dashboard"></use></svg><span data-i18n="nav.dashboard">Tổng quan</span></a>
-        <a href="#processes" data-page="processes"><svg class="icon" aria-hidden="true"><use href="#icon-process"></use></svg><span data-i18n="nav.processes">Tiến trình</span></a>
-        <a href="#watchdog" data-page="watchdog"><svg class="icon" aria-hidden="true"><use href="#icon-watchdog"></use></svg><span data-i18n="nav.watchdog">Giám sát tự động</span></a>
+        <a href="#processes" data-page="processes" data-capability="processes"><svg class="icon" aria-hidden="true"><use href="#icon-process"></use></svg><span data-i18n="nav.processes">Tiến trình</span></a>
+        <a href="#watchdog" data-page="watchdog" data-capability="watchdog"><svg class="icon" aria-hidden="true"><use href="#icon-watchdog"></use></svg><span data-i18n="nav.watchdog">Giám sát tự động</span></a>
         <a href="#activity" data-page="activity"><svg class="icon" aria-hidden="true"><use href="#icon-activity"></use></svg><span data-i18n="nav.activity">Nhật ký hoạt động</span></a>
         <a href="#admin" data-page="admin" data-super-admin><svg class="icon" aria-hidden="true"><use href="#icon-admin"></use></svg><span data-i18n="nav.admin">Quản trị</span></a>
       </nav>
@@ -190,6 +190,6 @@
   <dialog id="password-dialog"><form method="dialog" id="password-form" class="dialog-form"><div class="dialog-heading"><div><p class="eyebrow" data-i18n="password.eyebrow">CẬP NHẬT BẢO MẬT</p><h2 data-i18n="password.title">Đổi mật khẩu</h2></div></div><p data-i18n="password.description">Tài khoản cũ cần đổi mật khẩu.</p><label><span data-i18n="password.new">Mật khẩu mới</span><input id="new-password" type="password" minlength="10" required></label><div class="dialog-actions"><button class="button primary" value="default" data-i18n="password.update">Cập nhật mật khẩu</button></div></form></dialog>
 
   <div class="toast-region" id="toast-region" role="status" aria-live="polite"></div>
-  <script src="js/app.js?v=2.2.2"></script>
+  <script src="js/app.js?v=2.2.5"></script>
 </body>
 </html>
