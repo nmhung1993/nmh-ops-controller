@@ -58,8 +58,13 @@ test('Synology and Home Assistant agents use the authenticated fleet protocol', 
   assert.match(homeAssistant, /X-Supervisor-Token/);
   assert.match(homeAssistant, /home_assistant_http_401_use_long_lived_token/);
   assert.match(homeAssistant, /homeAssistant:/);
+  assert.match(homeAssistant, /1024 \*\* 2/);
+  assert.match(homeAssistant, /memoryUsed \+ memoryFree/);
+  assert.match(homeAssistant, /diskFree \/ \(1 - diskPercent \/ 100\)/);
   assert.match(homeAssistant, /while \(state\.telemetryBuffer\.length/);
   assert.match(addOn, /homeassistant_api: true/);
+  assert.match(addOn, /memory_used_entity_id: "sensor\.memory_use"/);
+  assert.match(addOn, /disk_free_entity_id: "sensor\.system_monitor_disk_free"/);
   assert.match(addOnBuild, /amd64:\s+ghcr\.io\/home-assistant\/amd64-base:/);
   assert.match(addOnBuild, /aarch64:\s+ghcr\.io\/home-assistant\/aarch64-base:/);
   assert.match(addOnDockerfile, /ARG BUILD_FROM=ghcr\.io\/home-assistant\/amd64-base:/);

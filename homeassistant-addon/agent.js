@@ -6,7 +6,7 @@ const os = require('os');
 const crypto = require('crypto');
 const WebSocket = require('ws');
 
-const VERSION = '1.0.2';
+const VERSION = '1.0.3';
 const CONFIG_FILE = argument('--config') || '/data/options.json';
 const STATE_FILE = process.env.WC_STATE_FILE || path.join(path.dirname(CONFIG_FILE), 'windows-controller-state.json');
 const capabilities = ['telemetry', 'hardware-sensors', 'homeassistant', 'homeassistant.entities'];
@@ -101,6 +101,23 @@ function numericState(entity) { const value = Number(entity?.state); return Numb
 function byId(entities, entityId) { return entityId ? entities.find(entity => entity.entity_id === entityId) : null; }
 function autoEntity(entities, patterns) { return entities.find(entity => patterns.some(pattern => pattern.test(entity.entity_id)) && numericState(entity) !== null); }
 function selectedEntities(entities, ids) { return (Array.isArray(ids) ? ids : []).map(id => byId(entities, id)).filter(Boolean); }
+function bytes(entity) {
+  const value = numericState(entity);
+  if (value === null) return null;
+  const unit = String(entity.attributes?.unit_of_measurement || 'B').trim().toLowerCase();
+  const multipliers = {
+    b: 1,
+    kb: 1000,
+    mb: 1000 ** 2,
+    gb: 1000 ** 3,
+    tb: 1000 ** 4,
+    kib: 1024,
+    mib: 1024 ** 2,
+    gib: 1024 ** 3,
+    tib: 1024 ** 4
+  };
+  return multipliers[unit] ? value * multipliers[unit] : null;
+}
 function watts(entity) {
   const value = numericState(entity); if (value === null) return null;
   const unit = String(entity.attributes?.unit_of_measurement || 'W').toLowerCase();
@@ -112,18 +129,30 @@ async function collectTelemetry() {
   const [haConfig, entities] = await Promise.all([homeAssistantApi('config'), homeAssistantApi('states')]);
   const cpuEntity = byId(entities, config.cpu_entity_id) || autoEntity(entities, [/processor_use/i, /cpu.*(usage|percent)/i]);
   const memoryEntity = byId(entities, config.memory_entity_id) || autoEntity(entities, [/memory.*(use_percent|usage_percent)/i, /memory.*percent/i]);
+  const memoryUsedEntity = byId(entities, config.memory_used_entity_id) || autoEntity(entities, [/\.memory_use$/i]);
+  const memoryFreeEntity = byId(entities, config.memory_free_entity_id) || autoEntity(entities, [/\.memory_free$/i]);
+  const diskPercentEntity = byId(entities, config.disk_used_percent_entity_id) || autoEntity(entities, [/\.system_monitor_disk_use_percent$/i, /disk.*use_percent/i]);
+  const diskFreeEntity = byId(entities, config.disk_free_entity_id) || autoEntity(entities, [/\.system_monitor_disk_free$/i, /disk.*free$/i]);
   const powerEntities = selectedEntities(entities, config.power_entity_ids);
   const temperatureEntities = selectedEntities(entities, config.temperature_entity_ids);
   const powerParts = powerEntities.map(entity => ({ id: entity.entity_id, type: 'homeassistant', name: entity.attributes?.friendly_name || entity.entity_id, watts: watts(entity), source: 'home-assistant' })).filter(item => item.watts !== null);
   const temperatures = temperatureEntities.map(entity => ({ id: entity.entity_id, type: 'homeassistant', name: entity.attributes?.friendly_name || entity.entity_id, celsius: numericState(entity), source: 'home-assistant' })).filter(item => item.celsius !== null);
   const unavailable = entities.filter(entity => ['unavailable', 'unknown'].includes(entity.state)).length;
   const cpu = numericState(cpuEntity);
-  const memory = numericState(memoryEntity);
+  const memoryUsed = bytes(memoryUsedEntity);
+  const memoryFree = bytes(memoryFreeEntity);
+  const memoryTotal = memoryUsed !== null && memoryFree !== null ? memoryUsed + memoryFree : 0;
+  const memoryPercent = memoryTotal > 0 ? memoryUsed / memoryTotal * 100 : numericState(memoryEntity);
+  const diskPercent = numericState(diskPercentEntity);
+  const diskFree = bytes(diskFreeEntity);
+  const validDiskPercent = diskPercent !== null && diskPercent >= 0 && diskPercent < 100;
+  const diskTotal = diskFree !== null && validDiskPercent ? diskFree / (1 - diskPercent / 100) : 0;
+  const disk = diskTotal > 0 ? [{ drive: '/', total: diskTotal, used: Math.max(0, diskTotal - diskFree), free: diskFree }] : [];
   return {
     sampledAt: new Date().toISOString(),
     cpu: { usage: cpu === null ? 0 : Math.max(0, Math.min(100, cpu)), model: 'Home Assistant host' },
-    memory: { total: 0, used: 0, free: 0, percent: memory === null ? 0 : Math.max(0, Math.min(100, memory)) },
-    disk: [], network: { recvPerSecond: 0, sentPerSecond: 0 }, uptime: os.uptime(), os: `Home Assistant ${haConfig.version || ''}`.trim(),
+    memory: { total: memoryTotal, used: memoryUsed || 0, free: memoryFree || 0, percent: memoryPercent === null ? 0 : Math.max(0, Math.min(100, memoryPercent)) },
+    disk, network: { recvPerSecond: 0, sentPerSecond: 0 }, uptime: os.uptime(), os: `Home Assistant ${haConfig.version || ''}`.trim(),
     hardware: { sampledAt: new Date().toISOString(), temperatures, power: { totalWatts: powerParts.length ? Math.round(powerParts.reduce((sum, item) => sum + item.watts, 0) * 100) / 100 : null, coverage: powerParts.length ? 'configured-entities' : 'unavailable', parts: powerParts }, sources: ['home-assistant'] },
     homeAssistant: { version: haConfig.version || null, locationName: haConfig.location_name || null, timeZone: haConfig.time_zone || null, entityCount: entities.length, unavailableEntityCount: unavailable }
   };

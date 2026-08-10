@@ -465,12 +465,18 @@ Home Assistant dùng connector chỉ đọc qua REST API. Connector gửi CPU/RA
 
 ```yaml
 cpu_entity_id: sensor.processor_use
-memory_entity_id: sensor.memory_use_percent
+memory_entity_id: ""
+memory_used_entity_id: sensor.memory_use
+memory_free_entity_id: sensor.memory_free
+disk_used_percent_entity_id: sensor.system_monitor_disk_use_percent
+disk_free_entity_id: sensor.system_monitor_disk_free
 power_entity_ids:
   - sensor.server_total_power
 temperature_entity_ids:
   - sensor.cpu_package_temperature
 ```
+
+Connector tự đổi `sensor.memory_use` và `sensor.memory_free` từ MiB sang byte, sau đó tính tổng RAM và phần trăm đang dùng. Với ổ đĩa, connector kết hợp `sensor.system_monitor_disk_use_percent` với `sensor.system_monitor_disk_free` theo GiB để suy ra dung lượng tổng, đã dùng và còn trống. `memory_entity_id` chỉ là phương án tương thích cũ khi hệ thống có một sensor RAM phần trăm duy nhất.
 
 Chỉ thêm các power entity không chồng lặp vì `TOTAL POWER` là tổng của danh sách `power_entity_ids`.
 

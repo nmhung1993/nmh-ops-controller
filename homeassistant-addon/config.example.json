@@ -4,7 +4,11 @@
   "home_assistant_token": "PASTE_LONG_LIVED_ACCESS_TOKEN_HERE",
   "telemetry_interval_seconds": 5,
   "cpu_entity_id": "sensor.processor_use",
-  "memory_entity_id": "sensor.memory_use_percent",
+  "memory_entity_id": "",
+  "memory_used_entity_id": "sensor.memory_use",
+  "memory_free_entity_id": "sensor.memory_free",
+  "disk_used_percent_entity_id": "sensor.system_monitor_disk_use_percent",
+  "disk_free_entity_id": "sensor.system_monitor_disk_free",
   "power_entity_ids": [],
   "temperature_entity_ids": []
 }

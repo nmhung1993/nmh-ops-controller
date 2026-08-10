@@ -1,5 +1,5 @@
 name: Windows Controller Home Assistant Connector
-version: "1.0.2"
+version: "1.0.3"
 slug: windows_controller_connector
 description: Publishes Home Assistant system and selected sensor telemetry to Windows Controller Fleet.
 arch:
@@ -18,6 +18,10 @@ options:
   telemetry_interval_seconds: 5
   cpu_entity_id: ""
   memory_entity_id: ""
+  memory_used_entity_id: "sensor.memory_use"
+  memory_free_entity_id: "sensor.memory_free"
+  disk_used_percent_entity_id: "sensor.system_monitor_disk_use_percent"
+  disk_free_entity_id: "sensor.system_monitor_disk_free"
   power_entity_ids: []
   temperature_entity_ids: []
 schema:
@@ -27,6 +31,10 @@ schema:
   telemetry_interval_seconds: int(2,60)
   cpu_entity_id: str?
   memory_entity_id: str?
+  memory_used_entity_id: str?
+  memory_free_entity_id: str?
+  disk_used_percent_entity_id: str?
+  disk_free_entity_id: str?
   power_entity_ids:
     - str
   temperature_entity_ids:
