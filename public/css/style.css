@@ -159,7 +159,9 @@ input::placeholder { color: var(--faint); }
 .live-indicator.connected i { background: var(--accent); box-shadow: 0 0 0 5px var(--accent-soft); animation: pulse 2s ease-out infinite; }
 .host-control { min-width: 240px; height: 52px; margin: 0; padding: 5px 9px 4px; gap: 1px; border: 1px solid var(--line); background: var(--surface); }
 .host-control span { font: 700 9px "Bahnschrift", sans-serif; letter-spacing: .12em; text-transform: uppercase; }
-.host-control select { min-height: 29px; height: 29px; padding: 0 24px 0 0; border: 0; background-color: transparent; box-shadow: none; font-weight: 650; }
+.host-control select { min-height: 36px; height: 36px; padding: 0 30px 0 10px; color: var(--ink); border: 1px solid var(--line); border-radius: 2px; background-color: transparent; background: var(--surface-raised); box-shadow: none; font-weight: 650; }
+.host-control select:focus-visible { outline: none; border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 16%, transparent); }
+.host-control select option { color: var(--ink); background: var(--surface-raised); }
 .topbar-actions > .button.icon-action { height: 52px; min-height: 52px; }
 .page { animation: page-in .32s ease both; }
 
