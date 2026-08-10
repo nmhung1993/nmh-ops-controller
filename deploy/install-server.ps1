@@ -10,15 +10,79 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
   throw 'Run this installer from a PowerShell window opened with Run as administrator.'
 }
 $sourceRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+$serviceName = 'WindowsControllerServer'
 $serviceExe = Join-Path $InstallRoot 'WindowsControllerServer.exe'
 $serviceXml = Join-Path $InstallRoot 'WindowsControllerServer.xml'
 
+function Wait-ServiceStatus([string]$Name, [string]$Status, [int]$TimeoutSeconds = 30) {
+  $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+  do {
+    $service = Get-Service -Name $Name -ErrorAction SilentlyContinue
+    if ($service -and $service.Status.ToString() -eq $Status) { return $true }
+    Start-Sleep -Milliseconds 500
+  } while ([DateTime]::UtcNow -lt $deadline)
+  return $false
+}
+
+function Wait-ServiceDeleted([string]$Name, [int]$TimeoutSeconds = 30) {
+  $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+  do {
+    $service = Get-Service -Name $Name -ErrorAction SilentlyContinue
+    & sc.exe query $Name 2>$null | Out-Null
+    $scExitCode = $LASTEXITCODE
+    if (-not $service -and $scExitCode -eq 1060) { return $true }
+    Start-Sleep -Milliseconds 500
+  } while ([DateTime]::UtcNow -lt $deadline)
+  return $false
+}
+
+function Invoke-WinSWChecked([string]$Executable, [string]$Operation) {
+  $process = Start-Process -FilePath $Executable -ArgumentList $Operation -Wait -PassThru -NoNewWindow
+  if ($process.ExitCode -ne 0) {
+    throw "WinSW $Operation failed with exit code $($process.ExitCode)."
+  }
+}
+
+function Remove-ExistingService([string]$Name, [string]$Executable) {
+  $existingService = Get-Service -Name $Name -ErrorAction SilentlyContinue
+  if (-not $existingService) { return }
+
+  Write-Host "Stopping existing service $Name..." -ForegroundColor Cyan
+  if ($existingService.Status -ne 'Stopped') {
+    if (Test-Path -LiteralPath $Executable) {
+      Invoke-WinSWChecked -Executable $Executable -Operation 'stop'
+    } else {
+      Stop-Service -Name $Name -Force
+    }
+  }
+  if (-not (Wait-ServiceStatus -Name $Name -Status 'Stopped')) {
+    throw "Timed out waiting for service $Name to stop."
+  }
+
+  if (Test-Path -LiteralPath $Executable) {
+    Invoke-WinSWChecked -Executable $Executable -Operation 'uninstall'
+  } else {
+    & sc.exe delete $Name | Out-Null
+    if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 1060) {
+      throw "sc.exe could not delete service $Name (exit code $LASTEXITCODE)."
+    }
+  }
+
+  if (-not (Wait-ServiceDeleted -Name $Name)) {
+    # WinSW can return before SCM releases the service registration.
+    & sc.exe delete $Name | Out-Null
+    if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 1060 -and $LASTEXITCODE -ne 1072) {
+      throw "sc.exe could not delete service $Name (exit code $LASTEXITCODE)."
+    }
+    if (-not (Wait-ServiceDeleted -Name $Name -TimeoutSeconds 30)) {
+      throw "Timed out waiting for service $Name to be removed from Windows SCM."
+    }
+  }
+}
+
 if (-not (Test-Path -LiteralPath $NodeExe)) { throw "Node.js 22.5+ was not found at $NodeExe" }
 New-Item -ItemType Directory -Force -Path $InstallRoot, (Join-Path $InstallRoot 'data') | Out-Null
-$existingService = Get-Service -Name 'WindowsControllerServer' -ErrorAction SilentlyContinue
-if ((Test-Path -LiteralPath $serviceExe) -and $existingService) {
-  & $serviceExe stop 2>$null
-}
+Remove-ExistingService -Name $serviceName -Executable $serviceExe
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'server') -Destination $InstallRoot -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'public') -Destination $InstallRoot -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'package.json') -Destination $InstallRoot -Force
@@ -65,13 +129,11 @@ $xmlRoot = [Security.SecurityElement]::Escape($InstallRoot)
 </service>
 "@ | Set-Content -LiteralPath $serviceXml -Encoding UTF8
 
-$existingService = Get-Service -Name 'WindowsControllerServer' -ErrorAction SilentlyContinue
-if ($existingService) {
-  & $serviceExe stop 2>$null
-  & $serviceExe uninstall 2>$null
+Invoke-WinSWChecked -Executable $serviceExe -Operation 'install'
+Invoke-WinSWChecked -Executable $serviceExe -Operation 'start'
+if (-not (Wait-ServiceStatus -Name $serviceName -Status 'Running')) {
+  throw "Service $serviceName did not reach the Running state. Check the WinSW logs in $InstallRoot."
 }
-& $serviceExe install
-& $serviceExe start
 
 Remove-NetFirewallRule -DisplayName 'Windows Controller Central Server' -ErrorAction SilentlyContinue
 New-NetFirewallRule -DisplayName 'Windows Controller Central Server' -Direction Inbound -Action Allow -Protocol TCP -LocalPort $Port -Profile Private | Out-Null

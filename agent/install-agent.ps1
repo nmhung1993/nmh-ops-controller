@@ -19,6 +19,7 @@ $runtimeDir = Join-Path $InstallRoot 'runtime'
 $stateDir = Join-Path $InstallRoot 'state'
 $helperDir = Join-Path $InstallRoot 'helper'
 $captureDir = Join-Path $helperDir 'captures'
+$serviceName = 'WindowsControllerAgent'
 $serviceExe = Join-Path $InstallRoot 'WindowsControllerAgent.exe'
 $serviceXml = Join-Path $InstallRoot 'WindowsControllerAgent.xml'
 $configFile = Join-Path $InstallRoot 'config.json'
@@ -30,6 +31,72 @@ $helperScript = Join-Path $runtimeDir 'desktop-helper.js'
 function Write-Utf8NoBom([string]$Path, [string]$Content) {
   $encoding = New-Object System.Text.UTF8Encoding($false)
   [IO.File]::WriteAllText($Path, $Content, $encoding)
+}
+
+function Wait-ServiceStatus([string]$Name, [string]$Status, [int]$TimeoutSeconds = 30) {
+  $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+  do {
+    $service = Get-Service -Name $Name -ErrorAction SilentlyContinue
+    if ($service -and $service.Status.ToString() -eq $Status) { return $true }
+    Start-Sleep -Milliseconds 500
+  } while ([DateTime]::UtcNow -lt $deadline)
+  return $false
+}
+
+function Wait-ServiceDeleted([string]$Name, [int]$TimeoutSeconds = 30) {
+  $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+  do {
+    $service = Get-Service -Name $Name -ErrorAction SilentlyContinue
+    & sc.exe query $Name 2>$null | Out-Null
+    $scExitCode = $LASTEXITCODE
+    if (-not $service -and $scExitCode -eq 1060) { return $true }
+    Start-Sleep -Milliseconds 500
+  } while ([DateTime]::UtcNow -lt $deadline)
+  return $false
+}
+
+function Invoke-WinSWChecked([string]$Executable, [string]$Operation) {
+  $process = Start-Process -FilePath $Executable -ArgumentList $Operation -Wait -PassThru -NoNewWindow
+  if ($process.ExitCode -ne 0) {
+    throw "WinSW $Operation failed with exit code $($process.ExitCode)."
+  }
+}
+
+function Remove-ExistingService([string]$Name, [string]$Executable) {
+  $existingService = Get-Service -Name $Name -ErrorAction SilentlyContinue
+  if (-not $existingService) { return }
+
+  Write-Host "Stopping existing service $Name..." -ForegroundColor Cyan
+  if ($existingService.Status -ne 'Stopped') {
+    if (Test-Path -LiteralPath $Executable) {
+      Invoke-WinSWChecked -Executable $Executable -Operation 'stop'
+    } else {
+      Stop-Service -Name $Name -Force
+    }
+  }
+  if (-not (Wait-ServiceStatus -Name $Name -Status 'Stopped')) {
+    throw "Timed out waiting for service $Name to stop."
+  }
+
+  if (Test-Path -LiteralPath $Executable) {
+    Invoke-WinSWChecked -Executable $Executable -Operation 'uninstall'
+  } else {
+    & sc.exe delete $Name | Out-Null
+    if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 1060) {
+      throw "sc.exe could not delete service $Name (exit code $LASTEXITCODE)."
+    }
+  }
+
+  if (-not (Wait-ServiceDeleted -Name $Name)) {
+    # WinSW can return before SCM releases the service registration.
+    & sc.exe delete $Name | Out-Null
+    if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 1060 -and $LASTEXITCODE -ne 1072) {
+      throw "sc.exe could not delete service $Name (exit code $LASTEXITCODE)."
+    }
+    if (-not (Wait-ServiceDeleted -Name $Name -TimeoutSeconds 30)) {
+      throw "Timed out waiting for service $Name to be removed from Windows SCM."
+    }
+  }
 }
 
 if (-not (Test-Path -LiteralPath $NodeExe)) {
@@ -57,10 +124,7 @@ foreach ($helperProcess in $helperProcesses) {
 }
 if ($helperProcesses) { Start-Sleep -Milliseconds 500 }
 New-Item -ItemType Directory -Force -Path $runtimeDir, $stateDir, $helperDir, $captureDir | Out-Null
-$existingService = Get-Service -Name 'WindowsControllerAgent' -ErrorAction SilentlyContinue
-if ((Test-Path -LiteralPath $serviceExe) -and $existingService) {
-  & $serviceExe stop 2>$null
-}
+Remove-ExistingService -Name $serviceName -Executable $serviceExe
 Copy-Item -LiteralPath (Join-Path $sourceDir 'agent.js') -Destination $runtimeDir -Force
 Copy-Item -LiteralPath (Join-Path $sourceDir 'windows.js') -Destination $runtimeDir -Force
 Copy-Item -LiteralPath (Join-Path $sourceDir 'desktop-helper.js') -Destination $runtimeDir -Force
@@ -126,13 +190,11 @@ $xmlRoot = [Security.SecurityElement]::Escape($InstallRoot)
 </service>
 "@ | ForEach-Object { Write-Utf8NoBom -Path $serviceXml -Content $_ }
 
-$existingService = Get-Service -Name 'WindowsControllerAgent' -ErrorAction SilentlyContinue
-if ($existingService) {
-  & $serviceExe stop 2>$null
-  & $serviceExe uninstall 2>$null
+Invoke-WinSWChecked -Executable $serviceExe -Operation 'install'
+Invoke-WinSWChecked -Executable $serviceExe -Operation 'start'
+if (-not (Wait-ServiceStatus -Name $serviceName -Status 'Running')) {
+  throw "Service $serviceName did not reach the Running state. Check the WinSW logs in $InstallRoot."
 }
-& $serviceExe install
-& $serviceExe start
 
 $helperVbs = Join-Path $runtimeDir 'start-helper-hidden.vbs'
 $interactiveUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name

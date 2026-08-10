@@ -14,12 +14,16 @@ test('desktop helper is launched through a hidden VBS host', () => {
   assert.match(launcher, /shell\.Run[\s\S]*,\s*0,\s*False/i, 'VBS window style must remain hidden');
 });
 
-test('WinSW installers do not stop or uninstall services that are not registered', () => {
+test('WinSW installers wait for SCM and fail when a service operation fails', () => {
   const serverInstaller = fs.readFileSync(path.join(root, 'deploy', 'install-server.ps1'), 'utf8');
   const agentInstaller = fs.readFileSync(path.join(root, 'agent', 'install-agent.ps1'), 'utf8');
   for (const installer of [serverInstaller, agentInstaller]) {
-    assert.match(installer, /Get-Service -Name '[^']+' -ErrorAction SilentlyContinue/);
-    assert.match(installer, /if \(\$existingService\) \{[\s\S]*?uninstall[\s\S]*?\}/);
+    assert.match(installer, /Get-Service -Name \$Name -ErrorAction SilentlyContinue/);
+    assert.match(installer, /function Wait-ServiceDeleted/);
+    assert.match(installer, /function Invoke-WinSWChecked/);
+    assert.match(installer, /\$process\.ExitCode -ne 0/);
+    assert.match(installer, /Wait-ServiceStatus -Name \$serviceName -Status 'Running'/);
+    assert.match(installer, /Remove-ExistingService -Name \$serviceName/);
   }
 });
 
