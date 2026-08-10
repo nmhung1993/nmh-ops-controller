@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
+const { groupHardwareMonitorRows } = require('../agent/windows');
 
 const root = path.join(__dirname, '..');
 
@@ -69,4 +70,55 @@ test('hardware telemetry supports GPU temperature and per-part power without req
   assert.match(installer, /Name = 'LibreHardwareMonitor\.exe'/);
   assert.match(installer, /Stop-Process -Id \$_\.ProcessId/);
   assert.match(installer, /hardware-probe\.log/);
+  const probe = fs.readFileSync(path.join(root, 'agent', 'hardware-probe', 'Program.cs'), 'utf8');
+  assert.match(probe, /LibreHardwareMonitor\.Resources\.PawnIO_setup\.exe/);
+  assert.match(probe, /-install -silent/);
+  assert.match(probe, /PawnIO setup warning/);
+  assert.match(probe, /PawnIo\.IsInstalled/);
+  assert.match(windows, /value\.includes\('\/lpc'\)/);
+  assert.match(installer, /AddSeconds\(90\)/);
+});
+
+test('Nuvoton X99 phantom AUXTIN values do not override real motherboard temperature', () => {
+  const common = {
+    Provider: 'librehardwaremonitor-bridge',
+    Parent: '/lpc/nct6779d',
+    HardwareName: 'Nuvoton NCT6779D',
+    HardwareType: 'SuperIO',
+    SensorType: 'Temperature'
+  };
+  const components = groupHardwareMonitorRows([
+    { ...common, Identifier: '/lpc/nct6779d/0/temperature/0', SensorName: 'CPU Core', Value: 36 },
+    { ...common, Identifier: '/lpc/nct6779d/0/temperature/1', SensorName: 'Temperature #1', Value: 20 },
+    { ...common, Identifier: '/lpc/nct6779d/0/temperature/2', SensorName: 'Temperature #2', Value: 20 },
+    { ...common, Identifier: '/lpc/nct6779d/0/temperature/3', SensorName: 'Temperature #3', Value: 20 },
+    { ...common, Identifier: '/lpc/nct6779d/0/temperature/4', SensorName: 'Temperature #4', Value: 108 },
+    { ...common, Identifier: '/lpc/nct6779d/0/temperature/5', SensorName: 'Temperature #5', Value: 108 },
+    { ...common, Identifier: '/lpc/nct6779d/0/temperature/6', SensorName: 'Temperature #6', Value: 109 }
+  ]);
+  const mainboard = components.find(component => component.type === 'motherboard');
+  const cpuFallback = components.find(component => component.id.endsWith('-cpu-fallback'));
+
+  assert.equal(mainboard.type, 'motherboard');
+  assert.equal(mainboard.temperatureC, 20);
+  assert.equal(cpuFallback.type, 'cpu');
+  assert.equal(cpuFallback.name, 'CPU (PECI)');
+  assert.equal(cpuFallback.temperatureC, 36);
+});
+
+test('CPU Package is preferred over individual core temperature', () => {
+  const common = {
+    Provider: 'librehardwaremonitor-bridge',
+    Parent: '/intelcpu/0',
+    HardwareName: 'Intel Xeon E5-2676 v3',
+    HardwareType: 'Cpu',
+    SensorType: 'Temperature'
+  };
+  const [cpu] = groupHardwareMonitorRows([
+    { ...common, SensorName: 'CPU Core #1', Value: 68 },
+    { ...common, SensorName: 'CPU Package', Value: 61 }
+  ]);
+
+  assert.equal(cpu.type, 'cpu');
+  assert.equal(cpu.temperatureC, 61);
 });

@@ -212,32 +212,93 @@ function hardwareType(identifier, reportedType) {
   if (value.includes('cpu')) return 'cpu';
   if (value.includes('gpu')) return 'gpu';
   if (value.includes('storage') || value.includes('hdd')) return 'storage';
-  if (value.includes('mainboard') || value.includes('motherboard')) return 'motherboard';
+  // X99 boards often expose only the LPC/Super-I/O child, not a named motherboard.
+  if (value.includes('mainboard') || value.includes('motherboard') || value.includes('superio') ||
+      value.includes('/lpc') || value.includes('embeddedcontroller')) return 'motherboard';
   if (value.includes('memory') || value.includes('ram')) return 'memory';
   return 'system';
+}
+
+function normalizedSensorName(name) {
+  return String(name || '').trim().replace(/\s+/g, '').toLowerCase();
+}
+
+function canonicalSensorName(row) {
+  const identity = `${row.Parent || ''} ${row.Identifier || ''} ${row.HardwareName || ''}`.toLowerCase();
+  if (row.SensorType !== 'Temperature' || !identity.includes('nct6779d')) return row.SensorName;
+
+  const identifierMatch = String(row.Identifier || '').match(/\/temperature\/(\d+)$/i);
+  const genericNameMatch = normalizedSensorName(row.SensorName).match(/^temperature#(\d+)$/);
+  const index = Number(identifierMatch?.[1] ?? genericNameMatch?.[1]);
+  return ({
+    0: 'CPU (PECI)',
+    1: 'Mainboard',
+    2: 'CPU',
+    3: 'Auxiliary',
+    4: 'AUXTIN1',
+    5: 'AUXTIN2',
+    6: 'AUXTIN3'
+  })[index] || row.SensorName;
+}
+
+function isPhantomTemperature(type, sensorName, value) {
+  // Unconnected AUXTIN channels on Nuvoton Super-I/O chips commonly stick at 108-109 C.
+  return type === 'motherboard' && Number(value) >= 100 && /^auxtin\d*$/.test(normalizedSensorName(sensorName));
+}
+
+function temperaturePriority(type, sensorName) {
+  const name = normalizedSensorName(sensorName);
+  if (type === 'motherboard') {
+    if (name === 'mainboard' || name === 'motherboard') return 100;
+    if (name.includes('system') || name.includes('board')) return 90;
+    if (name.includes('cpu') && name.includes('peci')) return 70;
+    if (name.startsWith('cpu')) return 60;
+    if (name.includes('auxiliary')) return 10;
+  }
+  if (type === 'cpu') {
+    if (name.includes('package')) return 100;
+    if (name.includes('tctl') || name.includes('tdie')) return 90;
+    if (name.includes('peci')) return 85;
+    if (name.includes('coremax')) return 80;
+  }
+  return 1;
 }
 
 function groupHardwareMonitorRows(rows) {
   const grouped = new Map();
   for (const row of rows) {
     const parent = row.Parent || row.Identifier || `hardware-${grouped.size}`;
-    const id = `monitor-${String(parent).replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase()}`;
+    const sensorName = canonicalSensorName(row);
+    const parentType = hardwareType(parent, row.HardwareType);
+    const boardCpuSensor = parentType === 'motherboard' && row.SensorType === 'Temperature' &&
+      normalizedSensorName(sensorName).startsWith('cpu');
+    const idSuffix = boardCpuSensor ? '-cpu-fallback' : '';
+    const id = `monitor-${String(parent).replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase()}${idSuffix}`;
     const current = grouped.get(id) || {
       id,
-      type: hardwareType(parent, row.HardwareType),
-      name: row.HardwareName || parent,
+      type: boardCpuSensor ? 'cpu' : parentType,
+      name: boardCpuSensor ? sensorName : (row.HardwareName || parent),
       temperatureC: null,
       powerW: null,
       limitW: null,
       source: row.Provider || (String(row.Namespace || '').includes('Libre') ? 'librehardwaremonitor-wmi' : 'openhardwaremonitor-wmi'),
+      boardCpuSensor,
+      temperaturePriority: 0,
       powerPriority: 0
     };
     const sensorValue = optionalNumber(row.Value);
-    if (row.SensorType === 'Temperature' && sensorValue !== null) {
-      current.temperatureC = current.temperatureC === null ? rounded(sensorValue) : Math.max(current.temperatureC, rounded(sensorValue));
+    if (row.SensorType === 'Temperature' && sensorValue !== null &&
+        !isPhantomTemperature(current.type, sensorName, sensorValue)) {
+      const priority = temperaturePriority(current.type, sensorName);
+      if (priority > current.temperaturePriority ||
+          (priority === current.temperaturePriority && sensorValue > (current.temperatureC ?? -Infinity))) {
+        current.temperatureC = rounded(sensorValue);
+        current.temperaturePriority = priority;
+        if (current.boardCpuSensor) current.name = sensorName;
+      }
     }
     if (row.SensorType === 'Power' && sensorValue !== null) {
-      const priority = /package|total/i.test(row.SensorName || '') ? 2 : 1;
+      const priority = /package|total/i.test(sensorName || '') ? 2 : 1;
       if (priority > current.powerPriority || (priority === current.powerPriority && sensorValue > (current.powerW || 0))) {
         current.powerW = rounded(sensorValue, 2);
         current.powerPriority = priority;
@@ -245,7 +306,7 @@ function groupHardwareMonitorRows(rows) {
     }
     grouped.set(id, current);
   }
-  return [...grouped.values()].map(({ powerPriority, ...component }) => component);
+  return [...grouped.values()].map(({ boardCpuSensor, temperaturePriority, powerPriority, ...component }) => component);
 }
 
 async function getHardwareBridgeRows() {
@@ -446,5 +507,6 @@ module.exports = {
   killProcess,
   launchServiceProcess,
   getMachineFingerprint,
-  getHardwareSensors
+  getHardwareSensors,
+  groupHardwareMonitorRows
 };

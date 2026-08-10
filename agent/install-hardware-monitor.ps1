@@ -102,7 +102,8 @@ try {
   Start-ScheduledTask -TaskName $taskName
 
   $payload = $null
-  $deadline = [DateTime]::UtcNow.AddSeconds(30)
+  # PawnIO setup may take a little longer on the first SYSTEM start.
+  $deadline = [DateTime]::UtcNow.AddSeconds(90)
   do {
     Start-Sleep -Seconds 1
     if (Test-Path -LiteralPath $bridgeJson) {
@@ -142,7 +143,7 @@ try {
       $sensorRows | Format-Table -AutoSize
     }
   } else {
-    Write-Warning 'The LibreHardwareMonitor bridge started, but no sensor snapshot appeared within 30 seconds. Check hardware-probe.log and the Scheduled Task history.'
+    Write-Warning 'The LibreHardwareMonitor bridge started, but no sensor snapshot appeared within 90 seconds. Check hardware-probe.log and the Scheduled Task history.'
   }
 } finally {
   if (Test-Path -LiteralPath $temporaryRoot) {
