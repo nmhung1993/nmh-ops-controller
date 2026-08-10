@@ -1,161 +1,459 @@
 # Windows Controller Fleet
 
-Windows Controller is a Central Server plus Windows Agent system for monitoring and controlling up to 20 Windows machines on a trusted LAN.
+Windows Controller Fleet là webapp giám sát và điều khiển tập trung tối đa khoảng 20 máy Windows trong cùng mạng LAN tin cậy. Một máy chạy **Central Server**, còn mỗi máy cần quản lý chạy **Windows Agent**. Máy Central Server cũng nên cài Agent để xuất hiện và được quản lý giống các máy còn lại.
 
-## Architecture
+> Bản triển khai mặc định dùng HTTP trong LAN. Không port-forward TCP 3003 và không đưa trực tiếp dịch vụ này ra Internet. Nếu dùng ngoài LAN tin cậy, hãy đặt server sau HTTPS/reverse proxy.
+
+## Kiến trúc
 
 ```text
-Browser -- HTTP/WebSocket --> Central Server
-                                ^
-                                | outbound WebSocket
-                       Windows Agent Service
-                                |
-                         local named pipe
-                                |
-                       Desktop Helper at logon
+Trình duyệt -- HTTP/WebSocket --> Central Server (Node.js + Express + SQLite)
+                                      ^
+                                      | WebSocket outbound
+                               Windows Agent Service
+                                      |
+                         Named Pipe có secret và ACL nội bộ
+                                      |
+                         Desktop Helper khi người dùng login
+
+Windows Agent Service
+  |-- Node.js/os + PowerShell/CIM: CPU, RAM, disk, network, process
+  |-- nvidia-smi: nhiệt độ/công suất GPU NVIDIA
+  |-- ACPI WMI + Windows Energy/Power Meter: sensor chuẩn do Windows cung cấp
+  `-- LibreHardwareMonitorLib + PawnIO: CPU Package, mainboard, storage và sensor thấp tầng
 ```
 
-The Central Server no longer reads its own Windows processes directly. Install an agent on the Central Server machine as well, so it appears and behaves like every other managed host.
+### Vai trò của từng thành phần
 
-## Requirements
+- **Central Server** cung cấp web UI, REST API `/api/v1`, WebSocket cho UI/Agent, xác thực người dùng, phê duyệt Agent, lưu SQLite, backup, cleanup và gửi Discord webhook.
+- **Windows Agent Service** chạy bằng `LocalSystem`, tự khởi động cùng Windows, thu thập telemetry, chạy watchdog và chỉ nhận các command đã định nghĩa sẵn.
+- **Desktop Helper** chạy trong interactive user session khi đăng nhập, dùng Named Pipe để nhận yêu cầu mở/đưa cửa sổ lên trước và chụp screenshot. Service trong Session 0 không thể tự thao tác cửa sổ desktop.
+- **WinSW** chỉ bọc Node.js thành Windows Service và giữ service chạy nền. WinSW không có engine đọc nhiệt độ hay công suất.
+- **Hardware Probe** là bridge .NET chạy nền bằng `SYSTEM`, đọc trực tiếp `LibreHardwareMonitorLib` và ghi snapshot JSON mỗi 5 giây.
+- **PawnIO** là driver thấp tầng đi kèm LibreHardwareMonitor, cho phép đọc MSR/LPC trên phần cứng được hỗ trợ, đặc biệt hữu ích với CPU Xeon/X99.
 
-- Windows 10/11 or Windows Server
-- Node.js 22.5 or newer (Node.js 24 LTS recommended)
-- Administrator access for service and firewall installation
-- A trusted Private-profile LAN
-- A static IP or DHCP reservation for the Central Server
+## Engine thu thập dữ liệu
 
-The default deployment uses plain HTTP. Do not port-forward TCP 3003 or expose it to the Internet. Put the service behind HTTPS before using it outside a trusted LAN.
+| Dữ liệu | Engine/nguồn | Cơ chế |
+|---|---|---|
+| CPU usage | Node.js `os.cpus()` | Tính delta idle/total giữa hai lần lấy mẫu, không dùng giá trị tích lũy trực tiếp. |
+| RAM, uptime, OS | Node.js `os` | Đọc tổng RAM, RAM trống, uptime và phiên bản Windows. |
+| Disk | PowerShell/CIM `Win32_LogicalDisk` | Đọc dung lượng tổng, đã dùng và còn trống; cache 30 giây. |
+| Network | `Get-NetAdapterStatistics` | Tính tốc độ gửi/nhận từ delta byte theo thời gian. |
+| Process | PowerShell `Get-Process` | Danh sách tải theo yêu cầu; CPU process được tính theo delta và số logical core. |
+| GPU NVIDIA | `nvidia-smi` | Đọc nhiệt độ GPU, công suất hiện tại và power limit. |
+| ACPI temperature | WMI `MSAcpi_ThermalZoneTemperature` | Chỉ có dữ liệu khi BIOS/firmware công bố thermal zone cho Windows. |
+| System power meter | Windows `Energy Meter`/`Power Meter` counter | Nếu có, đây là công suất tổng thật. Nếu không có, ứng dụng chỉ cộng các linh kiện đọc được và đánh dấu `partial`. |
+| CPU/mainboard/storage | `LibreHardwareMonitorLib` | Bridge .NET đọc CPU Package, core, Super-I/O/LPC, GPU và SMART/NVMe sensor được phần cứng hỗ trợ. |
+| Low-level MSR/LPC | PawnIO | Mở quyền truy cập thanh ghi thấp tầng cho LibreHardwareMonitor. Không tự tạo sensor nếu BIOS/chip không hỗ trợ. |
 
-## Development Run
+Ứng dụng không ước lượng nhiệt độ hoặc công suất bị thiếu. Sensor không hợp lệ như ngưỡng NVMe, công suất `0 W`, hoặc AUXTIN bị hở trên Nuvoton NCT6779D được loại bỏ thay vì hiển thị như dữ liệu thật.
+
+## Yêu cầu
+
+- Windows 10/11 hoặc Windows Server.
+- Node.js `22.5+`; khuyến nghị Node.js 24 LTS.
+- Tài khoản Administrator để cài service, Scheduled Task, firewall và PawnIO.
+- Windows Network Profile của LAN đặt là **Private**.
+- Central Server nên có static IP hoặc DHCP reservation.
+- Kết nối Internet trong lần cài đầu để tải npm package, WinSW, LibreHardwareMonitor và .NET runtime. LibreHardwareMonitor có thể dùng ZIP offline, nhưng các dependency khác vẫn phải có sẵn.
+
+Kiểm tra Node.js:
 
 ```powershell
-npm.cmd install
-npm.cmd start
+node --version
+npm --version
 ```
 
-Open `http://localhost:3003`. If no legacy users were imported, the first page creates the initial administrator. There are no default credentials.
+## Cài Central Server
 
-To run an agent without installing a service:
-
-```powershell
-Copy-Item agent\config.example.json agent\config.json
-# Update serverUrl in agent\config.json first.
-node agent\agent.js --config agent\config.json
-```
-
-The agent appears in Admin > Pending agents. Compare its MachineGuid fingerprint with the installer output before approval.
-
-## Install Central Server
-
-Run an elevated PowerShell terminal:
+Mở PowerShell bằng **Run as administrator**, chuyển tới thư mục project rồi chạy đúng một installer server:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\deploy\install-server.ps1 -Port 3003
 ```
 
-The installer:
+Installer server sẽ:
 
-- copies the Central Server to `%ProgramData%\WindowsController\server`;
-- installs production dependencies;
-- downloads and configures WinSW;
-- installs an automatic Windows service;
-- opens TCP 3003 only for the Windows Private network profile;
-- imports legacy `users.json`, `config.json`, and `history.json` on first start.
+- copy backend, UI và dependency manifest vào `%ProgramData%\WindowsController\server`;
+- chạy `npm ci --omit=dev`;
+- tải WinSW nếu máy chưa có bản dành cho ứng dụng;
+- tạo service tự khởi động `Windows Controller Central Server`;
+- bind webapp tại `0.0.0.0:3003`;
+- mở inbound TCP 3003 chỉ cho Windows Private profile;
+- tạo SQLite, JWT secret ngẫu nhiên và thư mục backup;
+- import dữ liệu JSON cũ ở lần chạy đầu nếu có.
 
-Set a DHCP reservation or static IP before installing agents. Open the displayed `http://<server-ip>:3003` address from another LAN machine to verify access.
+Cuối quá trình, installer in các URL LAN, ví dụ:
 
-## Install an Agent
+```text
+http://192.168.1.10:3003
+```
 
-Copy the `agent` directory to the target machine and run an elevated PowerShell terminal:
+Mở URL từ trình duyệt. Nếu chưa có user, trang đầu tiên yêu cầu tạo tài khoản Administrator; ứng dụng không có mật khẩu mặc định.
+
+### Cài Agent trên chính máy Central Server
+
+Central Server không tự giám sát hệ điều hành của nó. Sau khi cài server, tiếp tục chạy installer Agent trên cùng máy:
+
+```powershell
+.\agent\install-agent.ps1 -ServerUrl "http://192.168.1.10:3003"
+```
+
+Sau đó approve máy này trong trang Admin giống mọi Agent khác.
+
+## Cài Agent bằng một file duy nhất
+
+Giữ nguyên toàn bộ thư mục `agent` trên máy client, nhưng quản trị viên **chỉ cần chạy một entry point** là `install-agent.ps1`. Không cần chạy riêng `install-hardware-monitor.ps1` trong quy trình thông thường.
+
+Mở PowerShell bằng **Run as administrator**:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\agent\install-agent.ps1 -ServerUrl "http://192.168.1.10:3003"
 ```
 
-The installer creates:
+Thay `192.168.1.10` bằng IP cố định của Central Server.
 
-- `Windows Controller Agent`, an automatic LocalSystem service;
-- a logon Scheduled Task for the Desktop Helper;
-- a DPAPI-protected per-machine agent token;
-- a Private-profile outbound firewall rule;
-- a fingerprint shown at the end of installation.
+Một lần chạy trên sẽ tự động:
 
-The Desktop Helper is launched through `wscript.exe` with a hidden window, so no Node.js console should appear during normal service startup. Its diagnostic log is `%ProgramData%\WindowsController\agent\helper\desktop-helper.log`.
+1. kiểm tra URL server và Node.js;
+2. copy Agent runtime vào `%ProgramData%\WindowsController\agent`;
+3. cài production dependency;
+4. tạo WinSW service `Windows Controller Agent` chạy bằng `LocalSystem` và ẩn cửa sổ;
+5. tạo Desktop Helper Scheduled Task chạy khi user hiện tại đăng nhập;
+6. tạo Named Pipe secret và ACL cục bộ;
+7. tạo outbound firewall rule cho port của Central Server;
+8. gọi hardware installer nội bộ;
+9. tải/cài LibreHardwareMonitor và local .NET 10 SDK/Windows Desktop Runtime;
+10. build Hardware Probe, cài PawnIO và tạo Scheduled Task `Windows Controller Hardware Monitor`;
+11. in hostname và MachineGuid fingerprint để Admin đối chiếu.
 
-Approve the pending agent in the Admin page. Repeat the same installation on the Central Server machine so it is monitored too.
+### Tùy chọn Agent installer
 
-For CPU Package, mainboard, storage and additional temperature/power sensors, install LibreHardwareMonitor from its official GitHub release in the same elevated terminal:
+Bỏ qua hardware monitor trên máy không cần sensor nhiệt/công suất:
 
 ```powershell
-.\agent\install-hardware-monitor.ps1
+.\agent\install-agent.ps1 `
+  -ServerUrl "http://192.168.1.10:3003" `
+  -SkipHardwareMonitor
 ```
 
-The script installs the newest stable LibreHardwareMonitor release plus a local Microsoft .NET 10 SDK/Windows Desktop Runtime under `%ProgramData%\WindowsController\dotnet`. It builds a small bridge against the official `LibreHardwareMonitorLib`, then runs that bridge invisibly as `SYSTEM` through the `Windows Controller Hardware Monitor` startup task. On first start, the bridge attempts to extract and silently install LibreHardwareMonitor's official embedded PawnIO driver, which enables CPU MSR and motherboard LPC access on supported X99/dual-Xeon systems. If the driver is unavailable, the bridge continues with any sensors Windows/LHM can read and records the reason in `hardware-probe.log`. The bridge writes `%ProgramData%\WindowsController\hardware-monitor\hardware-sensors.json` every five seconds, so monitoring does not depend on the LibreHardwareMonitor GUI or its legacy WMI provider. For an offline LHM package, pass `-PackagePath "C:\path\LibreHardwareMonitor.NET.10.zip"`; the .NET installer still requires access to Microsoft's official download endpoint on first installation.
+Dùng gói LibreHardwareMonitor ZIP đã tải từ repository chính thức:
 
-Uninstall while preserving state:
+```powershell
+.\agent\install-agent.ps1 `
+  -ServerUrl "http://192.168.1.10:3003" `
+  -HardwareMonitorPackagePath "C:\Install\LibreHardwareMonitor.NET.10.zip"
+```
+
+`install-hardware-monitor.ps1` vẫn được giữ để sửa chữa hoặc cài lại riêng phần sensor, nhưng không còn là bước bắt buộc sau khi cài Agent.
+
+## Phê duyệt Agent
+
+1. Installer in `Hostname` và `Fingerprint` ở cuối.
+2. Đăng nhập web bằng tài khoản Admin.
+3. Mở **Admin → Pending agents**.
+4. So sánh hostname/fingerprint với màn hình installer.
+5. Chọn **Approve** và đặt display name.
+6. Agent nhận token riêng; token được bảo vệ bằng Windows DPAPI machine scope.
+
+Agent chưa approve hoặc đã revoke không thể gửi telemetry hợp lệ hay nhận command. Admin có thể revoke từng máy từ Fleet/Admin và cài lại để enroll lại khi cần.
+
+## Hướng dẫn sử dụng
+
+### Fleet Overview
+
+- Xem tất cả máy đã approve, trạng thái online/offline, last seen, CPU, RAM và cảnh báo.
+- Agent được xem là offline nếu Central Server không nhận heartbeat trong 20 giây.
+- Chọn một host để Dashboard, Processes và Watchdog giữ đúng `hostId` khi reload.
+
+### Dashboard
+
+- Telemetry realtime được Agent gửi mỗi 2 giây.
+- Server chỉ ghi telemetry lịch sử tối đa mỗi 10 giây để giảm kích thước database.
+- Theo dõi CPU, RAM, uptime, network, disk, nhiệt độ và công suất theo linh kiện.
+- `totalWatts` chỉ là công suất tổng thật khi nguồn là Windows Energy/Power Meter; nếu cộng từ một số linh kiện, coverage hiển thị `partial`.
+
+### Processes
+
+- Danh sách process chỉ tải khi mở trang hoặc refresh, không truyền liên tục.
+- Viewer chỉ xem. Admin có thể kill process hoặc yêu cầu capture cửa sổ.
+- CPU process được tính từ delta CPU time, tránh nhầm giá trị CPU tích lũy.
+
+### Watchdog
+
+- Mỗi rule có process name, executable path, trạng thái enable, `runMode` và tùy chọn screenshot.
+- `runMode: service` chạy executable trong Session 0, phù hợp service/background process.
+- `runMode: interactive` yêu cầu user đã login và Desktop Helper đang chạy, phù hợp ứng dụng GUI.
+- Agent cache rule/version và kiểm tra mỗi 10 giây, nên watchdog vẫn restart process khi Central Server offline.
+- Nút **Launch** sẽ tìm cửa sổ hợp lệ có kích thước lớn hơn `0x0`, restore/bring-to-front nếu process đã chạy, hoặc launch executable nếu chưa chạy.
+- Với launch mới, Agent chờ khoảng 30 giây rồi capture; với cửa sổ đã tồn tại, capture bắt đầu sớm hơn và có retry.
+
+### Screenshot và Discord
+
+- Desktop Helper ưu tiên `PrintWindow`, sau đó dùng screen-copy fallback.
+- Nếu không có user session, command interactive trả `interactive_session_unavailable`.
+- Central Server giữ Discord webhook; webhook không được gửi xuống Agent.
+- Event launch/watchdog được gửi bằng nội dung tiếng Việt. Khi capture thành công, Central Server đính kèm screenshot; khi thất bại, gửi một thông báo lỗi thay thế.
+- Cấu hình Discord webhook trong trang Admin settings.
+
+### Giao diện
+
+- UI hỗ trợ tiếng Việt và tiếng Anh.
+- Theme sáng/tối được lưu trên trình duyệt.
+- Viewer chỉ được xem dữ liệu; Admin mới có quyền approve/revoke, chỉnh watchdog, kill/launch/capture và quản lý settings.
+
+## Cơ chế realtime và offline
+
+- Agent gửi telemetry mỗi 2 giây và ping mỗi 5 giây.
+- Central Server đánh dấu offline trong tối đa 20 giây.
+- Khi mất kết nối, Agent giữ tối đa 300 telemetry frame, tương đương khoảng 10 phút, và tối đa 1.000 event.
+- WebSocket reconnect dùng exponential backoff.
+- Frame dùng envelope gồm `type`, `messageId`, `agentId`, `sentAt`, `seq`, `payload`.
+- Agent lưu tối đa 500 command đã hoàn tất để tránh thực thi lại cùng `commandId`.
+- Command hết hạn sau 60 giây và có trạng thái `queued`, `sent`, `acknowledged`, `succeeded`, `failed` hoặc `expired`.
+- Chỉ hỗ trợ `process.kill`, `watchdog.launch`, `window.capture`; không có remote shell hay arbitrary command execution.
+
+## Lưu trữ, retention và backup
+
+Central Server dùng SQLite qua engine `node:sqlite` ở WAL mode:
+
+```text
+Development: .\data\windows-controller.db
+Service:     C:\ProgramData\WindowsController\server\data\windows-controller.db
+```
+
+- Telemetry: 7 ngày.
+- Screenshot: 7 ngày và tối đa tổng cộng 1 GB.
+- Event và command audit: 30 ngày.
+- Backup nhất quán bằng `VACUUM INTO`: mỗi ngày tại `data\backups`.
+- JSON legacy được backup trước khi migration.
+
+Chart.js được phục vụ từ thư mục `public`, không phụ thuộc CDN nên UI vẫn chạy khi LAN mất Internet.
+
+## Bảo mật
+
+- Agent kết nối outbound tới server; client không cần mở inbound port.
+- Agent mới luôn ở trạng thái pending.
+- Mỗi Agent có token ngẫu nhiên riêng; server chỉ lưu SHA-256 hash, client lưu token bằng DPAPI.
+- Web UI/WebSocket dùng JWT.
+- Password được hash bằng bcrypt.
+- Named Pipe Desktop Helper dùng secret cục bộ và ACL giới hạn.
+- Secret/path nhạy cảm bị giới hạn theo role.
+- Không có tài khoản, password hoặc JWT secret hardcode.
+- HTTP không mã hóa credential/token trên đường truyền; chỉ dùng trong LAN tin cậy hoặc chuyển sang HTTPS.
+
+## Thư mục và log quan trọng
+
+```text
+C:\ProgramData\WindowsController\server
+  data\windows-controller.db
+  data\backups
+  data\screenshots
+  WindowsControllerServer.*.log
+
+C:\ProgramData\WindowsController\agent
+  runtime
+  state
+  helper\desktop-helper.log
+  WindowsControllerAgent.*.log
+
+C:\ProgramData\WindowsController\hardware-monitor
+  hardware-sensors.json
+  hardware-report.txt
+  hardware-probe.log
+  pawnio-installed.txt
+```
+
+Kiểm tra service và task:
+
+```powershell
+Get-Service WindowsControllerServer, WindowsControllerAgent
+Get-ScheduledTask -TaskName 'Windows Controller Desktop Helper','Windows Controller Hardware Monitor'
+```
+
+## Xử lý sự cố
+
+### Agent không xuất hiện trong Pending agents
+
+```powershell
+Get-Service WindowsControllerAgent
+Get-Content 'C:\ProgramData\WindowsController\agent\WindowsControllerAgent.out.log' -Tail 50
+Get-Content 'C:\ProgramData\WindowsController\agent\WindowsControllerAgent.err.log' -Tail 50
+Test-NetConnection 192.168.1.10 -Port 3003
+```
+
+Kiểm tra `ServerUrl`, Private network profile, firewall server và việc browser có mở được URL server từ máy Agent hay không.
+
+### Không có nhiệt độ/công suất
+
+```powershell
+Get-ScheduledTask -TaskName 'Windows Controller Hardware Monitor'
+Get-Content 'C:\ProgramData\WindowsController\hardware-monitor\hardware-probe.log' -Tail 50
+Get-Content 'C:\ProgramData\WindowsController\hardware-monitor\pawnio-installed.txt'
+Get-Content 'C:\ProgramData\WindowsController\hardware-monitor\hardware-sensors.json'
+```
+
+Không phải bo mạch/CPU nào cũng công bố sensor. Nếu PawnIO đã cài nhưng report vẫn không có `CPU Package`, `TjMax` bằng 0 hoặc không tìm thấy Super-I/O, ứng dụng sẽ báo unavailable thay vì tạo giá trị giả.
+
+### Nuvoton NCT6779D hiển thị 108–109°C
+
+Một số bo X99 trả các kênh hở dưới tên `Temperature #4/#5/#6`, tương ứng AUXTIN1/2/3. Agent map lại sensor NCT6779D, loại các AUXTIN từ 100°C trở lên, ưu tiên `Mainboard`, đồng thời giữ `CPU (PECI)` thành sensor CPU dự phòng.
+
+Sau khi update source, chạy lại một installer Agent duy nhất:
+
+```powershell
+.\agent\install-agent.ps1 -ServerUrl "http://192.168.1.10:3003"
+```
+
+### `interactive_session_unavailable`
+
+- Đảm bảo có user đăng nhập trực tiếp/RDP và desktop chưa bị logoff.
+- Kiểm tra Scheduled Task `Windows Controller Desktop Helper` đang Running/Ready.
+- Dùng `runMode: interactive` cho GUI; `service` chỉ dành cho process nền.
+- Xem `%ProgramData%\WindowsController\agent\helper\desktop-helper.log`.
+
+## Gỡ cài đặt
+
+Gỡ Agent, Desktop Helper và Hardware Monitor Scheduled Task nhưng giữ các file dữ liệu/PawnIO:
 
 ```powershell
 .\agent\uninstall-agent.ps1
 ```
 
-Add `-RemoveData` only when intentionally deleting enrollment state and cached watchdog configuration.
+Giữ Hardware Monitor tiếp tục chạy khi gỡ Agent:
 
-## Runtime Behavior
+```powershell
+.\agent\uninstall-agent.ps1 -KeepHardwareMonitor
+```
 
-- Telemetry is sent every 2 seconds and persisted every 10 seconds.
-- Telemetry is retained for 7 days in SQLite WAL mode.
-- Events and command audit records are retained for 30 days.
-- Agent offline status is detected within 20 seconds.
-- An offline agent buffers 10 minutes of telemetry and up to 1,000 events.
-- Watchdog rules run every 10 seconds from the agent cache, even if Central Server is unavailable.
-- Commands are idempotent by `commandId` and expire after 60 seconds.
-- Full process lists are fetched only on demand.
-- WinSW only hosts the Agent service; it does not expose hardware sensors. The Agent queries supported providers directly: `nvidia-smi` for NVIDIA temperature/power and ACPI WMI thermal zones when the motherboard firmware exposes them.
-- Hardware power is reported per readable component. `totalWatts` is the sum of those measured parts and is marked `partial` unless Windows exposes a real Energy/Power Meter; missing CPU/mainboard wattage is never estimated. CPU/package and mainboard sensors generally require the bundled LibreHardwareMonitor bridge or OpenHardwareMonitor with its WMI provider enabled.
+Chỉ dùng `-RemoveData` khi thực sự muốn xóa Agent state, hardware monitor runtime và local .NET runtime:
 
-Interactive launch and window capture require a logged-in desktop session. The Agent Service handles telemetry and service-mode processes before login; the Desktop Helper handles GUI applications and screenshots after login.
+```powershell
+.\agent\uninstall-agent.ps1 -RemoveData
+```
 
-When an administrator presses **Launch** for an interactive watchdog rule, the agent checks whether the process already exists. A running application is restored and brought to the foreground; if no window exists, the executable is launched again so single-instance applications can reveal their UI. The agent then captures the window after 30 seconds (1.5 seconds when it was already running), retrying five times. Central Server sends one Vietnamese Discord notification with the screenshot; if capture fails, it sends one Vietnamese error notification instead. Capture uses `PrintWindow` with a screen-copy fallback. A `service`-mode rule cannot capture a desktop window because it runs in Session 0.
+PawnIO driver được giữ lại vì có thể đang được LibreHardwareMonitor hoặc công cụ khác sử dụng.
 
-## Security Model
+Gỡ service Central Server nhưng giữ database: mở PowerShell Administrator và chạy các lệnh sau tại thư mục cài đặt:
 
-- New agents remain pending until an administrator approves their fingerprint.
-- Each agent has its own revocable random token; only its SHA-256 hash is stored centrally.
-- The local token is protected with machine-scope Windows DPAPI.
-- Browser WebSockets require JWT authentication.
-- Viewer accounts cannot approve agents, modify watchdog rules, send commands, or see executable paths.
-- No remote shell endpoint exists. Supported mutations are process kill, configured watchdog launch, and window capture.
-- Discord webhook configuration remains on Central Server and is never distributed to agents.
+```powershell
+$root = 'C:\ProgramData\WindowsController\server'
+& "$root\WindowsControllerServer.exe" stop
+& "$root\WindowsControllerServer.exe" uninstall
+Remove-NetFirewallRule -DisplayName 'Windows Controller Central Server' -ErrorAction SilentlyContinue
+```
 
-Because HTTP was selected for this LAN deployment, credentials and tokens are not encrypted in transit. Treat every device on the LAN as trusted, and migrate to HTTPS if that assumption changes.
+Không xóa `$root\data` nếu còn cần SQLite, screenshot hoặc backup.
 
-## API Overview
+## API chính
 
-All fleet endpoints are host-scoped under `/api/v1`:
+Tất cả endpoint fleet đều host-scoped dưới `/api/v1`:
 
-- `GET /hosts`, `GET /hosts/:id`, `GET /hosts/:id/telemetry`
-- `GET /hosts/:id/processes`
-- `POST /hosts/:id/commands`
-- `GET|PUT /hosts/:id/watchdog`
-- `GET /hosts/:id/events`, `GET /hosts/:id/commands`
-- `GET /agents/pending`, `POST /agents/:id/approve`, `POST /agents/:id/revoke`
+```text
+GET    /hosts
+GET    /hosts/:id
+GET    /hosts/:id/telemetry
+GET    /hosts/:id/processes
+POST   /hosts/:id/commands
+GET    /hosts/:id/watchdog
+PUT    /hosts/:id/watchdog
+GET    /hosts/:id/events
+GET    /hosts/:id/commands
+GET    /agents/pending
+POST   /agents/:id/approve
+POST   /agents/:id/revoke
+```
 
-Agent and browser realtime traffic use `/ws/agent` and `/ws/ui` on the same port.
+Agent realtime dùng `/ws/agent`; browser realtime dùng `/ws/ui` trên cùng port.
 
-## Data and Backups
+## Chạy development và test
 
-Central data is stored in `data/windows-controller.db` for development or `%ProgramData%\WindowsController\server\data` for a service installation. A consistent SQLite backup is created daily in `data/backups`.
+```powershell
+npm.cmd install
+npm.cmd start
+```
 
-Legacy JSON files are copied to `data/legacy-backup` before migration. Existing watchdog rules and relaunch history attach to the first enrolled agent whose hostname matches the Central Server hostname.
+Mở `http://localhost:3003`.
 
-## Tests
+Chạy Agent không cài service:
+
+```powershell
+Copy-Item .\agent\config.example.json .\agent\config.json
+# Sửa serverUrl trong config.json
+node .\agent\agent.js --config .\agent\config.json
+```
+
+Kiểm tra source và test:
 
 ```powershell
 npm.cmd run check
 npm.cmd test
 ```
 
-The integration test starts an isolated Central Server, creates the first administrator, enrolls and approves a simulated agent, sends telemetry, completes a command, and revokes the agent.
+---
+
+## English quick guide
+
+Windows Controller Fleet monitors and controls up to roughly 20 Windows hosts on a trusted LAN. Install the Central Server on one machine and install an Agent on every managed machine, including the Central Server itself.
+
+### Requirements
+
+- Windows 10/11 or Windows Server
+- Node.js 22.5+ (Node.js 24 LTS recommended)
+- Administrator rights
+- Trusted Private-profile LAN
+- Static IP or DHCP reservation for the Central Server
+
+### Install the Central Server
+
+Run in an elevated PowerShell terminal:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\deploy\install-server.ps1 -Port 3003
+```
+
+Open the printed `http://<server-ip>:3003` URL and create the first administrator account.
+
+### Install an Agent with one installer entry point
+
+Keep the complete `agent` directory, but run only `install-agent.ps1`:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\agent\install-agent.ps1 -ServerUrl "http://192.168.1.10:3003"
+```
+
+By default this single command installs the WinSW Agent service, Desktop Helper, firewall rule, LibreHardwareMonitor bridge, local .NET runtime and PawnIO. Use `-SkipHardwareMonitor` only when hardware temperature/power monitoring is not required. Use `-HardwareMonitorPackagePath` for an offline official LibreHardwareMonitor ZIP.
+
+Approve the printed hostname/fingerprint in **Admin → Pending agents**.
+
+### Data engines
+
+- Node.js `os` delta sampling: CPU, RAM, uptime and OS.
+- PowerShell/CIM: disks, network and processes.
+- `nvidia-smi`: NVIDIA GPU temperature and power.
+- ACPI WMI and Windows Energy/Power Meter: firmware/OS-exposed sensors.
+- `LibreHardwareMonitorLib` plus PawnIO: supported CPU package, motherboard/Super-I/O, GPU and storage sensors.
+- WinSW hosts the services only; it does not read hardware sensors.
+
+### Runtime
+
+- Telemetry every 2 seconds; persisted at most every 10 seconds.
+- Heartbeat every 5 seconds; offline within 20 seconds.
+- Watchdog every 10 seconds using cached versioned rules.
+- 7-day telemetry/screenshots, 30-day events/commands, daily SQLite backups.
+- Only predefined commands are supported: process kill, watchdog launch and window capture. There is no remote shell.
+
+### Important paths
+
+```text
+C:\ProgramData\WindowsController\server
+C:\ProgramData\WindowsController\agent
+C:\ProgramData\WindowsController\hardware-monitor
+```
+
+This deployment uses HTTP and must not be exposed directly to the Internet. Use HTTPS before operating outside a trusted LAN.

@@ -2,7 +2,11 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$ServerUrl,
   [string]$InstallRoot = "$env:ProgramData\WindowsController\agent",
-  [string]$NodeExe = "$env:ProgramFiles\nodejs\node.exe"
+  [string]$NodeExe = "$env:ProgramFiles\nodejs\node.exe",
+  [switch]$SkipHardwareMonitor,
+  [string]$HardwareMonitorPackagePath,
+  [string]$HardwareMonitorInstallRoot = "$env:ProgramData\WindowsController\hardware-monitor",
+  [string]$DotnetRoot = "$env:ProgramData\WindowsController\dotnet"
 )
 
 $ErrorActionPreference = 'Stop'
@@ -30,6 +34,18 @@ function Write-Utf8NoBom([string]$Path, [string]$Content) {
 
 if (-not (Test-Path -LiteralPath $NodeExe)) {
   throw "Node.js 22.5+ was not found at $NodeExe"
+}
+try {
+  $serverUri = [Uri]$ServerUrl
+  if ($serverUri.Scheme -notin @('http', 'https') -or -not $serverUri.Host) {
+    throw 'ServerUrl must be an absolute http:// or https:// URL.'
+  }
+} catch {
+  throw "Invalid ServerUrl: $ServerUrl. Use for example http://192.168.1.10:3003"
+}
+$hardwareInstaller = Join-Path $sourceDir 'install-hardware-monitor.ps1'
+if (-not $SkipHardwareMonitor -and -not (Test-Path -LiteralPath $hardwareInstaller)) {
+  throw "Hardware monitor installer was not found at $hardwareInstaller"
 }
 
 # Stop the old helper before rotating its pipe secret and replacing the runtime.
@@ -127,8 +143,26 @@ $taskSettings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -Resta
 Register-ScheduledTask -TaskName $helperTaskName -Action $taskAction -Trigger $taskTrigger -Principal $taskPrincipal -Settings $taskSettings -Force | Out-Null
 Start-ScheduledTask -TaskName $helperTaskName
 
-$serverUri = [Uri]$ServerUrl
-New-NetFirewallRule -DisplayName 'Windows Controller Agent Outbound' -Direction Outbound -Action Allow -Protocol TCP -RemotePort $serverUri.Port -Profile Private -ErrorAction SilentlyContinue | Out-Null
+Remove-NetFirewallRule -DisplayName 'Windows Controller Agent Outbound' -ErrorAction SilentlyContinue
+New-NetFirewallRule -DisplayName 'Windows Controller Agent Outbound' -Direction Outbound -Action Allow -Protocol TCP -RemotePort $serverUri.Port -Profile Private | Out-Null
+
+$hardwareStatus = 'Skipped by -SkipHardwareMonitor'
+if (-not $SkipHardwareMonitor) {
+  Write-Host ''
+  Write-Host 'Installing LibreHardwareMonitor bridge and PawnIO...' -ForegroundColor Cyan
+  $hardwareArguments = @{
+    InstallRoot = $HardwareMonitorInstallRoot
+    DotnetRoot = $DotnetRoot
+  }
+  if ($HardwareMonitorPackagePath) {
+    $hardwareArguments.PackagePath = $HardwareMonitorPackagePath
+  }
+  & $hardwareInstaller @hardwareArguments
+  if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+    throw "Hardware monitor installer failed with exit code $LASTEXITCODE"
+  }
+  $hardwareStatus = 'Installed'
+}
 
 $fingerprint = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Cryptography').MachineGuid
 Write-Host ''
@@ -136,4 +170,5 @@ Write-Host 'Agent installed and started.' -ForegroundColor Green
 Write-Host "Server:      $ServerUrl"
 Write-Host "Hostname:    $env:COMPUTERNAME"
 Write-Host "Fingerprint: $fingerprint"
+Write-Host "Hardware:    $hardwareStatus"
 Write-Host 'Approve this pending agent in the Central Server admin page.'

@@ -23,6 +23,13 @@ test('WinSW installers do not stop or uninstall services that are not registered
   }
 });
 
+test('agent uninstall cleans the bundled hardware monitor task safely', () => {
+  const uninstaller = fs.readFileSync(path.join(root, 'agent', 'uninstall-agent.ps1'), 'utf8');
+  assert.match(uninstaller, /Windows Controller Hardware Monitor/);
+  assert.match(uninstaller, /KeepHardwareMonitor/);
+  assert.match(uninstaller, /Refusing to remove data outside/);
+});
+
 test('manual launch marks its deferred screenshot and helper can restore hidden windows', () => {
   const agent = fs.readFileSync(path.join(root, 'agent', 'agent.js'), 'utf8');
   const server = fs.readFileSync(path.join(root, 'server', 'server.js'), 'utf8');
@@ -77,6 +84,14 @@ test('hardware telemetry supports GPU temperature and per-part power without req
   assert.match(probe, /PawnIo\.IsInstalled/);
   assert.match(windows, /value\.includes\('\/lpc'\)/);
   assert.match(installer, /AddSeconds\(90\)/);
+});
+
+test('one agent installer also installs hardware monitoring by default', () => {
+  const installer = fs.readFileSync(path.join(root, 'agent', 'install-agent.ps1'), 'utf8');
+  assert.match(installer, /install-hardware-monitor\.ps1/);
+  assert.match(installer, /SkipHardwareMonitor/);
+  assert.match(installer, /HardwareMonitorPackagePath/);
+  assert.match(installer, /Installing LibreHardwareMonitor bridge and PawnIO/);
 });
 
 test('Nuvoton X99 phantom AUXTIN values do not override real motherboard temperature', () => {
