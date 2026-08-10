@@ -221,12 +221,16 @@ function serializeHost(row) {
     fingerprint: row.fingerprint,
     platform: row.platform,
     version: row.version,
+    notes: row.notes || '',
     status: row.status,
     online,
     lastSeen: row.last_seen,
     telemetry,
     telemetryAt: row.telemetry_at,
-    capabilities: parseJson(row.capabilities_json, [])
+    capabilities: parseJson(row.capabilities_json, []),
+    createdAt: row.created_at,
+    approvedAt: row.approved_at,
+    revokedAt: row.revoked_at
   };
 }
 
@@ -733,6 +737,31 @@ app.get('/api/v1/agents/pending', authenticate, requireSuperAdmin, (req, res) =>
     LEFT JOIN latest_state l ON l.agent_id = a.id WHERE a.status = 'pending' ORDER BY a.created_at
   `).all();
   res.json(rows.map(serializeHost));
+});
+
+app.get('/api/v1/agents', authenticate, requireSuperAdmin, (req, res) => {
+  const rows = db.prepare(`
+    SELECT a.*, l.telemetry_json, l.telemetry_at FROM agents a
+    LEFT JOIN latest_state l ON l.agent_id = a.id
+    ORDER BY CASE a.status WHEN 'approved' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END,
+      a.display_name COLLATE NOCASE, a.created_at
+  `).all();
+  res.json(rows.map(serializeHost));
+});
+
+app.put('/api/v1/agents/:id', authenticate, requireSuperAdmin, (req, res) => {
+  const agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(req.params.id);
+  if (!agent) return res.status(404).json({ error: 'Agent not found' });
+  const displayName = String(req.body?.displayName || '').trim();
+  const notes = String(req.body?.notes || '').trim();
+  if (!displayName || displayName.length > 80) {
+    return res.status(400).json({ error: 'Display name must contain 1 to 80 characters' });
+  }
+  if (notes.length > 500) return res.status(400).json({ error: 'Notes must not exceed 500 characters' });
+  db.prepare('UPDATE agents SET display_name = ?, notes = ? WHERE id = ?').run(displayName, notes, agent.id);
+  const updated = getHost(agent.id);
+  broadcastUi('ui.host.status', serializeHost(updated));
+  res.json(serializeHost(updated));
 });
 
 app.post('/api/v1/agents/:id/approve', authenticate, requireSuperAdmin, (req, res) => {

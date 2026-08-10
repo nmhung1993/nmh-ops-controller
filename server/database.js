@@ -50,6 +50,7 @@ function createDatabase() {
       fingerprint TEXT NOT NULL,
       platform TEXT,
       version TEXT,
+      notes TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'revoked')),
       token_hash TEXT NOT NULL,
       capabilities_json TEXT NOT NULL DEFAULT '[]',
@@ -125,6 +126,9 @@ function createDatabase() {
       created_at TEXT NOT NULL
     );
   `);
+
+  const agentColumns = new Set(db.prepare('PRAGMA table_info(agents)').all().map(column => column.name));
+  if (!agentColumns.has('notes')) db.exec("ALTER TABLE agents ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
 
   migrateUserRoleSchema(db);
   db.exec(`

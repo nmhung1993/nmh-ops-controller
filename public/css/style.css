@@ -63,7 +63,7 @@
 * { box-sizing: border-box; }
 html { min-height: 100%; scroll-behavior: smooth; }
 body { min-height: 100%; margin: 0; color: var(--ink); background: var(--canvas); font-family: "Aptos", "Trebuchet MS", sans-serif; font-size: 12.75px; line-height: 1.5; transition: color .2s ease, background .2s ease; }
-button, input, select { font: inherit; }
+button, input, select, textarea { font: inherit; }
 button { color: inherit; }
 a { color: inherit; }
 [hidden] { display: none !important; }
@@ -75,7 +75,7 @@ a { color: inherit; }
 .ambient-grid { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(circle at 78% 8%, var(--accent-soft), transparent 28%), radial-gradient(circle at 12% 88%, var(--amber-soft), transparent 28%), linear-gradient(var(--chart-grid) 1px, transparent 1px), linear-gradient(90deg, var(--chart-grid) 1px, transparent 1px); background-size: auto, auto, 34px 34px, 34px 34px; mask-image: linear-gradient(to bottom, #000 0, rgba(0,0,0,.5) 70%, transparent 100%); }
 
 :focus-visible { outline: 2.55px solid color-mix(in srgb, var(--focus) 72%, transparent); outline-offset: 2.55px; }
-input:focus-visible, select:focus-visible { outline: none; border-color: var(--focus); box-shadow: 0 0 0 2.55px color-mix(in srgb, var(--focus) 16%, transparent); }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; border-color: var(--focus); box-shadow: 0 0 0 2.55px color-mix(in srgb, var(--focus) 16%, transparent); }
 
 .preference-dock { position: fixed; z-index: 50; top: 13.6px; right: 17px; display: flex; gap: 6.8px; padding: 5.1px; border: 1px solid var(--line); background: color-mix(in srgb, var(--surface-raised) 90%, transparent); box-shadow: var(--shadow-sm); backdrop-filter: blur(15.3px); }
 .app-active .preference-dock { display: contents; }
@@ -107,7 +107,8 @@ input:focus-visible, select:focus-visible { outline: none; border-color: var(--f
 .section-index { margin-bottom: 8.5px; color: var(--faint); }
 
 label { display: grid; gap: 5.95px; margin: 13.6px 0; color: var(--muted); font-size: 11.05px; font-weight: 650; }
-input, select { width: 100%; min-height: 37.4px; padding: 0 11.05px; color: var(--ink); border: 1px solid var(--line); border-radius: 1.7px; background-color: var(--surface-raised); outline: none; }
+input, select, textarea { width: 100%; min-height: 37.4px; padding: 0 11.05px; color: var(--ink); border: 1px solid var(--line); border-radius: 1.7px; background-color: var(--surface-raised); outline: none; }
+textarea { padding-block: 9.35px; resize: vertical; }
 input::placeholder { color: var(--faint); }
 
 .button { min-height: 35.7px; padding: 0 14.45px; color: var(--ink); border: 1px solid var(--line-strong); border-radius: 1.7px; background: var(--surface-raised); cursor: pointer; font: 650 11.05px "Bahnschrift", sans-serif; letter-spacing: .015em; transition: transform .15s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease; }
@@ -311,6 +312,13 @@ td.path { max-width: 289px; color: var(--muted); overflow: hidden; text-overflow
 .timeline { display: grid; max-height: 510px; overflow: auto; }
 .timeline-item { position: relative; padding: 12.75px 10.2px 12.75px 22.95px; border-top: 1px solid var(--line); }.timeline-item:first-child { border-top: 0; }.timeline-item::before { content: ""; position: absolute; top: 17.85px; left: 4.25px; width: 6.8px; height: 6.8px; border: 1.7px solid var(--surface); border-radius: 50%; background: var(--faint); box-shadow: 0 0 0 1px var(--line-strong); }.timeline-item::after { content: ""; position: absolute; top: 26.35px; bottom: -7px; left: 7.65px; width: 1px; background: var(--line); }.timeline-item:last-child::after { display: none; }.timeline-item.error::before, .timeline-item.failed::before { background: var(--danger); }.timeline-item.info::before, .timeline-item.succeeded::before { background: var(--accent); }.timeline-item h4 { margin: 0 0 3.4px; font-size: 11.05px; }.timeline-item p { margin: 0; color: var(--muted); font-size: 9.35px; }.timeline-item time { display: block; margin-top: 5.95px; color: var(--faint); font-size: 8.5px; }
 .stack-item { display: flex; align-items: center; justify-content: space-between; gap: 15.3px; padding: 12.75px; border: 1px solid var(--line); background: var(--surface-raised); }.stack-item h4 { margin: 0 0 3.4px; font: 650 12.75px "Bahnschrift", sans-serif; }.stack-item p { margin: 0; color: var(--muted); font-size: 9.35px; overflow-wrap: anywhere; }
+.agent-registry { display: grid; grid-template-columns: repeat(auto-fit, minmax(272px, 1fr)); gap: 8.5px; }
+.agent-record { position: relative; display: grid; grid-template-rows: auto auto 1fr auto; gap: 11.05px; min-width: 0; padding: 14.45px; border: 1px solid var(--line); background: var(--surface-raised); overflow: hidden; }
+.agent-record::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3.4px; background: var(--line-strong); }.agent-record.approved::before { background: var(--accent); }.agent-record.pending::before { background: var(--amber); }.agent-record.revoked::before { background: var(--danger); }
+.agent-record-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 11.05px; min-width: 0; }.agent-record-head > div { min-width: 0; }.agent-record-head h4 { margin: 3.4px 0 0; overflow: hidden; font: 650 15.3px "Bahnschrift", sans-serif; text-overflow: ellipsis; white-space: nowrap; }.agent-record-head p { margin: 2.55px 0 0; overflow: hidden; color: var(--muted); font-size: 9.35px; text-overflow: ellipsis; white-space: nowrap; }
+.agent-record-details, .agent-identity { display: grid; gap: 1px; margin: 0; background: var(--line); }.agent-record-details > div, .agent-identity > div { min-width: 0; padding: 7.65px 8.5px; background: var(--surface); }.agent-record-details dt, .agent-identity dt { color: var(--faint); font: 700 7.65px "Bahnschrift", sans-serif; letter-spacing: .1em; text-transform: uppercase; }.agent-record-details dd, .agent-identity dd { margin: 3.4px 0 0; overflow: hidden; font-size: 9.35px; text-overflow: ellipsis; white-space: nowrap; }
+.agent-notes { margin: 0; color: var(--muted); font-size: 9.35px; overflow-wrap: anywhere; }.agent-record-actions { align-self: end; justify-content: flex-end; }
+.agent-identity { margin-top: 15.3px; }.agent-identity dd { white-space: normal; overflow-wrap: anywhere; }
 .integration-panel { display: grid; grid-template-columns: minmax(187px, .7fr) minmax(0, 1.3fr); align-items: end; gap: 30.6px; }.integration-copy p { margin: 5.95px 0 0; color: var(--muted); }.settings-form { display: flex; align-items: end; gap: 8.5px; }.settings-form label { flex: 1; margin: 0; }
 
 /* Dialogs and feedback */

@@ -424,7 +424,7 @@ function renderFleet() {
         <p class="host-meta">${escapeHtml(host.platform || 'Windows')} / Agent ${escapeHtml(host.version || '--')}</p>
       </div>
       <div class="host-metrics ${hasPower ? 'has-power' : ''}"><div class="host-metric"><header><span>${escapeHtml(t('fleet.cpu'))}</span><span>CPU</span></header><strong data-role="cpu-value">${telemetry.cpu ? formatPercent(cpu) : '--'}</strong></div><div class="host-metric memory"><header><span>${escapeHtml(t('fleet.memory'))}</span><span>RAM</span></header><strong data-role="memory-value">${telemetry.memory ? formatPercent(memory) : '--'}</strong></div><div class="host-metric power" ${hasPower ? '' : 'hidden'}><header><span>${escapeHtml(t('fleet.power'))}</span><span>W</span></header><strong data-role="power-value">${hasPower ? formatWatts(totalWatts) : '--'}</strong></div></div>
-      <footer class="host-footer"><span data-role="last-seen">${escapeHtml(t('fleet.lastSeen', { time: formatDate(host.lastSeen) }))}</span>${isSuperAdmin() ? `<div class="row-actions"><button class="button compact danger revoke-host" type="button" data-host="${host.id}">${escapeHtml(t('fleet.revoke'))}</button></div>` : ''}</footer>
+      <footer class="host-footer"><span data-role="last-seen">${escapeHtml(t('fleet.lastSeen', { time: formatDate(host.lastSeen) }))}</span></footer>
     </article>`;
   }).join('');
   document.querySelectorAll('.host-card').forEach(card => {
@@ -435,7 +435,6 @@ function renderFleet() {
       selectHost(card.dataset.host, '#dashboard');
     });
   });
-  document.querySelectorAll('.revoke-host').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); revokeHost(button.dataset.host); }));
 }
 
 function setMetricState(element, value) {
@@ -713,7 +712,16 @@ async function loadActivity() {
 
 async function loadAdmin() {
   if (!isSuperAdmin()) return;
-  const [pending, users, settings] = await Promise.all([api('/api/v1/agents/pending'), api('/api/v1/users'), api('/api/v1/settings')]);
+  const [agents, pending, users, settings] = await Promise.all([api('/api/v1/agents'), api('/api/v1/agents/pending'), api('/api/v1/users'), api('/api/v1/settings')]);
+  $('agent-list').innerHTML = agents.length ? agents.map(agent => {
+    const status = agent.status === 'approved' ? (agent.online ? 'online' : 'offline') : agent.status;
+    const statusText = t(`agent.status.${status}`);
+    const actions = [
+      `<button class="button compact edit-agent" data-id="${agent.id}">${escapeHtml(t('common.edit'))}</button>`,
+      agent.status !== 'revoked' ? `<button class="button danger compact revoke-agent" data-id="${agent.id}" data-name="${escapeHtml(agent.displayName || agent.hostname)}">${escapeHtml(t('admin.revokeAgent'))}</button>` : ''
+    ].join('');
+    return `<article class="agent-record ${escapeHtml(agent.status)}"><div class="agent-record-head"><div><span class="panel-label">${escapeHtml(agent.platform || 'Agent')}</span><h4>${escapeHtml(agent.displayName || agent.hostname)}</h4><p>${escapeHtml(agent.hostname)}</p></div><span class="status-pill ${status === 'online' ? 'online' : ''}">${escapeHtml(statusText)}</span></div><dl class="agent-record-details"><div><dt>${escapeHtml(t('agent.version'))}</dt><dd>${escapeHtml(agent.version || '--')}</dd></div><div><dt>${escapeHtml(t('agent.lastSeen'))}</dt><dd>${escapeHtml(formatDate(agent.lastSeen))}</dd></div><div><dt>${escapeHtml(t('agent.fingerprint'))}</dt><dd title="${escapeHtml(agent.fingerprint)}">${escapeHtml(agent.fingerprint ? `${agent.fingerprint.slice(0, 16)}…` : '--')}</dd></div></dl>${agent.notes ? `<p class="agent-notes">${escapeHtml(agent.notes)}</p>` : ''}<div class="row-actions agent-record-actions">${actions}</div></article>`;
+  }).join('') : `<p>${escapeHtml(t('admin.noAgents'))}</p>`;
   $('pending-list').innerHTML = pending.length ? pending.map(agent => `<div class="stack-item"><div><h4>${escapeHtml(agent.hostname)}</h4><p>${escapeHtml(agent.fingerprint)}<br>${escapeHtml(agent.platform || '')}</p></div><div class="row-actions"><button class="button danger compact reject-agent" data-id="${agent.id}" data-name="${escapeHtml(agent.hostname)}">${escapeHtml(t('admin.reject'))}</button><button class="button primary compact approve-agent" data-id="${agent.id}" data-name="${escapeHtml(agent.hostname)}">${escapeHtml(t('admin.approve'))}</button></div></div>`).join('') : `<p>${escapeHtml(t('admin.noPending'))}</p>`;
   const hostNames = new Map(state.hosts.map(host => [host.id, host.displayName]));
   $('user-list').innerHTML = users.map(user => {
@@ -725,11 +733,35 @@ async function loadAdmin() {
   $('discord-webhook').value = settings.discordWebhook || '';
   document.querySelectorAll('.approve-agent').forEach(button => button.addEventListener('click', () => approveAgent(button.dataset.id, button.dataset.name)));
   document.querySelectorAll('.reject-agent').forEach(button => button.addEventListener('click', () => rejectAgent(button.dataset.id, button.dataset.name)));
+  document.querySelectorAll('.edit-agent').forEach(button => button.addEventListener('click', () => {
+    const agent = agents.find(item => item.id === button.dataset.id);
+    if (agent) openAgentDialog(agent);
+  }));
+  document.querySelectorAll('.revoke-agent').forEach(button => button.addEventListener('click', () => revokeAgent(button.dataset.id, button.dataset.name)));
   document.querySelectorAll('.edit-user').forEach(button => button.addEventListener('click', () => {
     const user = users.find(item => item.username === button.dataset.user);
     if (user) openUserDialog(user);
   }));
   document.querySelectorAll('.delete-user').forEach(button => button.addEventListener('click', () => deleteUser(button.dataset.user)));
+}
+
+function openAgentDialog(agent) {
+  $('agent-editing').value = agent.id;
+  $('agent-display-name').value = agent.displayName || agent.hostname || '';
+  $('agent-notes').value = agent.notes || '';
+  $('agent-identity').innerHTML = `<div><dt>${escapeHtml(t('agent.hostname'))}</dt><dd>${escapeHtml(agent.hostname || '--')}</dd></div><div><dt>${escapeHtml(t('agent.platform'))}</dt><dd>${escapeHtml(agent.platform || '--')}</dd></div><div><dt>${escapeHtml(t('agent.fingerprint'))}</dt><dd>${escapeHtml(agent.fingerprint || '--')}</dd></div>`;
+  $('agent-dialog').showModal();
+}
+
+async function saveAgent(event) {
+  event.preventDefault();
+  try {
+    const agentId = $('agent-editing').value;
+    await api(`/api/v1/agents/${agentId}`, { method: 'PUT', body: JSON.stringify({ displayName: $('agent-display-name').value.trim(), notes: $('agent-notes').value.trim() }) });
+    $('agent-dialog').close();
+    toast(t('admin.agentUpdated'), 'success');
+    await Promise.all([loadAdmin(), loadHosts()]);
+  } catch (error) { toast(translateError(error), 'error'); }
 }
 
 function renderUserHostList(selectedIds = [], role = $('user-role').value) {
@@ -774,12 +806,11 @@ async function rejectAgent(agentId, hostname) {
   loadAdmin();
 }
 
-async function revokeHost(agentId) {
-  const host = state.hosts.find(item => item.id === agentId);
-  if (!confirm(t('fleet.revokeConfirm', { host: host?.displayName || agentId }))) return;
+async function revokeAgent(agentId, name) {
+  if (!confirm(t('admin.revokeConfirm', { host: name || agentId }))) return;
   await api(`/api/v1/agents/${agentId}/revoke`, { method: 'POST', body: '{}' });
-  toast(t('fleet.revoked'));
-  loadHosts();
+  toast(t('admin.agentRevoked'));
+  await Promise.all([loadAdmin(), loadHosts()]);
 }
 
 async function saveUser(event) {
@@ -868,6 +899,7 @@ $('add-rule-button').addEventListener('click', () => openRuleDialog());
 $('rule-form').addEventListener('submit', saveRule);
 $('open-admin-button').addEventListener('click', () => location.hash = '#admin');
 $('add-user-button').addEventListener('click', () => openUserDialog());
+$('agent-form').addEventListener('submit', saveAgent);
 $('user-role').addEventListener('change', () => {
   const list = $('user-host-list');
   const selectedIds = list.classList.contains('is-disabled')

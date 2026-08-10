@@ -74,10 +74,16 @@ test('super admin UI can edit user roles and host assignments', () => {
   const app = fs.readFileSync(path.join(root, 'public', 'js', 'app.js'), 'utf8');
   const css = fs.readFileSync(path.join(root, 'public', 'css', 'style.css'), 'utf8');
   assert.match(html, /data-super-admin/);
+  assert.match(html, /id="agent-list"/);
+  assert.match(html, /id="agent-dialog"/);
   assert.match(html, /id="user-host-list"/);
   assert.match(html, /value="super_admin"/);
   assert.match(app, /function openUserDialog\(/);
   assert.match(app, /hostIds/);
   assert.match(app, /ui\.access\.changed/);
+  assert.match(app, /api\/v1\/agents/);
+  assert.match(app, /function openAgentDialog\(/);
+  assert.match(app, /function saveAgent\(/);
+  assert.doesNotMatch(app, /revoke-host/);
   assert.match(css, /\.host-access-list/);
 });

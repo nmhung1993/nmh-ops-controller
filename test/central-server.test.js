@@ -112,6 +112,19 @@ test('agent enrollment, telemetry, commands and revoke flow', async t => {
   assert.equal(response.status, 200);
   await approvedPromise;
 
+  response = await fetch(`${baseUrl}/api/v1/agents`, { headers });
+  const registeredAgents = await response.json();
+  assert.equal(registeredAgents.length, 1);
+  assert.equal(registeredAgents[0].status, 'approved');
+  assert.equal(registeredAgents[0].hostname, 'TEST-HOST');
+  response = await fetch(`${baseUrl}/api/v1/agents/${agentId}`, {
+    method: 'PUT', headers, body: JSON.stringify({ displayName: 'Edited machine', notes: 'Pilot host' })
+  });
+  assert.equal(response.status, 200);
+  const editedAgent = await response.json();
+  assert.equal(editedAgent.displayName, 'Edited machine');
+  assert.equal(editedAgent.notes, 'Pilot host');
+
   agent.send(JSON.stringify({
     type: 'agent.telemetry', messageId: 'telemetry-1', agentId, sentAt: new Date().toISOString(), seq: 2,
     payload: {
@@ -126,7 +139,7 @@ test('agent enrollment, telemetry, commands and revoke flow', async t => {
   response = await fetch(`${baseUrl}/api/v1/hosts`, { headers });
   const hosts = await response.json();
   assert.equal(hosts.length, 1);
-  assert.equal(hosts[0].displayName, 'Test machine');
+  assert.equal(hosts[0].displayName, 'Edited machine');
   assert.equal(hosts[0].telemetry.cpu.usage, 12.5);
   assert.equal(hosts[0].telemetry.hardware.power.totalWatts, 22.5);
 
