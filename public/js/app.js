@@ -167,6 +167,16 @@ function formatCpuDetail(cpu = {}) {
   return t('dashboard.processorUnavailable');
 }
 
+function formatHostCpuModel(cpu = {}) {
+  const raw = String(cpu.model || '').trim();
+  if (!raw || /^(undefined|null|unknown|n\/a|home assistant host|x64|x86_64|arm64|aarch64)$/i.test(raw)) return '';
+  return raw
+    .replace(/\((?:R|TM)\)/gi, '')
+    .replace(/^Intel\s+(?:Core|Xeon|Atom)(?:\s+CPU)?\s+/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function initials(value) {
   return String(value || 'PC').split(/[\s_-]+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase() || 'PC';
 }
@@ -408,6 +418,12 @@ function updateFleetHostCard(host) {
   }
   const uptime = card.querySelector('[data-role="uptime"]');
   if (uptime) uptime.textContent = host.telemetry?.uptime !== undefined ? formatUptime(host.telemetry.uptime) : '--';
+  const cpuModel = formatHostCpuModel(host.telemetry?.cpu);
+  const cpuModelElement = card.querySelector('[data-role="cpu-model"]');
+  if (cpuModelElement) {
+    cpuModelElement.hidden = !cpuModel;
+    cpuModelElement.textContent = cpuModel ? `${t('fleet.processor')}: ${cpuModel}` : '';
+  }
   metrics?.classList.toggle('has-power', hasPower);
   if (powerMetric) powerMetric.hidden = !hasPower;
   if (hasPower && card.querySelector('[data-role="power-value"]')) card.querySelector('[data-role="power-value"]').textContent = formatWatts(totalWatts);
@@ -424,12 +440,14 @@ function renderFleet() {
     const memory = clampPercent(telemetry.memory?.percent);
     const totalWatts = telemetry.hardware?.power?.totalWatts;
     const hasPower = totalWatts !== null && totalWatts !== undefined && Number.isFinite(Number(totalWatts));
+    const cpuModel = formatHostCpuModel(telemetry.cpu);
     const needsAttention = hostNeedsAttention(host);
     const cardLabel = `${host.displayName}, ${host.online ? t('common.online') : t('common.offline')}, CPU ${telemetry.cpu ? formatPercent(cpu) : '--'}, ${t('fleet.memory')} ${telemetry.memory ? formatPercent(memory) : '--'}${hasPower ? `, ${t('fleet.power')} ${formatWatts(totalWatts)}` : ''}`;
     return `<article class="host-card ${host.online ? 'online' : ''} ${needsAttention && host.online ? 'attention' : ''}" data-host="${host.id}" tabindex="0" role="button" aria-label="${escapeHtml(cardLabel)}" style="animation-delay:${index * 35}ms">
       <div class="host-card-main">
         <div class="host-head"><div class="host-identity"><h3>${escapeHtml(host.displayName)}</h3></div><span class="status-pill ${host.online ? 'online' : ''}" data-role="status">${host.online ? escapeHtml(t('common.online')) : escapeHtml(t('common.offline'))}</span></div>
         <p class="host-meta">${escapeHtml(host.platform || 'Windows')} / Agent ${escapeHtml(host.version || '--')}</p>
+        <p class="host-cpu" data-role="cpu-model" ${cpuModel ? '' : 'hidden'}>${cpuModel ? `${escapeHtml(t('fleet.processor'))}: ${escapeHtml(cpuModel)}` : ''}</p>
       </div>
       <div class="host-metrics ${hasPower ? 'has-power' : ''}"><div class="host-metric"><header><span>${escapeHtml(t('fleet.cpu'))}</span><span>CPU</span></header><strong data-role="cpu-value">${telemetry.cpu ? formatPercent(cpu) : '--'}</strong></div><div class="host-metric memory"><header><span>${escapeHtml(t('fleet.memory'))}</span><span>RAM</span></header><strong data-role="memory-value">${telemetry.memory ? formatPercent(memory) : '--'}</strong><small data-role="memory-detail" ${Number(telemetry.memory?.total) > 0 ? '' : 'hidden'}>${Number(telemetry.memory?.total) > 0 ? `${formatBytes(telemetry.memory.used)} / ${formatBytes(telemetry.memory.total)}` : ''}</small></div><div class="host-metric power" ${hasPower ? '' : 'hidden'}><header><span>${escapeHtml(t('fleet.power'))}</span><span>W</span></header><strong data-role="power-value">${hasPower ? formatWatts(totalWatts) : '--'}</strong></div></div>
       <div class="host-runtime"><span>${escapeHtml(t('fleet.uptime'))}</span><strong data-role="uptime">${telemetry.uptime !== undefined ? escapeHtml(formatUptime(telemetry.uptime)) : '--'}</strong></div>

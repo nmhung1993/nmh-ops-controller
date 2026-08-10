@@ -55,6 +55,10 @@ test('redesigned operations shell keeps core accessibility and responsive afford
   assert.match(app, /data-role="power-value"/);
   assert.match(app, /function formatPercent\(value\)/);
   assert.match(app, /function formatCpuDetail\(cpu = \{\}\)/);
+  assert.match(app, /function formatHostCpuModel\(cpu = \{\}\)/);
+  assert.match(app, /home assistant host\|x64\|x86_64\|arm64\|aarch64/);
+  assert.match(app, /data-role="cpu-model"/);
+  assert.match(css, /\.host-cpu/);
   assert.match(app, /dashboard\.processorUnavailable/);
   assert.match(app, /clampPercent\(value\)\.toFixed\(1\)/);
   assert.match(app, /fleet\.power/);

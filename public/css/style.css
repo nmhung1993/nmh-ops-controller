@@ -231,6 +231,7 @@ input::placeholder { color: var(--faint); }
 .status-pill { display: inline-flex; align-items: center; min-height: 20.4px; padding: 0 6.8px; color: var(--danger); border: 1px solid color-mix(in srgb, var(--danger) 28%, transparent); background: var(--danger-soft); font: 750 7.65px "Bahnschrift", sans-serif; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
 .status-pill.online { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); background: var(--accent-soft); }
 .host-meta { display: -webkit-box; min-height: 27.5px; margin: 13.6px 0 0; overflow: hidden; color: var(--muted); font-size: 10.2px; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.host-cpu { margin: 6.8px 0 0; overflow: hidden; color: var(--faint); font-size: 9.35px; text-overflow: ellipsis; white-space: nowrap; }
 .host-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line); background: var(--line); gap: 1px; }
 .host-metrics:not(.has-power) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .host-metric { min-width: 0; padding: 11.9px 10.2px 13.6px; background: var(--surface-raised); }
