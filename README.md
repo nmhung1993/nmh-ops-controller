@@ -91,7 +91,7 @@ Cuối quá trình, installer in các URL LAN, ví dụ:
 http://192.168.1.10:3003
 ```
 
-Mở URL từ trình duyệt. Nếu chưa có user, trang đầu tiên yêu cầu tạo tài khoản Administrator; ứng dụng không có mật khẩu mặc định.
+Mở URL từ trình duyệt. Nếu chưa có user, trang đầu tiên yêu cầu tạo tài khoản quản trị đầu tiên. Tài khoản đầu tiên là **Super Admin** và ứng dụng không có mật khẩu mặc định.
 
 ### Cài Agent trên chính máy Central Server
 
@@ -153,19 +153,31 @@ Dùng gói LibreHardwareMonitor ZIP đã tải từ repository chính thức:
 ## Phê duyệt Agent
 
 1. Installer in `Hostname` và `Fingerprint` ở cuối.
-2. Đăng nhập web bằng tài khoản Admin.
+2. Đăng nhập web bằng tài khoản Super Admin.
 3. Mở **Admin → Pending agents**.
 4. So sánh hostname/fingerprint với màn hình installer.
 5. Chọn **Approve** và đặt display name.
 6. Agent nhận token riêng; token được bảo vệ bằng Windows DPAPI machine scope.
 
-Agent chưa approve hoặc đã revoke không thể gửi telemetry hợp lệ hay nhận command. Admin có thể revoke từng máy từ Fleet/Admin và cài lại để enroll lại khi cần.
+Agent chưa approve hoặc đã revoke không thể gửi telemetry hợp lệ hay nhận command. Chỉ Super Admin có thể approve/revoke Agent và cài lại để enroll lại khi cần.
+
+## Phân quyền user theo máy
+
+Hệ thống có ba role:
+
+- **Super Admin**: thấy và quản lý toàn bộ máy; approve/revoke Agent; tạo, sửa, xóa user; phân danh sách máy; quản lý Discord/settings. Tài khoản được tạo trong First-run Setup là Super Admin mặc định.
+- **Admin**: chỉ thấy các máy được Super Admin gán và có quyền quản lý các máy đó, gồm process kill, launch, capture và chỉnh Watchdog. Admin không được quản lý user, pending Agent hoặc settings toàn hệ thống.
+- **Viewer**: chỉ xem telemetry, process đã ẩn path, Watchdog và activity của các máy được gán; không được gửi command hay thay đổi cấu hình.
+
+Để phân máy: mở **Admin → Tài khoản người dùng → Chỉnh sửa**, chọn role và đánh dấu danh sách máy. Ví dụ `adminA` được gán máy A sẽ không thể thấy hoặc gọi API của máy B. Việc chặn được thực thi tại REST API, WebSocket và endpoint screenshot, không chỉ ẩn bằng giao diện.
+
+Khi nâng cấp database cũ, tài khoản admin được tạo sớm nhất sẽ thành Super Admin. Các admin/viewer cũ được giữ quyền trên những máy đã tồn tại tại thời điểm migration để tránh mất truy cập; Super Admin có thể chỉnh lại danh sách sau đó.
 
 ## Hướng dẫn sử dụng
 
 ### Fleet Overview
 
-- Xem tất cả máy đã approve, trạng thái online/offline, last seen, CPU, RAM và cảnh báo.
+- Super Admin xem tất cả máy đã approve; Admin/Viewer chỉ thấy các máy được phân quyền, cùng trạng thái online/offline, last seen, CPU, RAM và cảnh báo.
 - Agent được xem là offline nếu Central Server không nhận heartbeat trong 20 giây.
 - Chọn một host để Dashboard, Processes và Watchdog giữ đúng `hostId` khi reload.
 
@@ -179,7 +191,7 @@ Agent chưa approve hoặc đã revoke không thể gửi telemetry hợp lệ h
 ### Processes
 
 - Danh sách process chỉ tải khi mở trang hoặc refresh, không truyền liên tục.
-- Viewer chỉ xem. Admin có thể kill process hoặc yêu cầu capture cửa sổ.
+- Viewer chỉ xem và không thấy executable path. Admin được phân máy và Super Admin có thể kill process hoặc yêu cầu capture cửa sổ.
 - CPU process được tính từ delta CPU time, tránh nhầm giá trị CPU tích lũy.
 
 ### Watchdog
@@ -203,7 +215,7 @@ Agent chưa approve hoặc đã revoke không thể gửi telemetry hợp lệ h
 
 - UI hỗ trợ tiếng Việt và tiếng Anh.
 - Theme sáng/tối được lưu trên trình duyệt.
-- Viewer chỉ được xem dữ liệu; Admin mới có quyền approve/revoke, chỉnh watchdog, kill/launch/capture và quản lý settings.
+- Viewer chỉ xem máy được gán; Admin quản lý máy được gán; Super Admin quản lý toàn bộ fleet, user, approval và settings.
 
 ## Cơ chế realtime và offline
 
@@ -242,6 +254,8 @@ Chart.js được phục vụ từ thư mục `public`, không phụ thuộc CDN
 - Password được hash bằng bcrypt.
 - Named Pipe Desktop Helper dùng secret cục bộ và ACL giới hạn.
 - Secret/path nhạy cảm bị giới hạn theo role.
+- Mọi host-scoped REST API, WebSocket event và screenshot đều kiểm tra bảng `user_host_access`.
+- Không thể xóa hoặc hạ quyền Super Admin cuối cùng.
 - Không có tài khoản, password hoặc JWT secret hardcode.
 - HTTP không mã hóa credential/token trên đường truyền; chỉ dùng trong LAN tin cậy hoặc chuyển sang HTTPS.
 
@@ -365,6 +379,10 @@ GET    /hosts/:id/commands
 GET    /agents/pending
 POST   /agents/:id/approve
 POST   /agents/:id/revoke
+GET    /users
+POST   /users
+PUT    /users/:username
+DELETE /users/:username
 ```
 
 Agent realtime dùng `/ws/agent`; browser realtime dùng `/ws/ui` trên cùng port.
@@ -416,7 +434,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\deploy\install-server.ps1 -Port 3003
 ```
 
-Open the printed `http://<server-ip>:3003` URL and create the first administrator account.
+Open the printed `http://<server-ip>:3003` URL and create the first account. The first account is the default Super Admin.
 
 ### Install an Agent with one installer entry point
 
@@ -430,6 +448,14 @@ Set-ExecutionPolicy -Scope Process Bypass
 By default this single command installs the WinSW Agent service, Desktop Helper, firewall rule, LibreHardwareMonitor bridge, local .NET runtime and PawnIO. Use `-SkipHardwareMonitor` only when hardware temperature/power monitoring is not required. Use `-HardwareMonitorPackagePath` for an offline official LibreHardwareMonitor ZIP.
 
 Approve the printed hostname/fingerprint in **Admin → Pending agents**.
+
+### Host-scoped access control
+
+- **Super Admin** sees every host and manages users, assignments, enrollment and settings.
+- **Admin** can view and control only assigned hosts.
+- **Viewer** has read-only access to assigned hosts.
+
+Use **Admin → Users → Edit** to select a role and the allowed machine list. Enforcement applies to REST, WebSocket and screenshot access, not only to UI visibility.
 
 ### Data engines
 

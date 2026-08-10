@@ -31,7 +31,7 @@ function createDatabase() {
     CREATE TABLE IF NOT EXISTS users (
       username TEXT PRIMARY KEY,
       password_hash TEXT NOT NULL,
-      role TEXT NOT NULL CHECK (role IN ('admin', 'user')),
+      role TEXT NOT NULL CHECK (role IN ('super_admin', 'admin', 'viewer')),
       must_change_password INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL
     );
@@ -126,7 +126,59 @@ function createDatabase() {
     );
   `);
 
+  migrateUserRoleSchema(db);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_host_access (
+      username TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
+      agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY(username, agent_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_host_access_agent ON user_host_access(agent_id, username);
+  `);
+
   return db;
+}
+
+function migrateUserRoleSchema(db) {
+  const schema = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'").get()?.sql || '';
+  if (schema.includes('super_admin')) return;
+
+  const existingUsers = db.prepare(`
+    SELECT username, password_hash, role, must_change_password, created_at
+    FROM users ORDER BY created_at, username
+  `).all();
+  const primaryAdmin = existingUsers.find(user => user.role === 'admin') || existingUsers[0] || null;
+
+  db.exec('PRAGMA foreign_keys = OFF; BEGIN IMMEDIATE;');
+  try {
+    db.exec(`
+      ALTER TABLE users RENAME TO users_legacy_roles;
+      CREATE TABLE users (
+        username TEXT PRIMARY KEY,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('super_admin', 'admin', 'viewer')),
+        must_change_password INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      );
+    `);
+    const insert = db.prepare(`
+      INSERT INTO users(username, password_hash, role, must_change_password, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    for (const user of existingUsers) {
+      const role = user.username === primaryAdmin?.username
+        ? 'super_admin'
+        : (user.role === 'admin' ? 'admin' : 'viewer');
+      insert.run(user.username, user.password_hash, role, user.must_change_password, user.created_at);
+    }
+    db.exec('DROP TABLE users_legacy_roles; COMMIT;');
+  } catch (error) {
+    try { db.exec('ROLLBACK;'); } catch {}
+    throw error;
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON;');
+  }
 }
 
 function getMeta(db, key) {
@@ -179,7 +231,7 @@ function migrateLegacyData(db) {
   for (const user of users) {
     if (user?.username && user?.password && ['admin', 'user'].includes(user.role)) {
       const knownDefault = (user.username === 'admin' || user.username === 'user' || user.username === 'seeder') ? 1 : 0;
-      insertUser.run(user.username, user.password, user.role, knownDefault, now);
+      insertUser.run(user.username, user.password, user.role === 'admin' ? 'admin' : 'viewer', knownDefault, now);
     }
   }
 
@@ -202,6 +254,29 @@ function migrateLegacyData(db) {
   }
   setSetting(db, 'server_hostname', os.hostname());
   setMeta(db, 'legacy_migrated', '1');
+  ensureSuperAdmin(db);
+}
+
+function ensureSuperAdmin(db) {
+  if (db.prepare("SELECT 1 FROM users WHERE role = 'super_admin' LIMIT 1").get()) return;
+  const candidate = db.prepare(`
+    SELECT username FROM users
+    ORDER BY CASE WHEN role = 'admin' THEN 0 ELSE 1 END, created_at, username
+    LIMIT 1
+  `).get();
+  if (candidate) db.prepare("UPDATE users SET role = 'super_admin' WHERE username = ?").run(candidate.username);
+}
+
+function initializeHostAccess(db) {
+  if (getMeta(db, 'host_access_initialized') === '1') return;
+  if (!db.prepare('SELECT 1 FROM users LIMIT 1').get()) return;
+  const now = new Date().toISOString();
+  db.prepare(`
+    INSERT OR IGNORE INTO user_host_access(username, agent_id, created_at)
+    SELECT u.username, a.id, ? FROM users u CROSS JOIN agents a
+    WHERE u.role != 'super_admin' AND a.status = 'approved'
+  `).run(now);
+  setMeta(db, 'host_access_initialized', '1');
 }
 
 function readOptional(name) {
@@ -256,6 +331,8 @@ module.exports = {
   getSetting,
   setSetting,
   migrateLegacyData,
+  ensureSuperAdmin,
+  initializeHostAccess,
   attachLegacyDataToLocalAgent,
   parseJson,
   rowToAgent

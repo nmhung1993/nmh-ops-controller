@@ -13,6 +13,7 @@ const {
   getSetting,
   setSetting,
   migrateLegacyData,
+  initializeHostAccess,
   attachLegacyDataToLocalAgent,
   parseJson,
   rowToAgent
@@ -36,6 +37,7 @@ fs.mkdirSync(BACKUP_DIR, { recursive: true });
 
 const db = createDatabase();
 migrateLegacyData(db);
+initializeHostAccess(db);
 
 const JWT_SECRET = loadOrCreateSecret('jwt-secret');
 const app = express();
@@ -90,16 +92,100 @@ function authenticate(req, res, next) {
     ? req.headers.authorization.slice(7)
     : '';
   try {
-    req.user = jwt.verify(token, JWT_SECRET);
+    const claims = jwt.verify(token, JWT_SECRET);
+    const user = db.prepare('SELECT username, role, must_change_password FROM users WHERE username = ?').get(claims.username);
+    if (!user) throw new Error('user_not_found');
+    req.user = {
+      username: user.username,
+      role: user.role,
+      mustChangePassword: Boolean(user.must_change_password)
+    };
     next();
   } catch {
     res.status(401).json({ error: 'Unauthorized' });
   }
 }
 
-function requireAdmin(req, res, next) {
-  if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+function requireSuperAdmin(req, res, next) {
+  if (req.user?.role !== 'super_admin') return res.status(403).json({ error: 'Super admin only' });
   next();
+}
+
+function isSuperAdmin(user) {
+  return user?.role === 'super_admin';
+}
+
+function hasHostAccess(user, agentId) {
+  if (isSuperAdmin(user)) return true;
+  return Boolean(db.prepare(`
+    SELECT 1 FROM user_host_access WHERE username = ? AND agent_id = ?
+  `).get(user.username, agentId));
+}
+
+function canManageHost(user, agentId) {
+  return isSuperAdmin(user) || (user?.role === 'admin' && hasHostAccess(user, agentId));
+}
+
+function requireHostAccess(req, res, next) {
+  const host = getHost(req.params.id);
+  if (!host || host.status !== 'approved' || !hasHostAccess(req.user, req.params.id)) {
+    return res.status(404).json({ error: 'Host not found' });
+  }
+  req.host = host;
+  next();
+}
+
+function requireHostManager(req, res, next) {
+  if (!canManageHost(req.user, req.params.id)) return res.status(403).json({ error: 'Host management permission required' });
+  next();
+}
+
+function getAccessibleHosts(user) {
+  const query = isSuperAdmin(user)
+    ? `SELECT a.*, l.telemetry_json, l.telemetry_at FROM agents a LEFT JOIN latest_state l ON l.agent_id = a.id WHERE a.status = 'approved' ORDER BY a.display_name COLLATE NOCASE`
+    : `SELECT a.*, l.telemetry_json, l.telemetry_at
+       FROM agents a JOIN user_host_access access ON access.agent_id = a.id AND access.username = ?
+       LEFT JOIN latest_state l ON l.agent_id = a.id
+       WHERE a.status = 'approved' ORDER BY a.display_name COLLATE NOCASE`;
+  return isSuperAdmin(user) ? db.prepare(query).all() : db.prepare(query).all(user.username);
+}
+
+function validateHostIds(hostIds) {
+  const ids = [...new Set(Array.isArray(hostIds) ? hostIds.filter(value => typeof value === 'string' && value.trim()) : [])];
+  if (!ids.length) return [];
+  const placeholders = ids.map(() => '?').join(',');
+  const valid = db.prepare(`SELECT id FROM agents WHERE status = 'approved' AND id IN (${placeholders})`).all(...ids).map(row => row.id);
+  if (valid.length !== ids.length) throw new Error('One or more hosts are not approved');
+  return valid;
+}
+
+function replaceUserHostAccess(username, hostIds) {
+  const ids = validateHostIds(hostIds);
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.prepare('DELETE FROM user_host_access WHERE username = ?').run(username);
+    const insert = db.prepare('INSERT INTO user_host_access(username, agent_id, created_at) VALUES (?, ?, ?)');
+    const now = new Date().toISOString();
+    for (const agentId of ids) insert.run(username, agentId, now);
+    db.exec('COMMIT');
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw error;
+  }
+  return ids;
+}
+
+function getUserHostIds(username) {
+  return db.prepare('SELECT agent_id FROM user_host_access WHERE username = ? ORDER BY agent_id').all(username).map(row => row.agent_id);
+}
+
+function notifyUserAccessChanged(username, role) {
+  for (const client of uiClients) {
+    if (client.user?.username === username) {
+      client.user = { username, role };
+      sendJson(client, envelope('ui.access.changed', { role }));
+    }
+  }
 }
 
 function loginRateLimited(ip) {
@@ -155,12 +241,13 @@ function pushWatchdogConfig(agentId) {
   sendJson(ws, envelope('server.config', getWatchdog(agentId), { agentId }));
 }
 
-function broadcastUi(type, payload, agentId = null) {
+function broadcastUi(type, payload, agentId = null, options = {}) {
   const message = envelope(type, payload, agentId ? { agentId } : {});
   for (const client of uiClients) {
-    if (!agentId || !client.subscribedAgentId || client.subscribedAgentId === agentId) {
-      sendJson(client, message);
-    }
+    const user = db.prepare('SELECT username, role FROM users WHERE username = ?').get(client.user?.username);
+    if (!user || (options.superOnly && user.role !== 'super_admin')) continue;
+    if (agentId && !hasHostAccess(user, agentId)) continue;
+    if (!agentId || !client.subscribedAgentId || client.subscribedAgentId === agentId) sendJson(client, message);
   }
 }
 
@@ -407,7 +494,7 @@ agentWss.on('connection', ws => {
           JSON.stringify(payload.capabilities || []), now, now);
         agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(agentId);
         attachLegacyDataToLocalAgent(db, agentId, payload.hostname);
-        broadcastUi('ui.agent.pending', serializeHost(getHost(agentId)));
+      broadcastUi('ui.agent.pending', serializeHost(getHost(agentId)), null, { superOnly: true });
       } else {
         if (agent.token_hash !== tokenHash) return ws.close(4004, 'invalid agent token');
         if (agent.status === 'revoked') return ws.close(4005, 'agent revoked');
@@ -473,7 +560,10 @@ uiWss.on('connection', (ws, req, user) => {
   ws.on('message', raw => {
     try {
       const message = JSON.parse(raw.toString());
-      if (message.type === 'ui.subscribe') ws.subscribedAgentId = message.payload?.agentId || null;
+      if (message.type === 'ui.subscribe') {
+        const agentId = message.payload?.agentId || null;
+        ws.subscribedAgentId = agentId && hasHostAccess(ws.user, agentId) ? agentId : null;
+      }
       if (message.type === 'ping') sendJson(ws, envelope('pong'));
     } catch {}
   });
@@ -487,7 +577,9 @@ server.on('upgrade', (req, socket, head) => {
   }
   if (requestUrl.pathname === '/ws/ui') {
     try {
-      const user = jwt.verify(requestUrl.searchParams.get('token') || '', JWT_SECRET);
+      const claims = jwt.verify(requestUrl.searchParams.get('token') || '', JWT_SECRET);
+      const user = db.prepare('SELECT username, role FROM users WHERE username = ?').get(claims.username);
+      if (!user) throw new Error('user_not_found');
       return uiWss.handleUpgrade(req, socket, head, ws => uiWss.emit('connection', ws, req, user));
     } catch {
       socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
@@ -510,7 +602,7 @@ app.post('/api/setup', async (req, res) => {
     return res.status(400).json({ error: 'Username and password of at least 10 characters required' });
   }
   const passwordHash = await bcrypt.hash(password, 12);
-  db.prepare(`INSERT INTO users(username, password_hash, role, must_change_password, created_at) VALUES (?, ?, 'admin', 0, ?)`)
+  db.prepare(`INSERT INTO users(username, password_hash, role, must_change_password, created_at) VALUES (?, ?, 'super_admin', 0, ?)`)
     .run(username.trim(), passwordHash, new Date().toISOString());
   res.json({ success: true });
 });
@@ -530,22 +622,14 @@ app.post('/api/login', async (req, res) => {
 });
 
 app.get('/api/v1/hosts', authenticate, (req, res) => {
-  const rows = db.prepare(`
-    SELECT a.*, l.telemetry_json, l.telemetry_at
-    FROM agents a LEFT JOIN latest_state l ON l.agent_id = a.id
-    WHERE a.status = 'approved'
-    ORDER BY a.display_name COLLATE NOCASE
-  `).all();
-  res.json(rows.map(serializeHost));
+  res.json(getAccessibleHosts(req.user).map(serializeHost));
 });
 
-app.get('/api/v1/hosts/:id', authenticate, (req, res) => {
-  const row = getHost(req.params.id);
-  if (!row || row.status !== 'approved') return res.status(404).json({ error: 'Host not found' });
-  res.json(serializeHost(row));
+app.get('/api/v1/hosts/:id', authenticate, requireHostAccess, (req, res) => {
+  res.json(serializeHost(req.host));
 });
 
-app.get('/api/v1/hosts/:id/telemetry', authenticate, (req, res) => {
+app.get('/api/v1/hosts/:id/telemetry', authenticate, requireHostAccess, (req, res) => {
   const from = req.query.from || new Date(Date.now() - 60 * 60 * 1000).toISOString();
   const to = req.query.to || new Date().toISOString();
   const limit = Math.min(Math.max(Number(req.query.limit) || 1000, 1), 5000);
@@ -555,22 +639,18 @@ app.get('/api/v1/hosts/:id/telemetry', authenticate, (req, res) => {
   res.json(rows.map(row => ({ timestamp: row.ts, ...parseJson(row.payload_json, {}) })));
 });
 
-app.get('/api/v1/hosts/:id/processes', authenticate, (req, res) => {
-  const host = getHost(req.params.id);
-  if (!host || host.status !== 'approved') return res.status(404).json({ error: 'Host not found' });
+app.get('/api/v1/hosts/:id/processes', authenticate, requireHostAccess, (req, res) => {
   let commandId = null;
   if (agentSockets.has(req.params.id)) {
     commandId = createCommand(req.params.id, 'process.list', {}, req.user.username, 30_000).id;
   }
   const state = db.prepare('SELECT processes_json, processes_at FROM latest_state WHERE agent_id = ?').get(req.params.id);
   let processes = parseJson(state?.processes_json, []);
-  if (req.user.role !== 'admin') processes = processes.map(process => ({ ...process, path: '' }));
+  if (!canManageHost(req.user, req.params.id)) processes = processes.map(process => ({ ...process, path: '' }));
   res.json({ processes, updatedAt: state?.processes_at || null, commandId });
 });
 
-app.post('/api/v1/hosts/:id/commands', authenticate, requireAdmin, (req, res) => {
-  const host = getHost(req.params.id);
-  if (!host || host.status !== 'approved') return res.status(404).json({ error: 'Host not found' });
+app.post('/api/v1/hosts/:id/commands', authenticate, requireHostAccess, requireHostManager, (req, res) => {
   const { type, payload = {} } = req.body || {};
   const error = validateCommand(type, payload);
   if (error) return res.status(400).json({ error });
@@ -578,12 +658,12 @@ app.post('/api/v1/hosts/:id/commands', authenticate, requireAdmin, (req, res) =>
   res.status(202).json({ id: command.id, status: command.status });
 });
 
-app.get('/api/v1/hosts/:id/commands', authenticate, (req, res) => {
+app.get('/api/v1/hosts/:id/commands', authenticate, requireHostAccess, (req, res) => {
   const rows = db.prepare(`SELECT * FROM commands WHERE agent_id = ? ORDER BY requested_at DESC LIMIT 100`).all(req.params.id);
   res.json(rows.map(row => ({
     id: row.id,
     type: row.type,
-    payload: req.user.role === 'admin' ? parseJson(row.payload_json, {}) : undefined,
+    payload: canManageHost(req.user, req.params.id) ? parseJson(row.payload_json, {}) : undefined,
     status: row.status,
     requestedBy: row.requested_by,
     requestedAt: row.requested_at,
@@ -592,17 +672,15 @@ app.get('/api/v1/hosts/:id/commands', authenticate, (req, res) => {
   })));
 });
 
-app.get('/api/v1/hosts/:id/watchdog', authenticate, (req, res) => {
+app.get('/api/v1/hosts/:id/watchdog', authenticate, requireHostAccess, (req, res) => {
   const config = getWatchdog(req.params.id);
-  if (req.user.role !== 'admin') {
+  if (!canManageHost(req.user, req.params.id)) {
     config.rules = config.rules.map(rule => ({ ...rule, filePath: undefined }));
   }
   res.json(config);
 });
 
-app.put('/api/v1/hosts/:id/watchdog', authenticate, requireAdmin, (req, res) => {
-  const host = getHost(req.params.id);
-  if (!host || host.status !== 'approved') return res.status(404).json({ error: 'Host not found' });
+app.put('/api/v1/hosts/:id/watchdog', authenticate, requireHostAccess, requireHostManager, (req, res) => {
   const rules = req.body?.rules;
   if (!Array.isArray(rules)) return res.status(400).json({ error: 'rules array required' });
   for (const rule of rules) {
@@ -621,7 +699,7 @@ app.put('/api/v1/hosts/:id/watchdog', authenticate, requireAdmin, (req, res) => 
   res.json({ version, rules, updatedAt: now });
 });
 
-app.get('/api/v1/hosts/:id/events', authenticate, (req, res) => {
+app.get('/api/v1/hosts/:id/events', authenticate, requireHostAccess, (req, res) => {
   const rows = db.prepare(`
     SELECT id, type, severity, payload_json, occurred_at FROM events
     WHERE agent_id = ? ORDER BY occurred_at DESC LIMIT 200
@@ -630,7 +708,7 @@ app.get('/api/v1/hosts/:id/events', authenticate, (req, res) => {
     payload: parseJson(row.payload_json, {}), occurredAt: row.occurred_at })));
 });
 
-app.get('/api/v1/agents/pending', authenticate, requireAdmin, (req, res) => {
+app.get('/api/v1/agents/pending', authenticate, requireSuperAdmin, (req, res) => {
   const rows = db.prepare(`
     SELECT a.*, l.telemetry_json, l.telemetry_at FROM agents a
     LEFT JOIN latest_state l ON l.agent_id = a.id WHERE a.status = 'pending' ORDER BY a.created_at
@@ -638,7 +716,7 @@ app.get('/api/v1/agents/pending', authenticate, requireAdmin, (req, res) => {
   res.json(rows.map(serializeHost));
 });
 
-app.post('/api/v1/agents/:id/approve', authenticate, requireAdmin, (req, res) => {
+app.post('/api/v1/agents/:id/approve', authenticate, requireSuperAdmin, (req, res) => {
   const agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(req.params.id);
   if (!agent || agent.status !== 'pending') return res.status(404).json({ error: 'Pending agent not found' });
   const now = new Date().toISOString();
@@ -657,10 +735,11 @@ app.post('/api/v1/agents/:id/approve', authenticate, requireAdmin, (req, res) =>
   res.json(serializeHost(getHost(agent.id)));
 });
 
-app.post('/api/v1/agents/:id/revoke', authenticate, requireAdmin, (req, res) => {
+app.post('/api/v1/agents/:id/revoke', authenticate, requireSuperAdmin, (req, res) => {
   const agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(req.params.id);
   if (!agent) return res.status(404).json({ error: 'Agent not found' });
   db.prepare(`UPDATE agents SET status = 'revoked', revoked_at = ? WHERE id = ?`).run(new Date().toISOString(), agent.id);
+  db.prepare('DELETE FROM user_host_access WHERE agent_id = ?').run(agent.id);
   const ws = agentSockets.get(agent.id) || pendingSockets.get(agent.id);
   if (ws) ws.close(4005, 'agent revoked');
   agentSockets.delete(agent.id);
@@ -669,33 +748,93 @@ app.post('/api/v1/agents/:id/revoke', authenticate, requireAdmin, (req, res) => 
   res.json({ success: true });
 });
 
-app.get('/api/v1/users', authenticate, requireAdmin, (req, res) => {
-  res.json(db.prepare('SELECT username, role, must_change_password AS mustChangePassword, created_at AS createdAt FROM users ORDER BY username').all());
+app.get('/api/v1/users', authenticate, requireSuperAdmin, (req, res) => {
+  const users = db.prepare(`
+    SELECT username, role, must_change_password AS mustChangePassword, created_at AS createdAt
+    FROM users ORDER BY username
+  `).all().map(user => ({ ...user, hostIds: getUserHostIds(user.username) }));
+  res.json(users);
 });
 
-app.post('/api/v1/users', authenticate, requireAdmin, async (req, res) => {
-  const { username, password, role } = req.body || {};
-  if (!username || !password || password.length < 10 || !['admin', 'user'].includes(role)) {
+app.post('/api/v1/users', authenticate, requireSuperAdmin, async (req, res) => {
+  const { username, password, role, hostIds = [] } = req.body || {};
+  if (!username?.trim() || !password || password.length < 10 || !['super_admin', 'admin', 'viewer'].includes(role)) {
     return res.status(400).json({ error: 'Valid username, role and password of at least 10 characters required' });
   }
+  let assignedHostIds;
+  try {
+    assignedHostIds = role === 'super_admin' ? [] : validateHostIds(hostIds);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+  let created = false;
   try {
     db.prepare('INSERT INTO users(username, password_hash, role, created_at) VALUES (?, ?, ?, ?)')
       .run(username.trim(), await bcrypt.hash(password, 12), role, new Date().toISOString());
-    res.status(201).json({ success: true });
-  } catch {
-    res.status(409).json({ error: 'User already exists' });
+    created = true;
+    if (role !== 'super_admin') replaceUserHostAccess(username.trim(), assignedHostIds);
+    res.status(201).json({ username: username.trim(), role, hostIds: assignedHostIds });
+  } catch (error) {
+    if (created) db.prepare('DELETE FROM users WHERE username = ?').run(username.trim());
+    res.status(409).json({ error: created ? error.message : 'User already exists' });
   }
 });
 
-app.delete('/api/v1/users/:username', authenticate, requireAdmin, (req, res) => {
+app.put('/api/v1/users/:username', authenticate, requireSuperAdmin, async (req, res) => {
+  const current = db.prepare('SELECT username, role FROM users WHERE username = ?').get(req.params.username);
+  if (!current) return res.status(404).json({ error: 'User not found' });
+  const { role, hostIds = [], password } = req.body || {};
+  if (!['super_admin', 'admin', 'viewer'].includes(role)) return res.status(400).json({ error: 'Valid role required' });
+  if (password && password.length < 10) return res.status(400).json({ error: 'Password must be at least 10 characters' });
+  if (current.role === 'super_admin' && role !== 'super_admin') {
+    const count = db.prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'super_admin'").get().count;
+    if (count <= 1) return res.status(400).json({ error: 'Cannot demote the last super admin' });
+  }
+
+  let assignedHostIds;
+  try {
+    assignedHostIds = role === 'super_admin' ? [] : validateHostIds(hostIds);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+  const passwordHash = password ? await bcrypt.hash(password, 12) : null;
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    if (passwordHash) {
+      db.prepare('UPDATE users SET role = ?, password_hash = ?, must_change_password = 0 WHERE username = ?')
+        .run(role, passwordHash, current.username);
+    } else {
+      db.prepare('UPDATE users SET role = ? WHERE username = ?').run(role, current.username);
+    }
+    db.prepare('DELETE FROM user_host_access WHERE username = ?').run(current.username);
+    if (role !== 'super_admin') {
+      const insert = db.prepare('INSERT INTO user_host_access(username, agent_id, created_at) VALUES (?, ?, ?)');
+      const now = new Date().toISOString();
+      for (const agentId of assignedHostIds) insert.run(current.username, agentId, now);
+    }
+    db.exec('COMMIT');
+  } catch (error) {
+    try { db.exec('ROLLBACK'); } catch {}
+    return res.status(400).json({ error: error.message });
+  }
+  notifyUserAccessChanged(current.username, role);
+  res.json({ username: current.username, role, hostIds: assignedHostIds });
+});
+
+app.delete('/api/v1/users/:username', authenticate, requireSuperAdmin, (req, res) => {
   if (req.params.username === req.user.username) return res.status(400).json({ error: 'Cannot delete current user' });
+  const user = db.prepare('SELECT role FROM users WHERE username = ?').get(req.params.username);
+  if (user?.role === 'super_admin') {
+    const count = db.prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'super_admin'").get().count;
+    if (count <= 1) return res.status(400).json({ error: 'Cannot delete the last super admin' });
+  }
   const result = db.prepare('DELETE FROM users WHERE username = ?').run(req.params.username);
   if (!result.changes) return res.status(404).json({ error: 'User not found' });
   res.json({ success: true });
 });
 
 app.post('/api/v1/users/:username/password', authenticate, async (req, res) => {
-  if (req.user.role !== 'admin' && req.user.username !== req.params.username) return res.status(403).json({ error: 'Forbidden' });
+  if (!isSuperAdmin(req.user) && req.user.username !== req.params.username) return res.status(403).json({ error: 'Forbidden' });
   const password = req.body?.password;
   if (!password || password.length < 10) return res.status(400).json({ error: 'Password must be at least 10 characters' });
   const result = db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE username = ?')
@@ -704,19 +843,21 @@ app.post('/api/v1/users/:username/password', authenticate, async (req, res) => {
   res.json({ success: true });
 });
 
-app.get('/api/v1/settings', authenticate, requireAdmin, (req, res) => {
+app.get('/api/v1/settings', authenticate, requireSuperAdmin, (req, res) => {
   const webhook = getSetting(db, 'discord_webhook', '');
   res.json({ discordWebhookConfigured: Boolean(webhook), discordWebhook: webhook });
 });
 
-app.put('/api/v1/settings', authenticate, requireAdmin, (req, res) => {
+app.put('/api/v1/settings', authenticate, requireSuperAdmin, (req, res) => {
   setSetting(db, 'discord_webhook', req.body?.discordWebhook?.trim() || '');
   res.json({ success: true });
 });
 
 app.get('/api/v1/screenshots/:id', authenticate, (req, res) => {
   const row = db.prepare('SELECT * FROM screenshots WHERE id = ?').get(req.params.id);
-  if (!row || !fs.existsSync(row.file_path)) return res.status(404).json({ error: 'Screenshot not found' });
+  if (!row || !hasHostAccess(req.user, row.agent_id) || !fs.existsSync(row.file_path)) {
+    return res.status(404).json({ error: 'Screenshot not found' });
+  }
   res.sendFile(row.file_path);
 });
 

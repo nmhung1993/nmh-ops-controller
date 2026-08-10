@@ -27,6 +27,18 @@ function t(key, values = {}) {
   return Object.entries(values).reduce((result, [name, replacement]) => result.replaceAll(`{${name}}`, String(replacement)), value);
 }
 
+function isSuperAdmin() {
+  return state.user?.role === 'super_admin';
+}
+
+function canManageHosts() {
+  return state.user?.role === 'super_admin' || state.user?.role === 'admin';
+}
+
+function roleLabel(role) {
+  return t(role === 'super_admin' ? 'role.superAdmin' : role === 'admin' ? 'role.admin' : 'role.viewer');
+}
+
 async function loadTranslations(lang) {
   try {
     const response = await fetch(`lang/${lang}.json`, { cache: 'no-cache' });
@@ -54,7 +66,7 @@ function applyTranslations() {
   if (language) language.value = state.lang;
   updateThemeControl();
   if (state.user) {
-    $('session-role').textContent = state.user.role === 'admin' ? t('role.admin') : t('role.viewer');
+    $('session-role').textContent = roleLabel(state.user.role);
   }
   if (state.user && !$('app-shell').hidden) {
     const page = currentPage();
@@ -66,7 +78,7 @@ function applyTranslations() {
     renderProcesses();
     renderWatchdog();
     loadActivity().catch(() => {});
-    if (state.user.role === 'admin') loadAdmin().catch(() => {});
+    if (isSuperAdmin()) loadAdmin().catch(() => {});
   }
 }
 
@@ -191,12 +203,17 @@ function showApp() {
   $('session-user').textContent = state.user.username;
   const sessionAvatar = document.querySelector('.session-avatar');
   if (sessionAvatar) sessionAvatar.textContent = initials(state.user.username).slice(0, 1);
-  $('session-role').textContent = state.user.role === 'admin' ? t('role.admin') : t('role.viewer');
-  document.querySelectorAll('[data-admin]').forEach(item => item.hidden = state.user.role !== 'admin');
-  if (state.user.role !== 'admin' && location.hash === '#admin') location.hash = '#fleet';
+  applyRoleVisibility();
   connectSocket();
   loadHosts().then(() => navigate());
   if (state.user.mustChangePassword) $('password-dialog').showModal();
+}
+
+function applyRoleVisibility() {
+  $('session-role').textContent = roleLabel(state.user.role);
+  document.querySelectorAll('[data-admin]').forEach(item => item.hidden = !canManageHosts());
+  document.querySelectorAll('[data-super-admin]').forEach(item => item.hidden = !isSuperAdmin());
+  if (!isSuperAdmin() && location.hash === '#admin') location.hash = '#fleet';
 }
 
 function logout() {
@@ -271,9 +288,14 @@ function handleSocketMessage(message) {
   } else if (message.type === 'ui.processes' && message.agentId === state.selectedHostId) {
     state.processes = message.payload?.processes || [];
     renderProcesses();
+  } else if (message.type === 'ui.access.changed') {
+    state.user.role = message.payload?.role || state.user.role;
+    localStorage.setItem('wc_user', JSON.stringify(state.user));
+    applyRoleVisibility();
+    loadHosts().then(() => navigate());
   } else if (message.type === 'ui.host.status' || message.type === 'ui.agent.pending') {
     loadHosts();
-    if (state.user.role === 'admin') loadAdmin();
+    if (isSuperAdmin()) loadAdmin();
   } else if (message.type === 'ui.event' && message.agentId === state.selectedHostId) {
     loadActivity();
     toast(eventLabel(message.payload?.eventType, message.payload?.message), message.payload?.severity === 'error' ? 'error' : '');
@@ -375,7 +397,7 @@ function renderFleet() {
         <p class="host-meta">${escapeHtml(host.platform || 'Windows')} / Agent ${escapeHtml(host.version || '--')}</p>
       </div>
       <div class="host-metrics"><div class="host-metric"><header><span>${escapeHtml(t('fleet.cpu'))}</span><span>CPU</span></header><strong data-role="cpu-value">${telemetry.cpu ? `${cpu}%` : '--'}</strong><div class="mini-track"><i data-role="cpu-meter" style="width:${telemetry.cpu ? cpu : 0}%"></i></div></div><div class="host-metric memory"><header><span>${escapeHtml(t('fleet.memory'))}</span><span>RAM</span></header><strong data-role="memory-value">${telemetry.memory ? `${memory}%` : '--'}</strong><div class="mini-track"><i data-role="memory-meter" style="width:${telemetry.memory ? memory : 0}%"></i></div></div></div>
-      <footer class="host-footer"><span data-role="last-seen">${escapeHtml(t('fleet.lastSeen', { time: formatDate(host.lastSeen) }))}</span>${state.user?.role === 'admin' ? `<div class="row-actions"><button class="button compact danger revoke-host" type="button" data-host="${host.id}">${escapeHtml(t('fleet.revoke'))}</button></div>` : ''}</footer>
+      <footer class="host-footer"><span data-role="last-seen">${escapeHtml(t('fleet.lastSeen', { time: formatDate(host.lastSeen) }))}</span>${isSuperAdmin() ? `<div class="row-actions"><button class="button compact danger revoke-host" type="button" data-host="${host.id}">${escapeHtml(t('fleet.revoke'))}</button></div>` : ''}</footer>
     </article>`;
   }).join('');
   document.querySelectorAll('.host-card').forEach(card => {
@@ -491,7 +513,7 @@ function renderProcesses() {
   const query = $('process-search').value.trim().toLowerCase();
   const rows = state.processes.filter(process => !query || process.name.toLowerCase().includes(query) || (process.path || '').toLowerCase().includes(query));
   if ($('process-count')) $('process-count').textContent = rows.length;
-  $('process-body').innerHTML = rows.length ? rows.map(process => `<tr><td><div class="process-name"><span class="process-glyph">${escapeHtml(initials(process.name).slice(0, 1))}</span><strong>${escapeHtml(process.name)}</strong></div></td><td>${process.pid}</td><td>${Number(process.cpuPercent || 0).toFixed(1)}%</td><td>${Number(process.memoryMB || 0).toFixed(1)} MB</td><td class="path" title="${escapeHtml(process.path)}">${escapeHtml(process.path || '-')}</td><td><div class="row-actions">${state.user.role === 'admin' ? `<button class="button compact capture-process" type="button" data-name="${escapeHtml(process.name)}">${escapeHtml(t('process.capture'))}</button><button class="button compact danger kill-process" type="button" data-pid="${process.pid}" data-name="${escapeHtml(process.name)}">${escapeHtml(t('process.kill'))}</button>` : ''}</div></td></tr>`).join('') : `<tr><td colspan="6">${escapeHtml(t('process.none'))}</td></tr>`;
+  $('process-body').innerHTML = rows.length ? rows.map(process => `<tr><td><div class="process-name"><span class="process-glyph">${escapeHtml(initials(process.name).slice(0, 1))}</span><strong>${escapeHtml(process.name)}</strong></div></td><td>${process.pid}</td><td>${Number(process.cpuPercent || 0).toFixed(1)}%</td><td>${Number(process.memoryMB || 0).toFixed(1)} MB</td><td class="path" title="${escapeHtml(process.path)}">${escapeHtml(process.path || '-')}</td><td><div class="row-actions">${canManageHosts() ? `<button class="button compact capture-process" type="button" data-name="${escapeHtml(process.name)}">${escapeHtml(t('process.capture'))}</button><button class="button compact danger kill-process" type="button" data-pid="${process.pid}" data-name="${escapeHtml(process.name)}">${escapeHtml(t('process.kill'))}</button>` : ''}</div></td></tr>`).join('') : `<tr><td colspan="6">${escapeHtml(t('process.none'))}</td></tr>`;
   document.querySelectorAll('.kill-process').forEach(button => button.addEventListener('click', () => killRemoteProcess(button.dataset.pid, button.dataset.name)));
   document.querySelectorAll('.capture-process').forEach(button => button.addEventListener('click', () => sendCommand('window.capture', { processName: button.dataset.name })));
 }
@@ -519,7 +541,7 @@ async function loadWatchdog() {
 
 function renderWatchdog() {
   if ($('rule-count')) $('rule-count').textContent = state.watchdog.rules.length;
-  $('rule-list').innerHTML = state.watchdog.rules.length ? state.watchdog.rules.map(rule => `<article class="rule-card ${rule.enabled ? 'enabled' : ''}"><div><div class="rule-title"><h3>${escapeHtml(rule.processName)}</h3><span class="status-pill ${rule.enabled ? 'online' : ''}">${escapeHtml(t(rule.enabled ? 'watchdog.enabled' : 'watchdog.disabled'))}</span></div><p class="rule-meta"><span><i></i>${escapeHtml(t(rule.runMode === 'service' ? 'watchdog.service' : 'watchdog.interactive'))}</span><span><i></i>${escapeHtml(rule.captureAfterLaunch === false ? t('watchdog.captureDisabled') : t('watchdog.captureEnabled'))}</span><span><i></i>${escapeHtml(rule.filePath || t('common.pathHidden'))}</span></p></div><div class="row-actions">${state.user.role === 'admin' ? `<button class="button primary compact launch-rule" type="button" data-id="${rule.id}">${escapeHtml(t('watchdog.launch'))}</button><button class="button compact edit-rule" type="button" data-id="${rule.id}">${escapeHtml(t('common.edit'))}</button><button class="button compact danger delete-rule" type="button" data-id="${rule.id}">${escapeHtml(t('common.delete'))}</button>` : ''}</div></article>`).join('') : `<div class="empty-state"><span class="empty-icon">00</span><h3>${escapeHtml(t('watchdog.emptyTitle'))}</h3><p>${escapeHtml(t('watchdog.emptyDescription'))}</p></div>`;
+  $('rule-list').innerHTML = state.watchdog.rules.length ? state.watchdog.rules.map(rule => `<article class="rule-card ${rule.enabled ? 'enabled' : ''}"><div><div class="rule-title"><h3>${escapeHtml(rule.processName)}</h3><span class="status-pill ${rule.enabled ? 'online' : ''}">${escapeHtml(t(rule.enabled ? 'watchdog.enabled' : 'watchdog.disabled'))}</span></div><p class="rule-meta"><span><i></i>${escapeHtml(t(rule.runMode === 'service' ? 'watchdog.service' : 'watchdog.interactive'))}</span><span><i></i>${escapeHtml(rule.captureAfterLaunch === false ? t('watchdog.captureDisabled') : t('watchdog.captureEnabled'))}</span><span><i></i>${escapeHtml(rule.filePath || t('common.pathHidden'))}</span></p></div><div class="row-actions">${canManageHosts() ? `<button class="button primary compact launch-rule" type="button" data-id="${rule.id}">${escapeHtml(t('watchdog.launch'))}</button><button class="button compact edit-rule" type="button" data-id="${rule.id}">${escapeHtml(t('common.edit'))}</button><button class="button compact danger delete-rule" type="button" data-id="${rule.id}">${escapeHtml(t('common.delete'))}</button>` : ''}</div></article>`).join('') : `<div class="empty-state"><span class="empty-icon">00</span><h3>${escapeHtml(t('watchdog.emptyTitle'))}</h3><p>${escapeHtml(t('watchdog.emptyDescription'))}</p></div>`;
   document.querySelectorAll('.launch-rule').forEach(button => button.addEventListener('click', () => sendCommand('watchdog.launch', { ruleId: button.dataset.id })));
   document.querySelectorAll('.edit-rule').forEach(button => button.addEventListener('click', () => openRuleDialog(button.dataset.id)));
   document.querySelectorAll('.delete-rule').forEach(button => button.addEventListener('click', () => deleteRule(button.dataset.id)));
@@ -568,14 +590,51 @@ async function loadActivity() {
 }
 
 async function loadAdmin() {
-  if (state.user.role !== 'admin') return;
+  if (!isSuperAdmin()) return;
   const [pending, users, settings] = await Promise.all([api('/api/v1/agents/pending'), api('/api/v1/users'), api('/api/v1/settings')]);
   $('pending-list').innerHTML = pending.length ? pending.map(agent => `<div class="stack-item"><div><h4>${escapeHtml(agent.hostname)}</h4><p>${escapeHtml(agent.fingerprint)}<br>${escapeHtml(agent.platform || '')}</p></div><div class="row-actions"><button class="button danger compact reject-agent" data-id="${agent.id}" data-name="${escapeHtml(agent.hostname)}">${escapeHtml(t('admin.reject'))}</button><button class="button primary compact approve-agent" data-id="${agent.id}" data-name="${escapeHtml(agent.hostname)}">${escapeHtml(t('admin.approve'))}</button></div></div>`).join('') : `<p>${escapeHtml(t('admin.noPending'))}</p>`;
-  $('user-list').innerHTML = users.map(user => `<div class="stack-item"><div><h4>${escapeHtml(user.username)}</h4><p>${escapeHtml(user.role === 'admin' ? t('role.admin') : t('role.viewer'))}${user.mustChangePassword ? ` / ${escapeHtml(t('user.passwordRequired'))}` : ''}</p></div>${user.username !== state.user.username ? `<button class="button danger compact delete-user" data-user="${escapeHtml(user.username)}">${escapeHtml(t('common.delete'))}</button>` : ''}</div>`).join('');
+  const hostNames = new Map(state.hosts.map(host => [host.id, host.displayName]));
+  $('user-list').innerHTML = users.map(user => {
+    const scope = user.role === 'super_admin'
+      ? t('user.allHosts')
+      : t('user.hostCount', { count: user.hostIds?.length || 0, names: (user.hostIds || []).map(id => hostNames.get(id)).filter(Boolean).join(', ') || t('user.noHosts') });
+    return `<div class="stack-item"><div><h4>${escapeHtml(user.username)}</h4><p>${escapeHtml(roleLabel(user.role))} / ${escapeHtml(scope)}${user.mustChangePassword ? ` / ${escapeHtml(t('user.passwordRequired'))}` : ''}</p></div><div class="row-actions"><button class="button compact edit-user" data-user="${escapeHtml(user.username)}">${escapeHtml(t('common.edit'))}</button>${user.username !== state.user.username ? `<button class="button danger compact delete-user" data-user="${escapeHtml(user.username)}">${escapeHtml(t('common.delete'))}</button>` : ''}</div></div>`;
+  }).join('');
   $('discord-webhook').value = settings.discordWebhook || '';
   document.querySelectorAll('.approve-agent').forEach(button => button.addEventListener('click', () => approveAgent(button.dataset.id, button.dataset.name)));
   document.querySelectorAll('.reject-agent').forEach(button => button.addEventListener('click', () => rejectAgent(button.dataset.id, button.dataset.name)));
+  document.querySelectorAll('.edit-user').forEach(button => button.addEventListener('click', () => {
+    const user = users.find(item => item.username === button.dataset.user);
+    if (user) openUserDialog(user);
+  }));
   document.querySelectorAll('.delete-user').forEach(button => button.addEventListener('click', () => deleteUser(button.dataset.user)));
+}
+
+function renderUserHostList(selectedIds = [], role = $('user-role').value) {
+  const list = $('user-host-list');
+  if (role !== 'super_admin') list.dataset.selectedIds = JSON.stringify(selectedIds);
+  list.innerHTML = state.hosts.length
+    ? state.hosts.map(host => `<label class="host-access-option"><input type="checkbox" value="${escapeHtml(host.id)}" ${selectedIds.includes(host.id) || role === 'super_admin' ? 'checked' : ''}><span title="${escapeHtml(host.hostname)}">${escapeHtml(host.displayName)}</span></label>`).join('')
+    : `<p>${escapeHtml(t('user.noHosts'))}</p>`;
+  const disabled = role === 'super_admin';
+  list.classList.toggle('is-disabled', disabled);
+  list.querySelectorAll('input').forEach(input => { input.disabled = disabled; });
+  $('user-host-help').textContent = t(disabled ? 'user.superAdminHosts' : 'user.hostAccessHelp');
+}
+
+function openUserDialog(user = null) {
+  const editing = Boolean(user);
+  $('user-editing').value = user?.username || '';
+  $('user-dialog-title').textContent = t(editing ? 'user.editTitle' : 'user.addTitle');
+  $('user-save').textContent = t(editing ? 'user.save' : 'user.create');
+  $('user-username').value = user?.username || '';
+  $('user-username').readOnly = editing;
+  $('user-password').value = '';
+  $('user-password').required = !editing;
+  $('user-password').placeholder = t(editing ? 'user.passwordOptional' : 'user.password');
+  $('user-role').value = user?.role || 'viewer';
+  renderUserHostList(user?.hostIds || [], $('user-role').value);
+  $('user-dialog').showModal();
 }
 
 async function approveAgent(agentId, hostname) {
@@ -601,13 +660,25 @@ async function revokeHost(agentId) {
   loadHosts();
 }
 
-async function createUser(event) {
+async function saveUser(event) {
   event.preventDefault();
   try {
-    await api('/api/v1/users', { method: 'POST', body: JSON.stringify({ username: $('user-username').value.trim(), password: $('user-password').value, role: $('user-role').value }) });
+    const editing = $('user-editing').value;
+    const hostIds = [...document.querySelectorAll('#user-host-list input:checked')].map(input => input.value);
+    const body = { role: $('user-role').value, hostIds };
+    if (!editing) {
+      body.username = $('user-username').value.trim();
+      body.password = $('user-password').value;
+    } else if ($('user-password').value) {
+      body.password = $('user-password').value;
+    }
+    await api(editing ? `/api/v1/users/${encodeURIComponent(editing)}` : '/api/v1/users', {
+      method: editing ? 'PUT' : 'POST',
+      body: JSON.stringify(body)
+    });
     $('user-dialog').close();
     $('user-form').reset();
-    toast(t('user.created'), 'success');
+    toast(t(editing ? 'user.updated' : 'user.created'), 'success');
     loadAdmin();
   } catch (error) { toast(translateError(error), 'error'); }
 }
@@ -639,7 +710,7 @@ async function changePassword(event) {
 
 function navigate() {
   let page = (location.hash || '#fleet').slice(1);
-  if (!pageMeta[page] || (page === 'admin' && state.user?.role !== 'admin')) page = 'fleet';
+  if (!pageMeta[page] || (page === 'admin' && !isSuperAdmin())) page = 'fleet';
   document.querySelectorAll('.page').forEach(section => section.hidden = section.id !== `page-${page}`);
   document.querySelectorAll('#main-nav a').forEach(link => {
     const active = link.dataset.page === page;
@@ -674,8 +745,15 @@ $('process-search').addEventListener('input', renderProcesses);
 $('add-rule-button').addEventListener('click', () => openRuleDialog());
 $('rule-form').addEventListener('submit', saveRule);
 $('open-admin-button').addEventListener('click', () => location.hash = '#admin');
-$('add-user-button').addEventListener('click', () => $('user-dialog').showModal());
-$('user-form').addEventListener('submit', createUser);
+$('add-user-button').addEventListener('click', () => openUserDialog());
+$('user-role').addEventListener('change', () => {
+  const list = $('user-host-list');
+  const selectedIds = list.classList.contains('is-disabled')
+    ? JSON.parse(list.dataset.selectedIds || '[]')
+    : [...list.querySelectorAll('input:checked')].map(input => input.value);
+  renderUserHostList(selectedIds, $('user-role').value);
+});
+$('user-form').addEventListener('submit', saveUser);
 $('settings-form').addEventListener('submit', saveSettings);
 $('password-form').addEventListener('submit', changePassword);
 $('password-dialog').addEventListener('cancel', event => {

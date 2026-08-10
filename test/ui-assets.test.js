@@ -49,3 +49,16 @@ test('redesigned operations shell keeps core accessibility and responsive afford
   assert.match(html, /id="power-value"/);
   assert.match(app, /function renderHardware\(/);
 });
+
+test('super admin UI can edit user roles and host assignments', () => {
+  const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
+  const app = fs.readFileSync(path.join(root, 'public', 'js', 'app.js'), 'utf8');
+  const css = fs.readFileSync(path.join(root, 'public', 'css', 'style.css'), 'utf8');
+  assert.match(html, /data-super-admin/);
+  assert.match(html, /id="user-host-list"/);
+  assert.match(html, /value="super_admin"/);
+  assert.match(app, /function openUserDialog\(/);
+  assert.match(app, /hostIds/);
+  assert.match(app, /ui\.access\.changed/);
+  assert.match(css, /\.host-access-list/);
+});
