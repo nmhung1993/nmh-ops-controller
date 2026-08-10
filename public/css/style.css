@@ -205,11 +205,11 @@ input::placeholder { color: var(--faint); }
 /* Dashboard */
 .context-strip { display: flex; justify-content: space-between; gap: 18px; margin-bottom: 14px; padding: 12px 15px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font-size: 12px; }
 .context-strip div { display: flex; align-items: center; gap: 10px; }.context-strip strong { color: var(--ink); }
-.metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 12px; }
+.metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
 .metric { position: relative; min-height: 176px; padding: 19px 19px 17px; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow-sm); overflow: hidden; }
 .metric::after { content: ""; position: absolute; right: -34px; bottom: -58px; width: 120px; height: 120px; border: 1px solid var(--line); border-radius: 50%; }
 .metric-icon { position: absolute; top: 16px; right: 16px; display: grid; place-items: center; width: 36px; height: 36px; color: var(--accent); background: var(--accent-soft); }
-.metric.memory .metric-icon { color: var(--amber); background: var(--amber-soft); }.metric.network .metric-icon { color: var(--network); }.metric.uptime .metric-icon { color: var(--ink); background: var(--surface-muted); }
+.metric.memory .metric-icon { color: var(--amber); background: var(--amber-soft); }.metric.network .metric-icon { color: var(--network); }.metric.uptime .metric-icon { color: var(--ink); background: var(--surface-muted); }.metric.temperature .metric-icon { color: var(--danger); background: var(--danger-soft); }.metric.power .metric-icon { color: var(--amber); background: var(--amber-soft); }
 .metric > span { display: block; max-width: calc(100% - 46px); color: var(--muted); font: 700 9px "Bahnschrift", sans-serif; letter-spacing: .13em; }
 .metric > strong { position: relative; z-index: 1; display: block; margin: 25px 0 7px; font: 650 clamp(28px, 3vw, 39px)/1 "Bahnschrift", sans-serif; letter-spacing: -.04em; }
 .metric small { position: relative; z-index: 1; display: block; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -226,6 +226,12 @@ input::placeholder { color: var(--faint); }
 .memory-line polyline { stroke: var(--amber); }
 .disk-row { margin: 19px 0; }.disk-row header { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; }.disk-row header span { color: var(--muted); }.bar { height: 7px; margin-top: 8px; background: var(--surface-muted); }.bar i { display: block; height: 100%; background: var(--accent); }
 .machine-panel dl { display: grid; grid-template-columns: max-content 1fr; gap: 11px 18px; margin: 0; font-size: 13px; }.machine-panel dt { color: var(--muted); }.machine-panel dd { margin: 0; text-align: right; overflow-wrap: anywhere; font-weight: 650; }
+.sensor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.sensor-card { position: relative; padding: 16px; border: 1px solid var(--line); background: var(--surface-raised); overflow: hidden; }
+.sensor-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--accent); }
+.sensor-card.gpu::before { background: var(--network); }.sensor-card.cpu::before { background: var(--amber); }.sensor-card.thermal-zone::before { background: var(--danger); }
+.sensor-card header { display: flex; align-items: start; justify-content: space-between; gap: 10px; }.sensor-card h4 { margin: 0; font: 650 14px "Bahnschrift", sans-serif; }.sensor-card header span { color: var(--muted); font: 700 9px "Bahnschrift", sans-serif; letter-spacing: .1em; text-transform: uppercase; }
+.sensor-values { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 13px; }.sensor-values div { padding: 9px; background: var(--surface-muted); }.sensor-values span { display: block; color: var(--muted); font-size: 9px; text-transform: uppercase; }.sensor-values strong { display: block; margin-top: 3px; font: 650 18px "Bahnschrift", sans-serif; }.sensor-source { margin: 10px 0 0; color: var(--faint); font-size: 10px; }
 
 /* Tables, rules and activity */
 .table-toolbar { display: flex; align-items: baseline; gap: 7px; padding: 11px 14px; border: 1px solid var(--line); border-bottom: 0; background: var(--surface-muted); color: var(--muted); font-size: 12px; }.table-toolbar strong { color: var(--ink); font: 650 20px "Bahnschrift", sans-serif; }

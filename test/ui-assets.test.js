@@ -45,4 +45,7 @@ test('redesigned operations shell keeps core accessibility and responsive afford
   assert.match(app, /if \(host\) updateFleetHostCard\(host\)/);
   assert.match(css, /\.live-indicator \{[^}]*height: 52px/);
   assert.match(css, /\.app-active \.preference-dock \{[^}]*height: 52px/);
+  assert.match(html, /id="temperature-value"/);
+  assert.match(html, /id="power-value"/);
+  assert.match(app, /function renderHardware\(/);
 });

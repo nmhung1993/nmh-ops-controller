@@ -27,6 +27,8 @@
     <symbol id="icon-memory" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="M8 10v4M12 10v4M16 10v4M7 18v3M17 18v3"/></symbol>
     <symbol id="icon-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
     <symbol id="icon-network" viewBox="0 0 24 24"><path d="M5 16a10 10 0 0 1 14 0M8 19a6 6 0 0 1 8 0M2 12a14 14 0 0 1 20 0"/><circle cx="12" cy="21" r="1"/></symbol>
+    <symbol id="icon-temperature" viewBox="0 0 24 24"><path d="M9 14.8V5a3 3 0 0 1 6 0v9.8a5 5 0 1 1-6 0Z"/><path d="M12 8v8"/></symbol>
+    <symbol id="icon-power" viewBox="0 0 24 24"><path d="m13 2-8 12h7l-1 8 8-12h-7l1-8Z"/></symbol>
   </svg>
 
   <div class="preference-dock" aria-label="Display preferences">
@@ -118,12 +120,15 @@
           <article class="metric memory"><div class="metric-icon"><svg class="icon"><use href="#icon-memory"></use></svg></div><span data-i18n="dashboard.memory">BỘ NHỚ RAM</span><strong id="memory-value">--</strong><small id="memory-detail" data-i18n="dashboard.waiting">Đang chờ dữ liệu từ Agent</small><div class="metric-track"><i id="memory-meter"></i></div></article>
           <article class="metric uptime"><div class="metric-icon"><svg class="icon"><use href="#icon-clock"></use></svg></div><span data-i18n="dashboard.uptime">THỜI GIAN HOẠT ĐỘNG</span><strong id="uptime-value">--</strong><small id="os-value" data-i18n="dashboard.waiting">Đang chờ dữ liệu từ Agent</small></article>
           <article class="metric network"><div class="metric-icon"><svg class="icon"><use href="#icon-network"></use></svg></div><span data-i18n="dashboard.network">LƯU LƯỢNG MẠNG</span><strong id="network-value">--</strong><small id="network-detail" data-i18n="dashboard.sendReceive">Tốc độ gửi / nhận</small></article>
+          <article class="metric temperature"><div class="metric-icon"><svg class="icon"><use href="#icon-temperature"></use></svg></div><span data-i18n="dashboard.temperature">NHIỆT ĐỘ</span><strong id="temperature-value">--</strong><small id="temperature-detail" data-i18n="dashboard.sensorUnavailable">Không có cảm biến tương thích</small></article>
+          <article class="metric power"><div class="metric-icon"><svg class="icon"><use href="#icon-power"></use></svg></div><span data-i18n="dashboard.power">CÔNG SUẤT ĐÃ ĐO</span><strong id="power-value">--</strong><small id="power-detail" data-i18n="dashboard.sensorUnavailable">Không có cảm biến tương thích</small></article>
         </div>
         <div class="dashboard-grid">
           <article class="panel chart-panel"><div class="panel-title"><div><span class="panel-label">CPU / 60M</span><h3 data-i18n="dashboard.cpuTrend">Biến động CPU</h3></div><span data-i18n="dashboard.last60">Trong 60 phút gần nhất</span></div><svg class="line-chart" id="cpu-chart" viewBox="0 0 800 240" preserveAspectRatio="none" role="img" aria-label="CPU history"></svg></article>
           <article class="panel chart-panel"><div class="panel-title"><div><span class="panel-label">RAM / 60M</span><h3 data-i18n="dashboard.memoryTrend">Biến động bộ nhớ</h3></div><span data-i18n="dashboard.last60">Trong 60 phút gần nhất</span></div><svg class="line-chart memory-line" id="memory-chart" viewBox="0 0 800 240" preserveAspectRatio="none" role="img" aria-label="Memory history"></svg></article>
           <article class="panel disk-panel"><div class="panel-title"><div><span class="panel-label">STORAGE</span><h3 data-i18n="dashboard.storage">Dung lượng lưu trữ</h3></div><span data-i18n="dashboard.fixedDisks">Các ổ đĩa cố định trên máy</span></div><div id="disk-list"></div></article>
           <article class="panel machine-panel"><div class="panel-title"><div><span class="panel-label">IDENTITY</span><h3 data-i18n="dashboard.identity">Thông tin nhận dạng máy</h3></div><span class="status-pill" id="host-status-badge" data-i18n="common.offline">Mất kết nối</span></div><dl id="machine-details"></dl></article>
+          <article class="panel hardware-panel span-two"><div class="panel-title"><div><span class="panel-label">HARDWARE SENSORS</span><h3 data-i18n="dashboard.hardwareSensors">Nhiệt độ và công suất linh kiện</h3></div><span id="hardware-coverage" data-i18n="dashboard.hardwarePartial">Tổng công suất chỉ gồm các linh kiện đọc được</span></div><div class="sensor-grid" id="hardware-sensor-list"></div></article>
         </div>
       </section>
 

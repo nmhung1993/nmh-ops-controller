@@ -112,7 +112,13 @@ test('agent enrollment, telemetry, commands and revoke flow', async t => {
 
   agent.send(JSON.stringify({
     type: 'agent.telemetry', messageId: 'telemetry-1', agentId, sentAt: new Date().toISOString(), seq: 2,
-    payload: { timestamp: new Date().toISOString(), cpu: { usage: 12.5 }, memory: { percent: 44 }, disk: [], network: {} }
+    payload: {
+      timestamp: new Date().toISOString(), cpu: { usage: 12.5 }, memory: { percent: 44 }, disk: [], network: {},
+      hardware: {
+        temperatures: [{ id: 'gpu-0', type: 'gpu', name: 'Test GPU', celsius: 41, source: 'test' }],
+        power: { totalWatts: 22.5, coverage: 'partial', parts: [{ id: 'gpu-0', type: 'gpu', name: 'Test GPU', watts: 22.5, limitWatts: 75, source: 'test' }] }
+      }
+    }
   }));
   await new Promise(resolve => setTimeout(resolve, 100));
   response = await fetch(`${baseUrl}/api/v1/hosts`, { headers });
@@ -120,6 +126,7 @@ test('agent enrollment, telemetry, commands and revoke flow', async t => {
   assert.equal(hosts.length, 1);
   assert.equal(hosts[0].displayName, 'Test machine');
   assert.equal(hosts[0].telemetry.cpu.usage, 12.5);
+  assert.equal(hosts[0].telemetry.hardware.power.totalWatts, 22.5);
 
   agent.send(JSON.stringify({
     type: 'agent.event', messageId: 'manual-launch-event-1', agentId, sentAt: new Date().toISOString(), seq: 3,

@@ -87,6 +87,14 @@ The Desktop Helper is launched through `wscript.exe` with a hidden window, so no
 
 Approve the pending agent in the Admin page. Repeat the same installation on the Central Server machine so it is monitored too.
 
+For CPU Package, mainboard, storage and additional temperature/power sensors, install LibreHardwareMonitor from its official GitHub release in the same elevated terminal:
+
+```powershell
+.\agent\install-hardware-monitor.ps1
+```
+
+The script installs the newest stable LibreHardwareMonitor release plus a local Microsoft .NET 10 SDK/Windows Desktop Runtime under `%ProgramData%\WindowsController\dotnet`. It builds a small bridge against the official `LibreHardwareMonitorLib`, then runs that bridge invisibly as `SYSTEM` through the `Windows Controller Hardware Monitor` startup task. The bridge writes `%ProgramData%\WindowsController\hardware-monitor\hardware-sensors.json` every five seconds, so monitoring does not depend on the LibreHardwareMonitor GUI or its legacy WMI provider. For an offline LHM package, pass `-PackagePath "C:\path\LibreHardwareMonitor.NET.10.zip"`; the .NET installer still requires access to Microsoft's official download endpoint on first installation.
+
 Uninstall while preserving state:
 
 ```powershell
@@ -105,6 +113,8 @@ Add `-RemoveData` only when intentionally deleting enrollment state and cached w
 - Watchdog rules run every 10 seconds from the agent cache, even if Central Server is unavailable.
 - Commands are idempotent by `commandId` and expire after 60 seconds.
 - Full process lists are fetched only on demand.
+- WinSW only hosts the Agent service; it does not expose hardware sensors. The Agent queries supported providers directly: `nvidia-smi` for NVIDIA temperature/power and ACPI WMI thermal zones when the motherboard firmware exposes them.
+- Hardware power is reported per readable component. `totalWatts` is the sum of those measured parts and is marked `partial` unless Windows exposes a real Energy/Power Meter; missing CPU/mainboard wattage is never estimated. CPU/package and mainboard sensors generally require the bundled LibreHardwareMonitor bridge or OpenHardwareMonitor with its WMI provider enabled.
 
 Interactive launch and window capture require a logged-in desktop session. The Agent Service handles telemetry and service-mode processes before login; the Desktop Helper handles GUI applications and screenshots after login.
 

@@ -153,7 +153,7 @@ async function connect() {
       fingerprint,
       platform: `${os.type()} ${os.release()} ${os.arch()}`,
       version: VERSION,
-      capabilities: ['telemetry', 'processes', 'watchdog', 'service-launch', 'desktop-helper']
+      capabilities: ['telemetry', 'hardware-sensors', 'processes', 'watchdog', 'service-launch', 'desktop-helper']
     }));
   });
 

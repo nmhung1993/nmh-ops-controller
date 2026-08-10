@@ -113,6 +113,16 @@ function formatBytes(bytes) {
   return `${(value / (1024 ** index)).toFixed(index > 1 ? 1 : 0)} ${units[index]}`;
 }
 
+function formatTemperature(celsius) {
+  const value = Number(celsius);
+  return Number.isFinite(value) ? `${value.toFixed(1)} °C` : '--';
+}
+
+function formatWatts(watts) {
+  const value = Number(watts);
+  return Number.isFinite(value) ? `${value.toFixed(value >= 100 ? 0 : 1)} W` : '--';
+}
+
 function formatUptime(seconds) {
   const value = Number(seconds || 0);
   const days = Math.floor(value / 86400);
@@ -383,11 +393,15 @@ function renderDashboard() {
   const host = selectedHost();
   const telemetry = host?.telemetry;
   if (!host || !telemetry) {
-    for (const id of ['cpu-value', 'memory-value', 'uptime-value', 'network-value']) $(id).textContent = '--';
+    for (const id of ['cpu-value', 'memory-value', 'uptime-value', 'network-value', 'temperature-value', 'power-value']) $(id).textContent = '--';
     $('cpu-model').textContent = t('dashboard.waiting');
     $('memory-detail').textContent = t('dashboard.waiting');
     $('os-value').textContent = t('dashboard.waiting');
     $('network-detail').textContent = t('dashboard.sendReceive');
+    $('temperature-detail').textContent = t('dashboard.sensorUnavailable');
+    $('power-detail').textContent = t('dashboard.sensorUnavailable');
+    $('hardware-coverage').textContent = t('dashboard.hardwarePartial');
+    $('hardware-sensor-list').innerHTML = `<p>${escapeHtml(t('dashboard.noHardwareSensors'))}</p>`;
     $('host-status-badge').textContent = t('common.offline');
     $('host-status-badge').classList.remove('online');
     if ($('dashboard-host-name')) $('dashboard-host-name').textContent = host?.displayName || '--';
@@ -406,6 +420,7 @@ function renderDashboard() {
   $('os-value').textContent = telemetry.os;
   $('network-value').textContent = `${formatBytes(telemetry.network.recvPerSecond)}/s`;
   $('network-detail').textContent = t('dashboard.sentRate', { rate: formatBytes(telemetry.network.sentPerSecond) });
+  renderHardware(telemetry.hardware || null);
   $('host-status-badge').textContent = host.online ? t('common.online') : t('common.offline');
   $('host-status-badge').classList.toggle('online', host.online);
   if ($('dashboard-host-name')) $('dashboard-host-name').textContent = host.displayName;
@@ -417,6 +432,35 @@ function renderDashboard() {
     const percent = disk.total ? Math.round((disk.used / disk.total) * 100) : 0;
     return `<div class="disk-row"><header><strong>${escapeHtml(disk.drive)}</strong><span>${formatBytes(disk.used)} / ${formatBytes(disk.total)} (${percent}%)</span></header><div class="bar"><i style="width:${percent}%"></i></div></div>`;
   }).join('') || `<p>${escapeHtml(t('dashboard.noDisks'))}</p>`;
+}
+
+function renderHardware(hardware) {
+  const temperatures = Array.isArray(hardware?.temperatures) ? hardware.temperatures : [];
+  const powerParts = Array.isArray(hardware?.power?.parts) ? hardware.power.parts : [];
+  const hottest = temperatures.reduce((current, sensor) => !current || Number(sensor.celsius) > Number(current.celsius) ? sensor : current, null);
+  $('temperature-value').textContent = hottest ? formatTemperature(hottest.celsius) : '--';
+  $('temperature-detail').textContent = hottest?.name || t('dashboard.sensorUnavailable');
+  $('power-value').textContent = hardware?.power?.totalWatts !== null && hardware?.power?.totalWatts !== undefined
+    ? formatWatts(hardware.power.totalWatts)
+    : '--';
+  $('power-detail').textContent = powerParts.length
+    ? t('dashboard.powerPartsMeasured', { count: powerParts.length })
+    : t('dashboard.sensorUnavailable');
+  $('hardware-coverage').textContent = hardware?.power?.coverage === 'system-meter'
+    ? t('dashboard.hardwareSystemMeter')
+    : (hardware?.power?.coverage === 'complete' ? t('dashboard.hardwareComplete') : t('dashboard.hardwarePartial'));
+
+  const components = new Map();
+  for (const sensor of temperatures) components.set(sensor.id, { ...sensor });
+  for (const part of powerParts) components.set(part.id, { ...(components.get(part.id) || {}), ...part });
+  $('hardware-sensor-list').innerHTML = components.size
+    ? [...components.values()].map(component => `<article class="sensor-card ${escapeHtml(component.type || '')}">
+      <header><h4>${escapeHtml(component.name || component.id)}</h4><span>${escapeHtml(t(`hardware.type.${component.type}`) === `hardware.type.${component.type}` ? component.type : t(`hardware.type.${component.type}`))}</span></header>
+      <div class="sensor-values"><div><span>${escapeHtml(t('hardware.temperature'))}</span><strong>${escapeHtml(formatTemperature(component.celsius))}</strong></div><div><span>${escapeHtml(t('hardware.power'))}</span><strong>${escapeHtml(formatWatts(component.watts))}</strong></div></div>
+      ${component.limitWatts !== null && component.limitWatts !== undefined ? `<p class="sensor-source">${escapeHtml(t('hardware.powerLimit', { value: formatWatts(component.limitWatts) }))}</p>` : ''}
+      <p class="sensor-source">${escapeHtml(t('hardware.source', { source: component.source || 'unknown' }))}</p>
+    </article>`).join('')
+    : `<p>${escapeHtml(t('dashboard.noHardwareSensors'))}</p>`;
 }
 
 async function loadTelemetryHistory() {

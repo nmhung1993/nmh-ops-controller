@@ -1,10 +1,16 @@
 # Node modules
 node_modules/
+**/bin/
+**/obj/
 
 # Data files (config, users, screenshots)
 data/
 *.png
 *.ps1
+!agent/install-agent.ps1
+!agent/install-hardware-monitor.ps1
+!agent/uninstall-agent.ps1
+!deploy/install-server.ps1
 
 # Logs
 *.log
