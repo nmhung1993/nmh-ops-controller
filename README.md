@@ -91,6 +91,30 @@ Cuối quá trình, installer in các URL LAN, ví dụ:
 http://192.168.1.10:3003
 ```
 
+### Chạy Central Server trên Synology
+
+Synology nên chạy Central Server bằng **Container Manager**; Agent Synology vẫn chạy riêng để NAS tự xuất hiện trong fleet. Container chỉ giữ code/runtime, còn SQLite, JWT secret, screenshot và backup nằm ở thư mục bind mount nên có thể backup và di chuyển nguyên vẹn.
+
+1. Trên máy Windows cũ, dừng Central Server rồi export toàn bộ thư mục data:
+
+```powershell
+.\synology-server\export-server-data.ps1 -Destination .\windows-controller-server-data.zip
+```
+
+2. Copy toàn bộ repository (hoặc tối thiểu `Dockerfile`, `package*.json`, `server`, `public`, `synology-server`) lên NAS, ví dụ `/volume1/docker/windows-controller`.
+3. Giải nén archive vào `/volume1/docker/windows-controller/data` **trước lần chạy đầu tiên**. Giữ cả `windows-controller.db`, `windows-controller.db-wal`, `windows-controller.db-shm` nếu chúng tồn tại.
+4. SSH vào NAS và build/start container:
+
+```sh
+sudo sh ./synology-server/install-synology-server.sh \
+  --project-dir /volume1/docker/windows-controller \
+  --data-dir /volume1/docker/windows-controller/data
+```
+
+5. Mở `http://<synology-lan-ip>:3003`, đăng nhập bằng user hiện có và kiểm tra hosts/telemetry trước khi tắt server cũ. Nếu archive không có dữ liệu, trang sẽ yêu cầu tạo Super Admin lần đầu.
+
+Container Manager phải cho phép TCP 3003 từ LAN tin cậy. Không port-forward cổng này ra Internet. Sau khi cutover, đổi `serverUrl` của Windows Agent và các connector sang IP Synology; Agent Synology dùng `http://127.0.0.1:3003` nếu chạy cùng NAS.
+
 Mở URL từ trình duyệt. Nếu chưa có user, trang đầu tiên yêu cầu tạo tài khoản quản trị đầu tiên. Tài khoản đầu tiên là **Super Admin** và ứng dụng không có mật khẩu mặc định.
 
 ### Cài Agent trên chính máy Central Server
@@ -506,6 +530,18 @@ Central Server dùng trường `capabilities` để tự ẩn chức năng khôn
 Windows Controller Fleet monitors and controls up to roughly 20 Windows hosts on a trusted LAN. Install the Central Server on one machine and install an Agent on every managed machine, including the Central Server itself.
 
 Optional platform connectors are included for Synology DSM (`synology-agent`) and Home Assistant (`homeassistant-addon`). Synology supports Linux telemetry, processes and watchdog rules. Home Assistant is read-only and publishes configured REST API entities; platform capabilities automatically hide unsupported Windows commands in the UI.
+
+### Synology Central Server
+
+Run the Central Server in Synology Container Manager using `synology-server/compose.yaml`. Stop the old Windows server first, export its complete `data` directory with `synology-server/export-server-data.ps1`, extract it to `/volume1/docker/windows-controller/data`, then run:
+
+```sh
+sudo sh ./synology-server/install-synology-server.sh \
+  --project-dir /volume1/docker/windows-controller \
+  --data-dir /volume1/docker/windows-controller/data
+```
+
+The bind mount preserves SQLite, JWT secret, screenshots and backups across image updates. Keep TCP 3003 restricted to the trusted LAN and point all agents/connectors at the Synology LAN IP.
 
 ### Requirements
 

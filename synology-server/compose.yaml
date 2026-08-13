@@ -1,0 +1,22 @@
+services:
+  central-server:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: windows-controller-central-server:latest
+    container_name: windows-controller-central-server
+    restart: unless-stopped
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3003
+      DATA_DIR: /app/data
+      TZ: Asia/Bangkok
+    ports:
+      - "${WC_PORT:-3003}:3003"
+    volumes:
+      - ${WC_DATA_DIR:-/volume1/docker/windows-controller/data}:/app/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3003/api/setup/status').then(r => { if (!r.ok) process.exit(1); }).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5

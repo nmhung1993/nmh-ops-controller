@@ -245,6 +245,21 @@ test('Linux Agent ships a systemd installer and Linux telemetry protocol', () =>
   assert.match(packageJson, /windows-controller-linux-agent/);
 });
 
+test('Synology Central Server deployment persists data outside the container', () => {
+  const compose = fs.readFileSync(path.join(root, 'synology-server', 'compose.yaml'), 'utf8');
+  const installer = fs.readFileSync(path.join(root, 'synology-server', 'install-synology-server.sh'), 'utf8');
+  const exporter = fs.readFileSync(path.join(root, 'synology-server', 'export-server-data.ps1'), 'utf8');
+  assert.match(compose, /windows-controller-central-server/);
+  assert.match(compose, /\/app\/data/);
+  assert.match(compose, /WC_DATA_DIR/);
+  assert.match(compose, /healthcheck/);
+  assert.match(installer, /docker-compose/);
+  assert.match(installer, /--data-dir/);
+  assert.match(installer, /up -d --build/);
+  assert.match(exporter, /Compress-Archive/);
+  assert.match(exporter, /ProgramData\\WindowsController\\server\\data/);
+});
+
 test('development launcher serves source assets with the installed database', () => {
   const launcher = fs.readFileSync(path.join(root, 'deploy', 'start-dev-server.ps1'), 'utf8');
   assert.match(launcher, /DATA_DIR/);
