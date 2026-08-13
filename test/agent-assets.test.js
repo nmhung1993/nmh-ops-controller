@@ -226,6 +226,25 @@ test('Synology and Home Assistant agents use the authenticated fleet protocol', 
   assert.match(addOnDockerfile, /ARG BUILD_FROM=ghcr\.io\/home-assistant\/amd64-base:/);
 });
 
+test('Linux Agent ships a systemd installer and Linux telemetry protocol', () => {
+  const linuxAgent = fs.readFileSync(path.join(root, 'linux-agent', 'agent.js'), 'utf8');
+  const installer = fs.readFileSync(path.join(root, 'linux-agent', 'install-linux.sh'), 'utf8');
+  const packageJson = fs.readFileSync(path.join(root, 'linux-agent', 'package.json'), 'utf8');
+  assert.match(linuxAgent, /Linux Agent/);
+  assert.match(linuxAgent, /agent\.hello/);
+  assert.match(linuxAgent, /agent\.telemetry/);
+  assert.match(linuxAgent, /server\.approved/);
+  assert.match(linuxAgent, /\/proc\/stat/);
+  assert.match(linuxAgent, /\/sys\/class\/thermal/);
+  assert.match(linuxAgent, /process\.kill/);
+  assert.match(linuxAgent, /watchdog\.launch/);
+  assert.match(installer, /systemd\/system\/windows-controller-agent\.service/);
+  assert.match(installer, /systemctl daemon-reload/);
+  assert.match(installer, /systemctl enable --now windows-controller-agent\.service/);
+  assert.match(installer, /chmod 600 .*config\.json/);
+  assert.match(packageJson, /windows-controller-linux-agent/);
+});
+
 test('development launcher serves source assets with the installed database', () => {
   const launcher = fs.readFileSync(path.join(root, 'deploy', 'start-dev-server.ps1'), 'utf8');
   assert.match(launcher, /DATA_DIR/);

@@ -1,0 +1,4 @@
+{
+  "serverUrl": "http://192.168.1.10:3003",
+  "stateDir": "/var/lib/windows-controller-agent/state"
+}

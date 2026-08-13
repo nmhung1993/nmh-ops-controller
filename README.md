@@ -573,3 +573,22 @@ C:\ProgramData\WindowsController\hardware-monitor
 ```
 
 This deployment uses HTTP and must not be exposed directly to the Internet. Use HTTPS before operating outside a trusted LAN.
+
+## Linux Agent
+
+Linux hosts use `linux-agent`, a standalone Node.js agent that speaks the same authenticated `/ws/agent` protocol as Windows and Synology agents. It collects CPU, memory, uptime, disk, network, process, thermal and power telemetry from `/proc`, `df`, and Linux sysfs. It supports process listing/killing, watchdog launch, offline buffers, reconnect backoff, pending enrollment, and manual approval.
+
+Requirements: Linux with `systemd`, Node.js 18+, npm, and root privileges for installation. From the repository checkout:
+
+```sh
+sudo ./linux-agent/install-linux.sh --server-url http://192.168.1.10:3003
+```
+
+The installer copies the runtime to `/var/lib/windows-controller-agent`, creates a `600`-permission config and state directory, installs dependencies, and enables `windows-controller-agent.service`. Approve the hostname under **Admin -> Pending agents**. Check runtime status with:
+
+```sh
+systemctl status windows-controller-agent.service
+journalctl -u windows-controller-agent.service -n 50 --no-pager
+```
+
+Linux watchdog rules must use absolute executable paths and `runMode: service`; interactive desktop capture is not available on headless Linux hosts.
