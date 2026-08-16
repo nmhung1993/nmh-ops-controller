@@ -35,3 +35,16 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Local Cline rules (not for sharing)
+.clinerules
+
+# Local AI tool state
+/.agent/
+/.agents/
+/.claude/
+/.codex/
+/.cursor/
+/.gemini/
+/.impeccable/
+/.opencode/
