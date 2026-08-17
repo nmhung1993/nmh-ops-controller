@@ -108,7 +108,7 @@ export default function DashboardView() {
   const uptimeStr = uptimeSeconds ? formatUptime(uptimeSeconds, lang) : '--';
 
   // OS
-  const osStr = telemetry.os || telemetry.system?.platform || selectedHost.platform || 'Windows';
+  const osStr = telemetry.os || telemetry.system?.platform || selectedHost?.platform || 'Windows';
 
   // Network
   const netSendRate = telemetry.network?.sentPerSecond ?? telemetry.network?.bytesSentRate ?? 0;
@@ -163,12 +163,12 @@ export default function DashboardView() {
     const d = new Date(item.timestamp);
     if (isNaN(d.getTime())) return '';
     if (currentRangeObj.format === 'time') {
-      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' });
     }
     if (currentRangeObj.format === 'dateTimeShort') {
-      return `${d.getDate()}/${d.getMonth() + 1} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+      return d.toLocaleDateString([], { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' });
     }
-    return `${d.getDate()}/${d.getMonth() + 1}`;
+    return d.toLocaleDateString([], { month: 'numeric', day: 'numeric', timeZone: 'Asia/Ho_Chi_Minh' });
   });
 
   // Identify CPU temperature sensors

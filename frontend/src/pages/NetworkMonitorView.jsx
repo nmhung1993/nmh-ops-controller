@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
   Grid,
@@ -30,6 +30,11 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Menu,
+  MenuItem,
+  Select,
+  FormControl,
+  InputLabel,
   useTheme
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
@@ -56,12 +61,27 @@ import {
   Edit2,
   Layers,
   ChevronDown,
-  History
+  History,
+  Download,
+  FileSpreadsheet,
+  FileCode,
+  TrendingUp,
+  AlertOctagon,
+  Pin,
+  Router as RouterIcon
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { apiRequest } from '../utils/api';
 import Label from '../components/common/Label';
 import ConfirmDialog from '../components/common/ConfirmDialog';
+import Chart from '../components/chart/Chart';
+
+const PING_TIME_RANGES = [
+  { value: '1h', labelVi: '1 giờ', labelEn: '1 hour' },
+  { value: '8h', labelVi: '8 tiếng', labelEn: '8 hours' },
+  { value: '24h', labelVi: '1 ngày', labelEn: '24 hours' },
+  { value: '7d', labelVi: '1 tuần', labelEn: '7 days' }
+];
 
 export default function NetworkMonitorView() {
   const theme = useTheme();
@@ -73,12 +93,24 @@ export default function NetworkMonitorView() {
   const [loading, setLoading] = useState(true);
   const [tagFilter, setTagFilter] = useState('all');
 
+  // Chart metrics state
+  const [chartRange, setChartRange] = useState('1h');
+  const [chartTargetId, setChartTargetId] = useState('all');
+  const [chartMetrics, setChartMetrics] = useState([]);
+  const [loadingChart, setLoadingChart] = useState(false);
+
+  // Export menu state
+  const [exportAnchorEl, setExportAnchorEl] = useState(null);
+
   // Scanner state
   const [scanSubnet, setScanSubnet] = useState('192.168.31.0/24');
   const [scanState, setScanState] = useState({ isScanning: false, current: 0, total: 254, results: [] });
   const [scanHistoryList, setScanHistoryList] = useState([]);
+  const [customNames, setCustomNames] = useState({});
+  const [editNameDialog, setEditNameDialog] = useState({ open: false, ip: '', currentName: '', newName: '' });
 
-  // Xiaomi Router state
+  // Router state (Xiaomi / Gecoos)
+  const [selectedRouterHost, setSelectedRouterHost] = useState('192.168.31.1');
   const [routerStatus, setRouterStatus] = useState(null);
   const [loadingRouter, setLoadingRouter] = useState(false);
   const [routerConfigOpen, setRouterConfigOpen] = useState(false);
@@ -95,8 +127,8 @@ export default function NetworkMonitorView() {
 
   // Confirm dialogs
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
-  const [confirmRebootTarget, setConfirmRebootTarget] = useState(null); // { ip, name }
-  const [confirmWifiRestartTarget, setConfirmWifiRestartTarget] = useState(null); // { ip, name }
+  const [confirmRebootTarget, setConfirmRebootTarget] = useState(null);
+  const [confirmWifiRestartTarget, setConfirmWifiRestartTarget] = useState(null);
   const [actionMessage, setActionMessage] = useState(null);
 
   // Fetch targets and summary
@@ -115,36 +147,127 @@ export default function NetworkMonitorView() {
     }
   }, []);
 
-  // Fetch scan progress and history
+  // Fetch chart metrics
+  const loadChartMetrics = useCallback(async () => {
+    setLoadingChart(true);
+    try {
+      const data = await apiRequest(`/api/v1/network/metrics?range=${chartRange}&targetId=${chartTargetId}`);
+      setChartMetrics(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to load network metrics:', err);
+    } finally {
+      setLoadingChart(false);
+    }
+  }, [chartRange, chartTargetId]);
+
+  // Fetch scan progress, history and custom names
   const loadScanState = useCallback(async () => {
     try {
-      const [state, history] = await Promise.all([
+      const [state, history, names] = await Promise.all([
         apiRequest('/api/v1/network/scan'),
-        apiRequest('/api/v1/network/scan/history')
+        apiRequest('/api/v1/network/scan/history'),
+        apiRequest('/api/v1/network/custom-names')
       ]);
       setScanState(state || { isScanning: false, current: 0, total: 254, results: [] });
       setScanHistoryList(Array.isArray(history) ? history : []);
+      setCustomNames(names || {});
     } catch (err) {}
   }, []);
 
-  // Fetch router status
+  const handleTogglePinHistory = async (sessionId) => {
+    try {
+      const res = await apiRequest(`/api/v1/network/scan/history/${sessionId}/pin`, { method: 'POST' });
+      if (res && res.history) {
+        setScanHistoryList(res.history);
+      } else {
+        loadScanState();
+      }
+    } catch (err) {
+      console.error('Failed to toggle pin:', err);
+    }
+  };
+
+  const handleDeleteHistorySession = async (sessionId) => {
+    try {
+      const res = await apiRequest(`/api/v1/network/scan/history/${sessionId}`, { method: 'DELETE' });
+      if (res && res.history) {
+        setScanHistoryList(res.history);
+      } else {
+        loadScanState();
+      }
+    } catch (err) {
+      console.error('Failed to delete history session:', err);
+    }
+  };
+
+  const handleOpenEditIpName = (ip, currentHostname) => {
+    setEditNameDialog({
+      open: true,
+      ip,
+      currentName: currentHostname || ip,
+      newName: customNames[ip] || (currentHostname && currentHostname !== ip ? currentHostname : '')
+    });
+  };
+
+  const handleSaveCustomName = async (e) => {
+    if (e) e.preventDefault();
+    try {
+      await apiRequest('/api/v1/network/custom-names', {
+        method: 'POST',
+        body: JSON.stringify({ ip: editNameDialog.ip, name: editNameDialog.newName.trim() })
+      });
+      setEditNameDialog({ open: false, ip: '', currentName: '', newName: '' });
+      loadScanState();
+    } catch (err) {
+      console.error('Failed to save custom name:', err);
+    }
+  };
+
+  const handleClearCustomName = async () => {
+    try {
+      await apiRequest('/api/v1/network/custom-names', {
+        method: 'POST',
+        body: JSON.stringify({ ip: editNameDialog.ip, name: '' })
+      });
+      setEditNameDialog({ open: false, ip: '', currentName: '', newName: '' });
+      loadScanState();
+    } catch (err) {
+      console.error('Failed to clear custom name:', err);
+    }
+  };
+
+  // Fetch router status (supports Xiaomi and Gecoos)
   const loadRouterStatus = useCallback(async () => {
     setLoadingRouter(true);
     try {
-      const data = await apiRequest('/api/v1/network/xiaomi/status');
+      const data = await apiRequest(`/api/v1/network/xiaomi/status?host=${selectedRouterHost}`);
       setRouterStatus(data);
     } catch (err) {
       setRouterStatus(null);
     } finally {
       setLoadingRouter(false);
     }
-  }, []);
+  }, [selectedRouterHost]);
 
   useEffect(() => {
     loadTargets();
     const interval = setInterval(loadTargets, 3000);
     return () => clearInterval(interval);
   }, [loadTargets]);
+
+  useEffect(() => {
+    if (currentTab === 0) {
+      loadChartMetrics();
+      const timer = setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+      }, 80);
+      const interval = setInterval(loadChartMetrics, 15000);
+      return () => {
+        clearTimeout(timer);
+        clearInterval(interval);
+      };
+    }
+  }, [currentTab, loadChartMetrics]);
 
   useEffect(() => {
     if (currentTab === 1) {
@@ -160,7 +283,7 @@ export default function NetworkMonitorView() {
     if (currentTab === 2 || !routerStatus) {
       loadRouterStatus();
     }
-  }, [currentTab, loadRouterStatus]);
+  }, [currentTab, selectedRouterHost, loadRouterStatus]);
 
   // Ping target immediately
   const handlePingNow = async (id, e) => {
@@ -168,6 +291,7 @@ export default function NetworkMonitorView() {
     try {
       await apiRequest(`/api/v1/network/targets/${id}/ping`, { method: 'POST' });
       loadTargets();
+      loadChartMetrics();
     } catch (err) {
       console.error('Ping failed:', err);
     }
@@ -255,6 +379,18 @@ export default function NetworkMonitorView() {
     }
   };
 
+  // Export Data Download
+  const handleExportData = (range, format) => {
+    setExportAnchorEl(null);
+    const url = `/api/v1/network/export?range=${range}&format=${format}`;
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `network_export_${range}.${format}`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
   // Start subnet scan
   const handleStartScan = async () => {
     try {
@@ -322,13 +458,74 @@ export default function NetworkMonitorView() {
   };
 
   // Filtered targets
-  const tagsList = ['all', ...new Set(targets.map(t => t.tag).filter(Boolean))];
-  const filteredTargets = targets.filter(t => tagFilter === 'all' || t.tag === tagFilter);
+  const tagsList = ['all', ...new Set(targets.map((t) => t.tag).filter(Boolean))];
+  const filteredTargets = targets.filter((t) => tagFilter === 'all' || t.tag === tagFilter);
 
   // WAN IP & Gateway & DNS info
   const wanIp = routerStatus?.wan?.ip || '116.109.15.114';
   const gatewayStr = routerStatus?.wan?.gateway || '192.168.1.1';
   const dnsStr = routerStatus?.wan?.dns || '8.8.8.8, 8.8.4.4';
+
+  // Chart preparation
+  const chartTimestamps = useMemo(() => {
+    return chartMetrics.map((item) => {
+      const d = new Date(item.timestamp);
+      if (['1h', '8h'].includes(chartRange)) {
+        return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' });
+      }
+      return d.toLocaleDateString([], { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh' });
+    });
+  }, [chartMetrics, chartRange]);
+
+  const latencySeriesData = useMemo(() => {
+    return chartMetrics.map((m) => (m.latency !== null ? Number(m.latency) : 0));
+  }, [chartMetrics]);
+
+  const chartSeries = useMemo(() => {
+    return [{ name: 'Độ trễ (ms)', data: latencySeriesData }];
+  }, [latencySeriesData]);
+
+  const totalDrops = useMemo(() => {
+    return chartMetrics.filter((m) => m.isDrop || m.status === 'offline').length;
+  }, [chartMetrics]);
+
+  const maxSpike = useMemo(() => {
+    const valid = chartMetrics.filter((m) => m.latency !== null).map((m) => m.latency);
+    return valid.length > 0 ? Math.max(...valid) : 0;
+  }, [chartMetrics]);
+
+  const pingChartOptions = useMemo(() => {
+    return {
+      colors: [theme.palette.primary.main],
+      chart: {
+        toolbar: { show: false },
+        animations: { enabled: true }
+      },
+      stroke: { curve: 'smooth', width: 2.5 },
+      fill: {
+        type: 'gradient',
+        gradient: {
+          shadeIntensity: 1,
+          opacityFrom: 0.45,
+          opacityTo: 0.05,
+          stops: [0, 95, 100]
+        }
+      },
+      xaxis: {
+        categories: chartTimestamps,
+        labels: { rotate: -30, rotateAlways: chartTimestamps.length > 15 }
+      },
+      yaxis: {
+        min: 0,
+        labels: { formatter: (v) => `${Math.round(v)} ms` }
+      },
+      tooltip: {
+        y: {
+          formatter: (v) => `${v} ms`
+        }
+      }
+    };
+  }, [theme, chartTimestamps]);
 
   return (
     <Box>
@@ -345,11 +542,52 @@ export default function NetworkMonitorView() {
             Giám sát mạng nội bộ
           </Typography>
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            Theo dõi độ trễ, packet loss theo thời gian thực và quản lý Xiaomi Router/Mesh
+            Theo dõi độ trễ, packet loss theo thời gian thực và quản trị hệ thống Router / Mesh
           </Typography>
         </Box>
 
-        <Stack direction="row" spacing={1.5}>
+        <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap', gap: 1 }}>
+          {/* Export Data Menu Button */}
+          <Button
+            variant="outlined"
+            color="inherit"
+            startIcon={<Download size={18} />}
+            onClick={(e) => setExportAnchorEl(e.currentTarget)}
+            sx={{ fontWeight: 700 }}
+          >
+            Xuất dữ liệu
+          </Button>
+
+          <Menu
+            anchorEl={exportAnchorEl}
+            open={Boolean(exportAnchorEl)}
+            onClose={() => setExportAnchorEl(null)}
+            PaperProps={{ sx: { minWidth: 200, borderRadius: 2 } }}
+          >
+            <Typography variant="overline" sx={{ px: 2, py: 0.5, color: 'text.secondary', fontWeight: 800, display: 'block' }}>
+              DẢI THỜI GIAN XUẤT
+            </Typography>
+            <MenuItem onClick={() => handleExportData('1h', 'csv')}>
+              <FileSpreadsheet size={16} style={{ marginRight: 8 }} /> 1 giờ qua (CSV)
+            </MenuItem>
+            <MenuItem onClick={() => handleExportData('8h', 'csv')}>
+              <FileSpreadsheet size={16} style={{ marginRight: 8 }} /> 8 giờ qua (CSV)
+            </MenuItem>
+            <MenuItem onClick={() => handleExportData('24h', 'csv')}>
+              <FileSpreadsheet size={16} style={{ marginRight: 8 }} /> 1 ngày / 24h (CSV)
+            </MenuItem>
+            <MenuItem onClick={() => handleExportData('7d', 'csv')}>
+              <FileSpreadsheet size={16} style={{ marginRight: 8 }} /> 1 tuần / 7 ngày (CSV)
+            </MenuItem>
+            <MenuItem onClick={() => handleExportData('30d', 'csv')}>
+              <FileSpreadsheet size={16} style={{ marginRight: 8 }} /> 1 tháng / 30 ngày (CSV)
+            </MenuItem>
+            <Divider />
+            <MenuItem onClick={() => handleExportData('24h', 'json')}>
+              <FileCode size={16} style={{ marginRight: 8 }} /> Toàn bộ dữ liệu 24h (JSON)
+            </MenuItem>
+          </Menu>
+
           <Button
             variant="contained"
             color="primary"
@@ -424,7 +662,7 @@ export default function NetworkMonitorView() {
           </Card>
         </Grid>
 
-        {/* Card 4: WAN & Gateway (Replaced Average Latency) */}
+        {/* Card 4: WAN & Gateway */}
         <Grid item xs={12} sm={6} md={3}>
           <Card sx={{ p: 2.5, height: 1, minHeight: 105, display: 'flex', alignItems: 'center', justifyContent: 'space-between', overflow: 'hidden' }}>
             <Box sx={{ minWidth: 0, mr: 1.5 }}>
@@ -450,7 +688,7 @@ export default function NetworkMonitorView() {
         <Tabs value={currentTab} onChange={(_, v) => setCurrentTab(v)} variant="scrollable" scrollButtons="auto">
           <Tab icon={<Globe size={18} />} iconPosition="start" label="Giám sát kết nối (Ping Monitor)" sx={{ fontWeight: 700 }} />
           <Tab icon={<Search size={18} />} iconPosition="start" label="Quét mạng LAN (Subnet Scanner)" sx={{ fontWeight: 700 }} />
-          <Tab icon={<Wifi size={18} />} iconPosition="start" label="Xiaomi Router & Mesh (CR8806)" sx={{ fontWeight: 700 }} />
+          <Tab icon={<Wifi size={18} />} iconPosition="start" label="Router & Mesh" sx={{ fontWeight: 700 }} />
         </Tabs>
       </Box>
 
@@ -462,12 +700,140 @@ export default function NetworkMonitorView() {
       )}
 
       {/* ==================================================== */}
-      {/* TAB 1: PING MONITOR TARGETS GRID */}
+      {/* TAB 1: PING MONITOR & PING TRENDS CHART */}
       {/* ==================================================== */}
-      {currentTab === 0 && (
-        <Box>
+      <Box sx={{ display: currentTab === 0 ? 'block' : 'none' }}>
+        <Stack spacing={3.5}>
+          {/* Biểu đồ biến động Ping & Drop Packet */}
+          <Card sx={{ p: 3 }}>
+            <Stack
+              direction={{ xs: 'column', md: 'row' }}
+              alignItems={{ xs: 'flex-start', md: 'center' }}
+              justifyContent="space-between"
+              spacing={2}
+              sx={{ mb: 2.5 }}
+            >
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <TrendingUp size={20} color={theme.palette.primary.main} /> Biến động độ trễ & Drop Packet
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  Theo dõi Spike độ trễ và sự cố rớt gói tin theo thời gian thực
+                </Typography>
+              </Box>
+
+              <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flexWrap: 'wrap', gap: 1 }}>
+                {/* Target Selector Dropdown */}
+                <FormControl size="small" sx={{ minWidth: 160 }}>
+                  <Select
+                    value={chartTargetId}
+                    onChange={(e) => setChartTargetId(e.target.value)}
+                    sx={{ fontSize: '0.8125rem', borderRadius: 1.5 }}
+                  >
+                    <MenuItem value="all">Tất cả Target</MenuItem>
+                    {targets.map((t) => (
+                      <MenuItem key={t.id} value={t.id}>
+                        {t.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                {/* Range Selector Buttons */}
+                <Stack direction="row" spacing={0.5}>
+                  {PING_TIME_RANGES.map((r) => {
+                    const active = chartRange === r.value;
+                    return (
+                      <Button
+                        key={r.value}
+                        size="small"
+                        variant={active ? 'contained' : 'outlined'}
+                        color={active ? 'primary' : 'inherit'}
+                        onClick={() => setChartRange(r.value)}
+                        sx={{
+                          py: 0.5,
+                          px: 1.25,
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          borderRadius: 1.5,
+                          minWidth: 'auto',
+                          bgcolor: active ? undefined : alpha(theme.palette.grey[500], 0.06)
+                        }}
+                      >
+                        {lang === 'vi' ? r.labelVi : r.labelEn}
+                      </Button>
+                    );
+                  })}
+                </Stack>
+              </Stack>
+            </Stack>
+
+            {/* Spike & Drop Indicators Strip */}
+            <Grid container spacing={2} sx={{ mb: 2 }}>
+              <Grid item xs={12} sm={4}>
+                <Card variant="outlined" sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.5, borderRadius: 2 }}>
+                  <Box sx={{ color: totalDrops > 0 ? 'error.main' : 'success.main' }}>
+                    <AlertOctagon size={24} />
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                      GÓI TIN BỊ DROP (TIMEOUT)
+                    </Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 800, color: totalDrops > 0 ? 'error.main' : 'success.main' }}>
+                      {totalDrops} gói tin rớt
+                    </Typography>
+                  </Box>
+                </Card>
+              </Grid>
+
+              <Grid item xs={12} sm={4}>
+                <Card variant="outlined" sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.5, borderRadius: 2 }}>
+                  <Box sx={{ color: maxSpike > 100 ? 'warning.main' : 'primary.main' }}>
+                    <Activity size={24} />
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                      ĐỘ TRỄ SPIKE CAO NHẤT
+                    </Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 800, color: maxSpike > 100 ? 'warning.main' : 'text.primary' }}>
+                      {maxSpike} ms
+                    </Typography>
+                  </Box>
+                </Card>
+              </Grid>
+
+              <Grid item xs={12} sm={4}>
+                <Card variant="outlined" sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.5, borderRadius: 2 }}>
+                  <Box sx={{ color: 'info.main' }}>
+                    <Clock size={24} />
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                      ĐIỂM MẪU ĐO ĐẠC
+                    </Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                      {chartMetrics.length} điểm dữ liệu
+                    </Typography>
+                  </Box>
+                </Card>
+              </Grid>
+            </Grid>
+
+            {/* Chart Render */}
+            <Box sx={{ pt: 1, minHeight: 260 }}>
+              {loadingChart && <LinearProgress sx={{ mb: 1, borderRadius: 1 }} />}
+              <Chart
+                key={`ping_chart_${currentTab}_${chartTargetId}_${chartRange}_${chartMetrics.length}`}
+                type="area"
+                series={chartSeries}
+                options={pingChartOptions}
+                height={260}
+              />
+            </Box>
+          </Card>
+
           {/* Tag Filter Pills */}
-          <Stack direction="row" spacing={1} sx={{ mb: 3, flexWrap: 'wrap', gap: 1 }}>
+          <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
             {tagsList.map((tag) => (
               <Button
                 key={tag}
@@ -629,13 +995,13 @@ export default function NetworkMonitorView() {
               );
             })}
           </Grid>
-        </Box>
-      )}
+        </Stack>
+      </Box>
 
       {/* ==================================================== */}
       {/* TAB 2: SUBNET SCANNER WITH ARP, HOSTNAME & 20 HISTORY */}
       {/* ==================================================== */}
-      {currentTab === 1 && (
+      <Box sx={{ display: currentTab === 1 ? 'block' : 'none' }}>
         <Stack spacing={3}>
           <Card sx={{ p: 3 }}>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center" sx={{ mb: 3 }}>
@@ -675,7 +1041,7 @@ export default function NetworkMonitorView() {
                 <TableHead>
                   <TableRow>
                     <TableCell sx={{ fontWeight: 700 }}>Địa chỉ IP</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Tên / Domain</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>Tên / Thiết bị (Có thể đổi tên)</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Địa chỉ MAC</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Độ trễ</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Trạng thái</TableCell>
@@ -683,7 +1049,7 @@ export default function NetworkMonitorView() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {(!scanState.results || scanState.results.length === 0) ? (
+                  {!scanState.results || scanState.results.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>
                         Chưa có thiết bị nào được quét. Hãy nhấn "Bắt đầu quét mạng".
@@ -691,13 +1057,37 @@ export default function NetworkMonitorView() {
                     </TableRow>
                   ) : (
                     scanState.results.map((item, idx) => (
-                      <TableRow key={idx}>
+                      <TableRow key={idx} hover>
                         <TableCell sx={{ fontFamily: 'monospace', fontWeight: 700 }}>{item.ip}</TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>{item.hostname || '--'}</TableCell>
+                        <TableCell>
+                          <Stack direction="row" alignItems="center" spacing={1}>
+                            <Box sx={{ minWidth: 0 }}>
+                              <Typography variant="body2" sx={{ fontWeight: item.customName ? 800 : 600, color: item.customName ? 'primary.main' : 'text.primary' }}>
+                                {item.hostname || '--'}
+                              </Typography>
+                              {item.customName && item.autoName && item.customName !== item.autoName && (
+                                <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', fontSize: '0.7rem' }}>
+                                  Gốc: {item.autoName}
+                                </Typography>
+                              )}
+                            </Box>
+                            <Tooltip title="Đổi tên cho IP này">
+                              <IconButton
+                                size="small"
+                                onClick={() => handleOpenEditIpName(item.ip, item.hostname)}
+                                sx={{ opacity: 0.6, '&:hover': { opacity: 1, color: 'primary.main' } }}
+                              >
+                                <Edit2 size={13} />
+                              </IconButton>
+                            </Tooltip>
+                          </Stack>
+                        </TableCell>
                         <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{item.mac || 'N/A'}</TableCell>
                         <TableCell>{item.latency} ms</TableCell>
                         <TableCell>
-                          <Label variant="soft" color="success">Trực tuyến</Label>
+                          <Label variant="soft" color="success">
+                            Trực tuyến
+                          </Label>
                         </TableCell>
                         <TableCell sx={{ textAlign: 'right' }}>
                           <Button
@@ -717,10 +1107,10 @@ export default function NetworkMonitorView() {
             </TableContainer>
           </Card>
 
-          {/* Scan History (20 most recent) */}
+          {/* Scan History (Pinned on top, preserved forever) */}
           <Card sx={{ p: 3 }}>
             <Typography variant="h6" sx={{ fontWeight: 800, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <History size={20} color={theme.palette.primary.main} /> Lịch sử quét mạng (20 lần gần nhất)
+              <History size={20} color={theme.palette.primary.main} /> Lịch sử quét mạng (Bản ghi đã ghim & 20 lần gần nhất)
             </Typography>
 
             {scanHistoryList.length === 0 ? (
@@ -730,10 +1120,47 @@ export default function NetworkMonitorView() {
             ) : (
               <Stack spacing={1.5}>
                 {scanHistoryList.map((session, idx) => (
-                  <Accordion key={session.id || idx} variant="outlined" sx={{ borderRadius: 1.5 }}>
+                  <Accordion
+                    key={session.id || idx}
+                    variant="outlined"
+                    sx={{
+                      borderRadius: 1.5,
+                      borderColor: session.isPinned ? alpha(theme.palette.primary.main, 0.5) : 'divider',
+                      bgcolor: session.isPinned ? alpha(theme.palette.primary.main, 0.03) : 'background.paper'
+                    }}
+                  >
                     <AccordionSummary expandIcon={<ChevronDown size={18} />}>
                       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ width: 1, pr: 2 }}>
-                        <Stack direction="row" spacing={2} alignItems="center">
+                        <Stack direction="row" spacing={1.5} alignItems="center">
+                          <Tooltip title={session.isPinned ? "Bỏ ghim phiên này" : "Ghim phiên này (Luôn ở đầu, không bao giờ tự xóa)"}>
+                            <IconButton
+                              size="small"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleTogglePinHistory(session.id);
+                              }}
+                              color={session.isPinned ? "primary" : "default"}
+                              sx={{
+                                bgcolor: session.isPinned ? alpha(theme.palette.primary.main, 0.15) : 'action.hover',
+                                '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.25) }
+                              }}
+                            >
+                              <Pin
+                                size={16}
+                                style={{
+                                  transform: session.isPinned ? 'rotate(-45deg)' : 'none',
+                                  fill: session.isPinned ? theme.palette.primary.main : 'none'
+                                }}
+                              />
+                            </IconButton>
+                          </Tooltip>
+
+                          {session.isPinned && (
+                            <Label variant="filled" color="primary" startIcon={<Pin size={11} />}>
+                              ĐÃ GHIM
+                            </Label>
+                          )}
+
                           <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
                             {session.subnet}
                           </Typography>
@@ -741,9 +1168,25 @@ export default function NetworkMonitorView() {
                             {session.totalDiscovered} thiết bị
                           </Label>
                         </Stack>
-                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                          {session.scannedAt ? new Date(session.scannedAt).toLocaleString() : '--'}
-                        </Typography>
+
+                        <Stack direction="row" spacing={1.5} alignItems="center">
+                          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                            {session.scannedAt ? new Date(session.scannedAt).toLocaleString() : '--'}
+                          </Typography>
+                          <Tooltip title="Xóa phiên lịch sử này">
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteHistorySession(session.id);
+                              }}
+                              sx={{ opacity: 0.7, '&:hover': { opacity: 1 } }}
+                            >
+                              <Trash2 size={15} />
+                            </IconButton>
+                          </Tooltip>
+                        </Stack>
                       </Stack>
                     </AccordionSummary>
                     <AccordionDetails>
@@ -752,7 +1195,7 @@ export default function NetworkMonitorView() {
                           <TableHead>
                             <TableRow>
                               <TableCell sx={{ fontWeight: 700 }}>IP</TableCell>
-                              <TableCell sx={{ fontWeight: 700 }}>Tên / Hostname</TableCell>
+                              <TableCell sx={{ fontWeight: 700 }}>Tên / Thiết bị (Có thể đổi tên)</TableCell>
                               <TableCell sx={{ fontWeight: 700 }}>MAC</TableCell>
                               <TableCell sx={{ fontWeight: 700 }}>Latency</TableCell>
                               <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>Thao tác</TableCell>
@@ -760,9 +1203,31 @@ export default function NetworkMonitorView() {
                           </TableHead>
                           <TableBody>
                             {(session.results || []).map((res, rIdx) => (
-                              <TableRow key={rIdx}>
-                                <TableCell sx={{ fontFamily: 'monospace' }}>{res.ip}</TableCell>
-                                <TableCell>{res.hostname || '--'}</TableCell>
+                              <TableRow key={rIdx} hover>
+                                <TableCell sx={{ fontFamily: 'monospace', fontWeight: 600 }}>{res.ip}</TableCell>
+                                <TableCell>
+                                  <Stack direction="row" alignItems="center" spacing={1}>
+                                    <Box sx={{ minWidth: 0 }}>
+                                      <Typography variant="body2" sx={{ fontWeight: res.customName ? 800 : 600, color: res.customName ? 'primary.main' : 'text.primary' }}>
+                                        {res.hostname || '--'}
+                                      </Typography>
+                                      {res.customName && res.autoName && res.customName !== res.autoName && (
+                                        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', fontSize: '0.7rem' }}>
+                                          Gốc: {res.autoName}
+                                        </Typography>
+                                      )}
+                                    </Box>
+                                    <Tooltip title="Đổi tên cho IP này">
+                                      <IconButton
+                                        size="small"
+                                        onClick={() => handleOpenEditIpName(res.ip, res.hostname)}
+                                        sx={{ opacity: 0.6, '&:hover': { opacity: 1, color: 'primary.main' } }}
+                                      >
+                                        <Edit2 size={13} />
+                                      </IconButton>
+                                    </Tooltip>
+                                  </Stack>
+                                </TableCell>
                                 <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{res.mac || 'N/A'}</TableCell>
                                 <TableCell>{res.latency} ms</TableCell>
                                 <TableCell sx={{ textAlign: 'right' }}>
@@ -787,23 +1252,45 @@ export default function NetworkMonitorView() {
             )}
           </Card>
         </Stack>
-      )}
+      </Box>
 
       {/* ==================================================== */}
-      {/* TAB 3: XIAOMI ROUTER & SECONDARY MESH NODES */}
+      {/* TAB 3: ROUTER & MESH MANAGEMENT (XIAOMI & GECOOS) */}
       {/* ==================================================== */}
-      {currentTab === 2 && (
+      <Box sx={{ display: currentTab === 2 ? 'block' : 'none' }}>
         <Box>
+          {/* Router Selector Switcher */}
+          <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 3 }}>
+            <Button
+              variant={selectedRouterHost === '192.168.31.1' ? 'contained' : 'outlined'}
+              color="primary"
+              startIcon={<Wifi size={16} />}
+              onClick={() => setSelectedRouterHost('192.168.31.1')}
+              sx={{ fontWeight: 700, borderRadius: 2 }}
+            >
+              Router Gateway (192.168.31.1)
+            </Button>
+            <Button
+              variant={selectedRouterHost === '192.168.31.43' ? 'contained' : 'outlined'}
+              color="primary"
+              startIcon={<RouterIcon size={16} />}
+              onClick={() => setSelectedRouterHost('192.168.31.43')}
+              sx={{ fontWeight: 700, borderRadius: 2 }}
+            >
+              Gecoos Router (192.168.31.43)
+            </Button>
+          </Stack>
+
           {loadingRouter ? (
             <LinearProgress sx={{ my: 4, borderRadius: 2 }} />
           ) : !routerStatus ? (
             <Card sx={{ p: 4, textAlign: 'center' }}>
               <Wifi size={48} color={theme.palette.text.disabled} />
               <Typography variant="h6" sx={{ mt: 2, fontWeight: 700 }}>
-                Không thể kết nối Xiaomi Router
+                Không thể kết nối Router ({selectedRouterHost})
               </Typography>
               <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3 }}>
-                Kiểm tra lại IP router (192.168.31.1) và mật khẩu quản trị (@nmhung1993).
+                Kiểm tra lại kết nối mạng và mật khẩu quản trị (@nmhung1993).
               </Typography>
               <Button variant="contained" startIcon={<Settings size={16} />} onClick={() => setRouterConfigOpen(true)}>
                 Cấu hình kết nối Router
@@ -820,13 +1307,13 @@ export default function NetworkMonitorView() {
                     </Box>
                     <Box>
                       <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: 1 }}>
-                        ROUTER GATEWAY / MESH CONTROLLER
+                        ROUTER GATEWAY & MESH CONTROLLER
                       </Typography>
                       <Typography variant="h4" sx={{ fontWeight: 800 }}>
-                        {routerStatus.routerName} ({routerStatus.hardware})
+                        {routerStatus.routerName}
                       </Typography>
                       <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 600 }}>
-                        Host: {routerStatus.host} • ROM: v{routerStatus.version} • WAN IP: {routerStatus.wan?.ip} • {routerStatus.uptimeFormatted}
+                        Host: {routerStatus.host} • ROM: {routerStatus.version} • WAN IP: {routerStatus.wan?.ip} • {routerStatus.uptimeFormatted}
                       </Typography>
                     </Box>
                   </Stack>
@@ -836,7 +1323,7 @@ export default function NetworkMonitorView() {
                       variant="outlined"
                       color="warning"
                       startIcon={<RotateCcw size={16} />}
-                      onClick={() => setConfirmWifiRestartTarget({ ip: routerStatus.host, name: 'Router chính' })}
+                      onClick={() => setConfirmWifiRestartTarget({ ip: routerStatus.host, name: routerStatus.routerName })}
                     >
                       Khởi động lại Wi-Fi
                     </Button>
@@ -844,7 +1331,7 @@ export default function NetworkMonitorView() {
                       variant="outlined"
                       color="error"
                       startIcon={<Power size={16} />}
-                      onClick={() => setConfirmRebootTarget({ ip: routerStatus.host, name: 'Router chính' })}
+                      onClick={() => setConfirmRebootTarget({ ip: routerStatus.host, name: routerStatus.routerName })}
                     >
                       Reboot Router
                     </Button>
@@ -860,8 +1347,12 @@ export default function NetworkMonitorView() {
                 {/* 2.4G & 5G Clients */}
                 <Grid item xs={12} sm={6} md={3}>
                   <Card sx={{ p: 2.5 }}>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>TỔNG THIẾT BỊ WI-FI</Typography>
-                    <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5 }}>{routerStatus.wifi?.count || 0}</Typography>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                      TỔNG THIẾT BỊ WI-FI
+                    </Typography>
+                    <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5, color: 'primary.main' }}>
+                      {routerStatus.wifi?.count || routerStatus.clients?.length || 0}
+                    </Typography>
                     <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
                       📶 2.4GHz: {routerStatus.wifi?.wifi24Count || 0} • 5GHz: {routerStatus.wifi?.wifi50Count || 0}
                     </Typography>
@@ -871,8 +1362,12 @@ export default function NetworkMonitorView() {
                 {/* Router CPU Load */}
                 <Grid item xs={12} sm={6} md={3}>
                   <Card sx={{ p: 2.5 }}>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>TẢI CPU ROUTER</Typography>
-                    <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5 }}>{routerStatus.cpu}%</Typography>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                      TẢI CPU ROUTER
+                    </Typography>
+                    <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5 }}>
+                      {routerStatus.cpu}%
+                    </Typography>
                     <LinearProgress variant="determinate" value={routerStatus.cpu} sx={{ height: 6, borderRadius: 3, mt: 1 }} />
                   </Card>
                 </Grid>
@@ -880,8 +1375,12 @@ export default function NetworkMonitorView() {
                 {/* Router Memory */}
                 <Grid item xs={12} sm={6} md={3}>
                   <Card sx={{ p: 2.5 }}>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>RAM ROUTER</Typography>
-                    <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5 }}>{routerStatus.memory}%</Typography>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                      RAM ROUTER
+                    </Typography>
+                    <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5 }}>
+                      {routerStatus.memory}%
+                    </Typography>
                     <LinearProgress variant="determinate" value={routerStatus.memory} sx={{ height: 6, borderRadius: 3, mt: 1 }} />
                   </Card>
                 </Grid>
@@ -889,8 +1388,12 @@ export default function NetworkMonitorView() {
                 {/* Mesh Nodes Count */}
                 <Grid item xs={12} sm={6} md={3}>
                   <Card sx={{ p: 2.5 }}>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>MESH NODES PHỤ</Typography>
-                    <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5 }}>{routerStatus.meshNodes?.length || 0}</Typography>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                      MESH NODES PHỤ
+                    </Typography>
+                    <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5 }}>
+                      {routerStatus.meshNodes?.length || 0}
+                    </Typography>
                     <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
                       Tự động đồng bộ IP
                     </Typography>
@@ -898,77 +1401,91 @@ export default function NetworkMonitorView() {
                 </Grid>
               </Grid>
 
-              {/* Secondary Mesh Nodes Management Section */}
-              <Box>
-                <Typography variant="h6" sx={{ fontWeight: 800, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Layers size={20} color={theme.palette.primary.main} /> Quản lý các Node Mesh phụ ({routerStatus.meshNodes?.length || 0})
-                </Typography>
+              {/* Secondary Mesh Nodes Management Section (if any) */}
+              {routerStatus.meshNodes && routerStatus.meshNodes.length > 0 && (
+                <Box>
+                  <Typography variant="h6" sx={{ fontWeight: 800, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Layers size={20} color={theme.palette.primary.main} /> Quản lý các Node Mesh phụ ({routerStatus.meshNodes.length})
+                  </Typography>
 
-                <Grid container spacing={2.5}>
-                  {(routerStatus.meshNodes || []).map((node) => (
-                    <Grid item xs={12} md={6} key={node.id}>
-                      <Card sx={{ p: 2.5, border: `1px solid ${theme.palette.divider}` }}>
-                        <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 2 }}>
-                          <Box>
-                            <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
-                              {node.name}
-                            </Typography>
-                            <Typography variant="body2" sx={{ color: 'text.secondary', fontFamily: 'monospace', fontWeight: 600 }}>
-                              IP: {node.ip || 'Chưa nhận IP'} • {node.hardware} (v{node.version})
-                            </Typography>
-                            <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 700, mt: 0.5, display: 'block' }}>
-                              Kết nối: {node.backhaulLabel}
-                            </Typography>
-                          </Box>
+                  <Grid container spacing={2.5}>
+                    {routerStatus.meshNodes.map((node) => (
+                      <Grid item xs={12} md={6} key={node.id}>
+                        <Card sx={{ p: 2.5, border: `1px solid ${theme.palette.divider}` }}>
+                          <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 2 }}>
+                            <Box>
+                              <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
+                                {node.name}
+                              </Typography>
+                              <Typography variant="body2" sx={{ color: 'text.secondary', fontFamily: 'monospace', fontWeight: 600 }}>
+                                IP: {node.ip || 'Chưa nhận IP'} • {node.hardware} (v{node.version})
+                              </Typography>
+                              <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 700, mt: 0.5, display: 'block' }}>
+                                Kết nối: {node.backhaulLabel}
+                              </Typography>
+                            </Box>
 
-                          <Label variant="soft" color={node.online ? 'success' : 'error'}>
-                            {node.online ? 'Trực tuyến' : 'Ngoại tuyến'}
-                          </Label>
-                        </Stack>
+                            <Label variant="soft" color={node.online ? 'success' : 'error'}>
+                              {node.online ? 'Trực tuyến' : 'Ngoại tuyến'}
+                            </Label>
+                          </Stack>
 
-                        <Stack direction="row" spacing={2} sx={{ p: 1.5, borderRadius: 2, bgcolor: alpha(theme.palette.grey[500], 0.06), mb: 2 }}>
-                          <Box sx={{ flex: 1 }}>
-                            <Typography variant="caption" sx={{ color: 'text.secondary' }}>TẢI CPU</Typography>
-                            <Typography variant="h6" sx={{ fontWeight: 800 }}>{node.cpu}%</Typography>
-                          </Box>
-                          <Divider orientation="vertical" flexItem />
-                          <Box sx={{ flex: 1 }}>
-                            <Typography variant="caption" sx={{ color: 'text.secondary' }}>RAM</Typography>
-                            <Typography variant="h6" sx={{ fontWeight: 800 }}>{node.memory}%</Typography>
-                          </Box>
-                          <Divider orientation="vertical" flexItem />
-                          <Box sx={{ flex: 1 }}>
-                            <Typography variant="caption" sx={{ color: 'text.secondary' }}>THIẾT BỊ WI-FI</Typography>
-                            <Typography variant="h6" sx={{ fontWeight: 800, color: 'primary.main' }}>{node.clientCount}</Typography>
-                          </Box>
-                        </Stack>
+                          <Stack direction="row" spacing={2} sx={{ p: 1.5, borderRadius: 2, bgcolor: alpha(theme.palette.grey[500], 0.06), mb: 2 }}>
+                            <Box sx={{ flex: 1 }}>
+                              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                TẢI CPU
+                              </Typography>
+                              <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                                {node.cpu}%
+                              </Typography>
+                            </Box>
+                            <Divider orientation="vertical" flexItem />
+                            <Box sx={{ flex: 1 }}>
+                              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                RAM
+                              </Typography>
+                              <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                                {node.memory}%
+                              </Typography>
+                            </Box>
+                            <Divider orientation="vertical" flexItem />
+                            <Box sx={{ flex: 1 }}>
+                              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                THIẾT BỊ WI-FI
+                              </Typography>
+                              <Typography variant="h6" sx={{ fontWeight: 800, color: 'primary.main' }}>
+                                {node.clientCount}
+                              </Typography>
+                            </Box>
+                          </Stack>
 
-                        {/* Node Actions */}
-                        <Stack direction="row" spacing={1.5}>
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            color="warning"
-                            startIcon={<RotateCcw size={14} />}
-                            onClick={() => setConfirmWifiRestartTarget({ ip: node.ip, name: node.name })}
-                          >
-                            Restart Wi-Fi
-                          </Button>
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            color="error"
-                            startIcon={<Power size={14} />}
-                            onClick={() => setConfirmRebootTarget({ ip: node.ip, name: node.name })}
-                          >
-                            Reboot Node
-                          </Button>
-                        </Stack>
-                      </Card>
-                    </Grid>
-                  ))}
-                </Grid>
-              </Box>
+                          {/* Node Actions */}
+                          <Stack direction="row" spacing={1.5}>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="warning"
+                              startIcon={<RotateCcw size={14} />}
+                              onClick={() => setConfirmWifiRestartTarget({ ip: node.ip, name: node.name })}
+                            >
+                              Restart Wi-Fi
+                            </Button>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="error"
+                              startIcon={<Power size={14} />}
+                              onClick={() => setConfirmRebootTarget({ ip: node.ip, name: node.name })}
+                            >
+                              Reboot Node
+                            </Button>
+                          </Stack>
+                        </Card>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Box>
+              )}
 
               {/* Connected Wi-Fi Devices Table */}
               <Card sx={{ p: 3 }}>
@@ -1016,7 +1533,7 @@ export default function NetworkMonitorView() {
             </Stack>
           )}
         </Box>
-      )}
+      </Box>
 
       {/* Target Modal Dialog (Add / Edit) */}
       <Dialog open={targetDialogOpen} onClose={() => setTargetDialogOpen(false)} maxWidth="sm" fullWidth>
@@ -1030,7 +1547,7 @@ export default function NetworkMonitorView() {
                 label="Tên hiển thị"
                 value={targetName}
                 onChange={(e) => setTargetName(e.target.value)}
-                placeholder="VD: Xiaomi Router, Mesh Node 2, Gateway..."
+                placeholder="VD: Gecoos Router, Mesh Node 2, Gateway..."
                 required
                 fullWidth
               />
@@ -1038,7 +1555,7 @@ export default function NetworkMonitorView() {
                 label="Địa chỉ IP hoặc Hostname"
                 value={targetHost}
                 onChange={(e) => setTargetHost(e.target.value)}
-                placeholder="VD: 192.168.31.120 hoặc 8.8.8.8"
+                placeholder="VD: 192.168.31.43 hoặc 8.8.8.8"
                 required
                 fullWidth
               />
@@ -1072,7 +1589,7 @@ export default function NetworkMonitorView() {
       {/* Router Config Dialog */}
       <Dialog open={routerConfigOpen} onClose={() => setRouterConfigOpen(false)} maxWidth="xs" fullWidth>
         <form onSubmit={handleSaveRouterConfig}>
-          <DialogTitle sx={{ fontWeight: 800 }}>Cấu hình Xiaomi Router</DialogTitle>
+          <DialogTitle sx={{ fontWeight: 800 }}>Cấu hình Router Quản trị</DialogTitle>
           <DialogContent>
             <Stack spacing={2.5} sx={{ mt: 1 }}>
               <TextField
@@ -1094,7 +1611,9 @@ export default function NetworkMonitorView() {
           </DialogContent>
           <DialogActions sx={{ p: 2.5 }}>
             <Button onClick={() => setRouterConfigOpen(false)}>Hủy</Button>
-            <Button type="submit" variant="contained" color="primary">Lưu cấu hình</Button>
+            <Button type="submit" variant="contained" color="primary">
+              Lưu cấu hình
+            </Button>
           </DialogActions>
         </form>
       </Dialog>
@@ -1117,14 +1636,44 @@ export default function NetworkMonitorView() {
         onClose={() => setConfirmRebootTarget(null)}
       />
 
-      {/* Restart Wi-Fi Confirm Dialog */}
-      <ConfirmDialog
-        open={Boolean(confirmWifiRestartTarget)}
-        title={`Khởi động lại Wi-Fi ${confirmWifiRestartTarget?.name || 'Router'}?`}
-        message={`Các thiết bị kết nối không dây tới ${confirmWifiRestartTarget?.ip} sẽ mất kết nối trong khoảng 15-30 giây khi module sóng khởi động lại.`}
-        onConfirm={handleRestartWifi}
-        onClose={() => setConfirmWifiRestartTarget(null)}
-      />
+      {/* Edit Custom IP Name Dialog */}
+      <Dialog open={editNameDialog.open} onClose={() => setEditNameDialog(prev => ({ ...prev, open: false }))} maxWidth="xs" fullWidth>
+        <form onSubmit={handleSaveCustomName}>
+          <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Edit2 size={20} color={theme.palette.primary.main} /> Đổi tên cho IP {editNameDialog.ip}
+          </DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                Tên tùy chỉnh này sẽ được lưu cố định và hiển thị ưu tiên trên toàn bộ kết quả quét mạng và lịch sử.
+              </Typography>
+              <TextField
+                label="Tên tùy chỉnh / Gợi nhớ"
+                value={editNameDialog.newName}
+                onChange={(e) => setEditNameDialog(prev => ({ ...prev, newName: e.target.value }))}
+                placeholder="VD: Smart TV Phòng Khách, Camera Sân Thượng..."
+                autoFocus
+                fullWidth
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions sx={{ p: 2.5, justifyContent: 'space-between' }}>
+            {customNames[editNameDialog.ip] ? (
+              <Button color="error" size="small" onClick={handleClearCustomName}>
+                Xóa tên tùy chỉnh
+              </Button>
+            ) : <Box />}
+            <Stack direction="row" spacing={1}>
+              <Button onClick={() => setEditNameDialog(prev => ({ ...prev, open: false }))}>
+                Hủy
+              </Button>
+              <Button type="submit" variant="contained" color="primary">
+                Lưu tên
+              </Button>
+            </Stack>
+          </DialogActions>
+        </form>
+      </Dialog>
     </Box>
   );
 }

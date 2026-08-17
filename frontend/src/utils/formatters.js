@@ -27,14 +27,41 @@ export function formatUptime(seconds, lang = 'vi') {
   return `${days}d ${hours}h ${minutes}m`;
 }
 
-export function formatDateTime(isoString, lang = 'vi') {
+export const DEFAULT_TIMEZONE = 'Asia/Ho_Chi_Minh';
+
+export function formatDateTime(isoString, lang = 'vi', timeZone = DEFAULT_TIMEZONE) {
   if (!isoString) return '--';
   const date = new Date(isoString);
   if (isNaN(date.getTime())) return '--';
   return date.toLocaleString(lang === 'vi' ? 'vi-VN' : 'en-US', {
+    timeZone: timeZone || DEFAULT_TIMEZONE,
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  });
+}
+
+export function formatTime(isoString, lang = 'vi', timeZone = DEFAULT_TIMEZONE) {
+  if (!isoString) return '--';
+  const date = new Date(isoString);
+  if (isNaN(date.getTime())) return '--';
+  return date.toLocaleTimeString(lang === 'vi' ? 'vi-VN' : 'en-US', {
+    timeZone: timeZone || DEFAULT_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
+}
+
+export function formatDate(isoString, lang = 'vi', timeZone = DEFAULT_TIMEZONE) {
+  if (!isoString) return '--';
+  const date = new Date(isoString);
+  if (isNaN(date.getTime())) return '--';
+  return date.toLocaleDateString(lang === 'vi' ? 'vi-VN' : 'en-US', {
+    timeZone: timeZone || DEFAULT_TIMEZONE,
     day: '2-digit',
     month: '2-digit',
     year: 'numeric'

@@ -37,8 +37,9 @@ import Label from '../../components/common/Label';
 export const HEADER_MOBILE = 64;
 export const HEADER_DESKTOP = 72;
 export const NAV_WIDTH = 280;
+export const NAV_COLLAPSED_WIDTH = 88;
 
-export default function Header({ onOpenNav, currentPage, onOpenPasswordDialog }) {
+export default function Header({ onOpenNav, currentPage, onOpenPasswordDialog, isCollapsed }) {
   const theme = useTheme();
   const { lang, setLang, t } = useLanguage();
   const { themeMode, toggleTheme } = useThemeMode();
@@ -70,6 +71,7 @@ export default function Header({ onOpenNav, currentPage, onOpenPasswordDialog })
   };
 
   const socketInfo = getSocketLabel();
+  const currentNavWidth = isCollapsed ? NAV_COLLAPSED_WIDTH : NAV_WIDTH;
 
   return (
     <AppBar
@@ -80,10 +82,10 @@ export default function Header({ onOpenNav, currentPage, onOpenPasswordDialog })
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
         backgroundColor: alpha(theme.palette.background.default, 0.8),
-        transition: theme.transitions.create(['height', 'background-color'], {
+        transition: theme.transitions.create(['height', 'background-color', 'width'], {
           duration: theme.transitions.duration.shorter
         }),
-        width: { lg: `calc(100% - ${NAV_WIDTH}px)` },
+        width: { lg: `calc(100% - ${currentNavWidth}px)` },
         borderBottom: `1px solid ${theme.palette.divider}`
       }}
     >

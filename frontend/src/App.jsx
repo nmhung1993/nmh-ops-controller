@@ -4,6 +4,7 @@ import { LanguageProvider, useLanguage } from './context/LanguageContext';
 import { ThemeModeProvider, useThemeMode } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { WebSocketProvider } from './context/WebSocketContext';
+import { SystemSettingsProvider } from './context/SystemSettingsContext';
 import ThemeProvider from './theme';
 
 import DashboardLayout from './layouts/dashboard/DashboardLayout';
@@ -95,7 +96,9 @@ export default function App() {
   return (
     <LanguageProvider>
       <ThemeModeProvider>
-        <AppWithTheme />
+        <SystemSettingsProvider>
+          <AppWithTheme />
+        </SystemSettingsProvider>
       </ThemeModeProvider>
     </LanguageProvider>
   );

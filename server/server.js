@@ -21,7 +21,7 @@ const { networkRouter } = require('./network-monitor');
 
 const PORT = Number(process.env.PORT || 3003);
 const HOST = process.env.HOST || '0.0.0.0';
-const TELEMETRY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const TELEMETRY_RETENTION_MS = 365 * 24 * 60 * 60 * 1000; // 1 year retention
 const EVENT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const SCREENSHOT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const AGENT_OFFLINE_MS = 20_000;
@@ -37,8 +37,42 @@ const COMMAND_CAPABILITIES = {
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const SCREENSHOT_DIR = path.join(DATA_DIR, 'screenshots');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
+const SYSTEM_SETTINGS_FILE = path.join(DATA_DIR, 'system-settings.json');
 fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
 fs.mkdirSync(BACKUP_DIR, { recursive: true });
+
+const DEFAULT_SYSTEM_SETTINGS = {
+  appName: 'NMH Ops',
+  appSubtitle: 'Controller',
+  tagline: 'Unified Fleet & LAN Controller',
+  logoText: 'NMH',
+  logoUrl: '',
+  ownerSignature: '@nmhung1993',
+  timezone: 'Asia/Ho_Chi_Minh',
+  environmentLabel: 'LAN tin cậy'
+};
+
+function loadJsonFile(filePath, defaultValue) {
+  try {
+    if (fs.existsSync(filePath)) {
+      return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    }
+  } catch (err) {
+    console.error(`Failed to load ${filePath}:`, err.message);
+  }
+  return defaultValue;
+}
+
+function saveJsonFile(filePath, data) {
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+  } catch (err) {
+    console.error(`Failed to save ${filePath}:`, err.message);
+  }
+}
+
+let systemSettings = { ...DEFAULT_SYSTEM_SETTINGS, ...loadJsonFile(SYSTEM_SETTINGS_FILE, {}) };
 
 const db = createDatabase();
 migrateLegacyData(db);
@@ -655,15 +689,39 @@ app.get('/api/v1/hosts/:id', authenticate, requireHostAccess, (req, res) => {
   res.json(serializeHost(req.managedHost));
 });
 
-app.get('/api/v1/hosts/:id/telemetry', authenticate, requireHostAccess, (req, res) => {
+function handleTelemetryHistoryQuery(req, res) {
   const from = req.query.from || new Date(Date.now() - 60 * 60 * 1000).toISOString();
   const to = req.query.to || new Date().toISOString();
   const limit = Math.min(Math.max(Number(req.query.limit) || 1000, 1), 5000);
+
+  // Fetch all points in the requested time interval
   const rows = db.prepare(`
-    SELECT ts, payload_json FROM telemetry WHERE agent_id = ? AND ts BETWEEN ? AND ? ORDER BY ts ASC LIMIT ?
-  `).all(req.params.id, from, to, limit);
-  res.json(rows.map(row => ({ timestamp: row.ts, ...parseJson(row.payload_json, {}) })));
-});
+    SELECT ts, payload_json FROM telemetry WHERE agent_id = ? AND ts BETWEEN ? AND ? ORDER BY ts ASC
+  `).all(req.params.id, from, to);
+
+  const mapped = rows.map(row => ({ timestamp: row.ts, ...parseJson(row.payload_json, {}) }));
+
+  if (mapped.length <= limit) {
+    return res.json(mapped);
+  }
+
+  // Downsample evenly across the time window
+  const step = mapped.length / limit;
+  const downsampled = [];
+  for (let i = 0; i < limit; i++) {
+    const idx = Math.min(Math.floor(i * step), mapped.length - 1);
+    downsampled.push(mapped[idx]);
+  }
+  // Ensure the latest telemetry sample is included
+  if (mapped.length > 0 && downsampled[downsampled.length - 1] !== mapped[mapped.length - 1]) {
+    downsampled[downsampled.length - 1] = mapped[mapped.length - 1];
+  }
+
+  res.json(downsampled);
+}
+
+app.get('/api/v1/hosts/:id/telemetry', authenticate, requireHostAccess, handleTelemetryHistoryQuery);
+app.get('/api/v1/hosts/:id/history', authenticate, requireHostAccess, handleTelemetryHistoryQuery);
 
 app.get('/api/v1/hosts/:id/processes', authenticate, requireHostAccess, (req, res) => {
   let commandId = null;
@@ -906,6 +964,29 @@ app.get('/api/v1/settings', authenticate, requireSuperAdmin, (req, res) => {
 app.put('/api/v1/settings', authenticate, requireSuperAdmin, (req, res) => {
   setSetting(db, 'discord_webhook', req.body?.discordWebhook?.trim() || '');
   res.json({ success: true });
+});
+
+// GET System & Brand Settings (Public / All Authenticated)
+app.get('/api/v1/system/settings', (req, res) => {
+  res.json(systemSettings);
+});
+
+// PUT System & Brand Settings (Super Admin only)
+app.put('/api/v1/system/settings', authenticate, requireSuperAdmin, (req, res) => {
+  const { appName, appSubtitle, tagline, logoText, logoUrl, ownerSignature, timezone, environmentLabel } = req.body || {};
+
+  if (appName !== undefined) systemSettings.appName = String(appName).trim() || 'NMH Ops';
+  if (appSubtitle !== undefined) systemSettings.appSubtitle = String(appSubtitle).trim();
+  if (tagline !== undefined) systemSettings.tagline = String(tagline).trim();
+  if (logoText !== undefined) systemSettings.logoText = String(logoText).trim() || 'NMH';
+  if (logoUrl !== undefined) systemSettings.logoUrl = String(logoUrl).trim();
+  if (ownerSignature !== undefined) systemSettings.ownerSignature = String(ownerSignature).trim() || '@nmhung1993';
+  if (timezone !== undefined) systemSettings.timezone = String(timezone).trim() || 'Asia/Ho_Chi_Minh';
+  if (environmentLabel !== undefined) systemSettings.environmentLabel = String(environmentLabel).trim() || 'LAN tin cậy';
+
+  saveJsonFile(SYSTEM_SETTINGS_FILE, systemSettings);
+  broadcastUi('ui.system.settings', systemSettings);
+  res.json({ success: true, settings: systemSettings });
 });
 
 app.get('/api/v1/screenshots/:id', authenticate, (req, res) => {

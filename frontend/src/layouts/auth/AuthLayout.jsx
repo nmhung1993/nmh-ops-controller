@@ -4,11 +4,13 @@ import { alpha } from '@mui/material/styles';
 import { Sun, Moon, Globe, Shield, Terminal, Cpu, Network } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useThemeMode } from '../../context/ThemeContext';
+import { useSystemSettings } from '../../context/SystemSettingsContext';
 
 export default function AuthLayout({ title, subtitle, children }) {
   const theme = useTheme();
   const { lang, setLang, t } = useLanguage();
   const { themeMode, toggleTheme } = useThemeMode();
+  const { settings } = useSystemSettings();
   const [anchorElLang, setAnchorElLang] = React.useState(null);
 
   return (
@@ -105,17 +107,22 @@ export default function AuthLayout({ title, subtitle, children }) {
                   justifyContent: 'center',
                   boxShadow: theme.customShadows.primary,
                   fontWeight: 800,
-                  fontSize: '1.4rem'
+                  fontSize: '1.25rem',
+                  overflow: 'hidden'
                 }}
               >
-                WC
+                {settings.logoUrl ? (
+                  <Box component="img" src={settings.logoUrl} alt="Logo" sx={{ width: 1, height: 1, objectFit: 'cover' }} />
+                ) : (
+                  settings.logoText || 'NMH'
+                )}
               </Box>
               <Box>
                 <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: 1.2 }}>
-                  WINDOWS FLEET / LAN
+                  {settings.tagline || 'NMH OPS SUITE / LAN'}
                 </Typography>
                 <Typography variant="h5" sx={{ fontWeight: 800 }}>
-                  Windows Controller
+                  {settings.appName || 'NMH Ops'}
                 </Typography>
               </Box>
             </Stack>

@@ -40,11 +40,15 @@ import {
   Trash2,
   Plus,
   KeyRound,
-  Fingerprint
+  Fingerprint,
+  Palette,
+  Sliders,
+  Globe
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import { useWebSocket } from '../context/WebSocketContext';
+import { useSystemSettings } from '../context/SystemSettingsContext';
 import { apiRequest } from '../utils/api';
 import { formatDateTime } from '../utils/formatters';
 import Label from '../components/common/Label';
@@ -55,6 +59,7 @@ export default function AdminView() {
   const { lang, t } = useLanguage();
   const { user: currentUser } = useAuth();
   const { hosts, refreshHosts } = useWebSocket();
+  const { settings: systemSettings, updateSettings: updateSystemSettings } = useSystemSettings();
 
   const [allAgents, setAllAgents] = useState([]);
   const [pendingAgents, setPendingAgents] = useState([]);
@@ -62,6 +67,34 @@ export default function AdminView() {
   const [settings, setSettings] = useState({ discordWebhook: '' });
   const [loading, setLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+
+  // System & Brand Settings Form State
+  const [brandForm, setBrandForm] = useState({
+    appName: '',
+    appSubtitle: '',
+    tagline: '',
+    logoText: '',
+    logoUrl: '',
+    ownerSignature: '',
+    timezone: 'Asia/Ho_Chi_Minh',
+    environmentLabel: 'LAN tin cậy'
+  });
+  const [savingBrand, setSavingBrand] = useState(false);
+
+  useEffect(() => {
+    if (systemSettings) {
+      setBrandForm({
+        appName: systemSettings.appName || 'NMH Ops',
+        appSubtitle: systemSettings.appSubtitle || 'Controller',
+        tagline: systemSettings.tagline || 'Unified Fleet & LAN Controller',
+        logoText: systemSettings.logoText || 'NMH',
+        logoUrl: systemSettings.logoUrl || '',
+        ownerSignature: systemSettings.ownerSignature || '@nmhung1993',
+        timezone: systemSettings.timezone || 'Asia/Ho_Chi_Minh',
+        environmentLabel: systemSettings.environmentLabel || 'LAN tin cậy'
+      });
+    }
+  }, [systemSettings]);
 
   // Agent Edit Dialog
   const [editingAgent, setEditingAgent] = useState(null);
@@ -274,6 +307,19 @@ export default function AdminView() {
     }
   };
 
+  const handleSaveBrand = async (e) => {
+    e.preventDefault();
+    setSavingBrand(true);
+    try {
+      await updateSystemSettings(brandForm);
+      setToastMessage('Đã lưu cấu hình hệ thống & nhận diện thành công!');
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSavingBrand(false);
+    }
+  };
+
   const approvedHosts = allAgents.filter((a) => a.status === 'approved');
 
   return (
@@ -476,7 +522,107 @@ export default function AdminView() {
           </Card>
         </Grid>
 
-        {/* Section 4: Discord Webhook Integration */}
+        {/* Section 4: System & Brand Customization (Super Admin Only) */}
+        <Grid item xs={12}>
+          <Card>
+            <CardHeader
+              title="Cấu hình Hệ thống, Nhận diện & Múi giờ"
+              subheader="Tùy biến tên hệ thống, logo, chữ ký owner và múi giờ hiển thị toàn cục"
+              titleTypographyProps={{ typography: 'h6', fontWeight: 700 }}
+              action={<Palette size={22} color={theme.palette.text.secondary} />}
+            />
+            <CardContent>
+              <form onSubmit={handleSaveBrand}>
+                <Grid container spacing={2.5}>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <TextField
+                      label="Tên hệ thống (App Name)"
+                      value={brandForm.appName}
+                      onChange={(e) => setBrandForm({ ...brandForm, appName: e.target.value })}
+                      required
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <TextField
+                      label="Phụ đề / Vai trò (Subtitle)"
+                      value={brandForm.appSubtitle}
+                      onChange={(e) => setBrandForm({ ...brandForm, appSubtitle: e.target.value })}
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <TextField
+                      label="Ký tự Logo Badge"
+                      value={brandForm.logoText}
+                      onChange={(e) => setBrandForm({ ...brandForm, logoText: e.target.value })}
+                      helperText="Ví dụ: NMH, OPS, LAB"
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <TextField
+                      label="Chữ ký Footer / Owner"
+                      value={brandForm.ownerSignature}
+                      onChange={(e) => setBrandForm({ ...brandForm, ownerSignature: e.target.value })}
+                      helperText="Ví dụ: @nmhung1993"
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <TextField
+                      label="Slogan / Tagline (Hero Title)"
+                      value={brandForm.tagline}
+                      onChange={(e) => setBrandForm({ ...brandForm, tagline: e.target.value })}
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <TextField
+                      label="Đường dẫn ảnh Logo URL (Tùy chọn)"
+                      value={brandForm.logoUrl}
+                      onChange={(e) => setBrandForm({ ...brandForm, logoUrl: e.target.value })}
+                      placeholder="https://... hoặc data:image/..."
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <FormControl fullWidth>
+                      <InputLabel>Múi giờ hiển thị (Timezone)</InputLabel>
+                      <Select
+                        value={brandForm.timezone}
+                        label="Múi giờ hiển thị (Timezone)"
+                        onChange={(e) => setBrandForm({ ...brandForm, timezone: e.target.value })}
+                      >
+                        <MenuItem value="Asia/Ho_Chi_Minh">🇻🇳 Asia/Ho_Chi_Minh (GMT+7 - Mặc định)</MenuItem>
+                        <MenuItem value="Asia/Bangkok">🇹🇭 Asia/Bangkok (GMT+7)</MenuItem>
+                        <MenuItem value="Asia/Tokyo">🇯🇵 Asia/Tokyo (GMT+9)</MenuItem>
+                        <MenuItem value="Asia/Singapore">🇸🇬 Asia/Singapore (GMT+8)</MenuItem>
+                        <MenuItem value="Europe/London">🇬🇧 Europe/London (GMT+0 / GMT+1)</MenuItem>
+                        <MenuItem value="America/New_York">🇺🇸 America/New_York (EST)</MenuItem>
+                        <MenuItem value="UTC">🌐 UTC (Coordinated Universal Time)</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                </Grid>
+
+                <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    color="primary"
+                    disabled={savingBrand}
+                    sx={{ minWidth: 160, fontWeight: 700 }}
+                  >
+                    {savingBrand ? 'Đang lưu...' : 'Lưu cấu hình hệ thống'}
+                  </Button>
+                </Box>
+              </form>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Section 5: Discord Webhook Integration */}
         <Grid item xs={12}>
           <Card>
             <CardHeader
