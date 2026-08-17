@@ -5,6 +5,8 @@
   "main": "server/server.js",
   "scripts": {
     "start": "node server/server.js",
+    "build:frontend": "npm --prefix frontend run build",
+    "dev:frontend": "npm --prefix frontend run dev",
     "dev": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File deploy/start-dev-server.ps1",
     "dev:standalone": "node --watch server/server.js",
     "agent": "node agent/agent.js",

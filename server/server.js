@@ -62,7 +62,10 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: '12mb' }));
-app.use(express.static(path.join(__dirname, '..', 'public')));
+const staticPath = fs.existsSync(path.join(__dirname, '..', 'frontend', 'dist'))
+  ? path.join(__dirname, '..', 'frontend', 'dist')
+  : path.join(__dirname, '..', 'public');
+app.use(express.static(staticPath));
 
 function loadOrCreateSecret(name) {
   const file = path.join(DATA_DIR, name);
@@ -909,7 +912,7 @@ app.get('/api/v1/screenshots/:id', authenticate, (req, res) => {
   res.sendFile(row.file_path);
 });
 
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'index.html')));
+app.get('*', (req, res) => res.sendFile(path.join(staticPath, 'index.html')));
 
 function cleanupData() {
   const now = Date.now();

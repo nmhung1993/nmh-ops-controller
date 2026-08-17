@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  windows-controller-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: windows-controller-server
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3003
+      - DATA_DIR=/app/data
+      - TZ=Asia/Bangkok
+    volumes:
+      - ./data:/app/data
