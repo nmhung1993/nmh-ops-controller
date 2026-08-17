@@ -9,7 +9,7 @@
   <script>
     document.documentElement.dataset.theme = localStorage.getItem('wc_theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   </script>
-  <link rel="stylesheet" href="css/style.css?v=3.0.1">
+  <link rel="stylesheet" href="css/style.css?v=3.0.2">
 </head>
 <body>
   <a class="skip-link" href="#main-content" data-i18n="accessibility.skipToContent">Chuyển đến nội dung chính</a>
@@ -193,5 +193,8 @@
 
   <div class="toast-region" id="toast-region" role="status" aria-live="polite"></div>
   <script src="js/app.js?v=3.0.1"></script>
+<!-- impeccable-live-start -->
+<script src="http://localhost:8400/live.js?token=12ae6cdd-2104-4639-89a0-cf582d561f1f"></script>
+<!-- impeccable-live-end -->
 </body>
 </html>
