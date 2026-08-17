@@ -74,18 +74,45 @@ async function getDisks() {
   if (Date.now() - diskCache.at < 30_000) return diskCache.value;
   try {
     const output = await runPowerShell(`
-      Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" |
-        Select-Object DeviceID,Size,FreeSpace | ConvertTo-Json -Compress
+      $logical = @(Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction SilentlyContinue |
+        Select-Object DeviceID,Size,FreeSpace,VolumeName)
+      $physical = @(Get-PhysicalDisk -ErrorAction SilentlyContinue |
+        Select-Object DeviceId,FriendlyName,MediaType,BusType,OperationalStatus,HealthStatus,Size)
+      [PSCustomObject]@{
+        Logical = $logical
+        Physical = $physical
+      } | ConvertTo-Json -Compress
     `);
-    const parsed = JSON.parse(output || '[]');
-    const disks = (Array.isArray(parsed) ? parsed : [parsed]).map(disk => {
+    const parsed = JSON.parse(output || '{}');
+    const logicalList = Array.isArray(parsed.Logical) ? parsed.Logical : parsed.Logical ? [parsed.Logical] : [];
+    const physicalList = Array.isArray(parsed.Physical) ? parsed.Physical : parsed.Physical ? [parsed.Physical] : [];
+
+    const disks = logicalList.map(disk => {
       const total = Number(disk.Size || 0);
       const free = Number(disk.FreeSpace || 0);
-      return { drive: disk.DeviceID, total, free, used: total - free };
+      return {
+        drive: disk.DeviceID,
+        volumeName: disk.VolumeName || '',
+        total,
+        free,
+        used: total - free,
+        percent: total > 0 ? Number(((total - free) / total * 100).toFixed(1)) : 0
+      };
     });
-    diskCache = { at: Date.now(), value: disks };
+
+    const physicalDisks = physicalList.map(disk => ({
+      deviceId: String(disk.DeviceId || ''),
+      name: disk.FriendlyName || 'Physical Drive',
+      mediaType: disk.MediaType || 'SSD',
+      busType: disk.BusType || 'NVMe',
+      healthStatus: disk.HealthStatus || 'Healthy',
+      operationalStatus: disk.OperationalStatus || 'OK',
+      size: Number(disk.Size || 0)
+    }));
+
+    diskCache = { at: Date.now(), value: { logical: disks, physical: physicalDisks } };
   } catch {
-    diskCache = { at: Date.now(), value: [] };
+    diskCache = { at: Date.now(), value: { logical: [], physical: [] } };
   }
   return diskCache.value;
 }
@@ -411,7 +438,9 @@ async function collectTelemetry() {
   const totalMemory = os.totalmem();
   const freeMemory = os.freemem();
   const usedMemory = totalMemory - freeMemory;
-  const [disk, network, hardware] = await Promise.all([getDisks(), getNetwork(), getHardwareSensors()]);
+  const [diskData, network, hardware] = await Promise.all([getDisks(), getNetwork(), getHardwareSensors()]);
+  const disk = Array.isArray(diskData) ? diskData : diskData?.logical || [];
+  const physicalDisks = Array.isArray(diskData?.physical) ? diskData.physical : [];
   return {
     timestamp: new Date().toISOString(),
     cpu: {
@@ -426,6 +455,7 @@ async function collectTelemetry() {
       percent: Number(((usedMemory / totalMemory) * 100).toFixed(1))
     },
     disk,
+    physicalDisks,
     network,
     hardware,
     uptime: os.uptime(),

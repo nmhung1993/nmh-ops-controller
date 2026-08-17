@@ -26,7 +26,6 @@ data/
 jwt-secret
 
 # Test artifacts & Playwright reports
-tests/
 test-results/
 playwright-report/
 blob-report/

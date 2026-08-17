@@ -28,11 +28,12 @@ const SCREENSHOT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const AGENT_OFFLINE_MS = 20_000;
 const COMMAND_TIMEOUT_MS = 60_000;
 const MAX_SCREENSHOT_BYTES = 10 * 1024 * 1024;
-const ALLOWED_COMMANDS = new Set(['process.kill', 'watchdog.launch', 'window.capture']);
+const ALLOWED_COMMANDS = new Set(['process.kill', 'watchdog.launch', 'window.capture', 'system.execute']);
 const COMMAND_CAPABILITIES = {
   'process.kill': ['process.kill', 'processes'],
   'watchdog.launch': ['watchdog.launch', 'watchdog'],
-  'window.capture': ['window.capture', 'desktop-helper']
+  'window.capture': ['window.capture', 'desktop-helper'],
+  'system.execute': ['system.execute', 'powershell', 'windows', 'processes', 'telemetry']
 };
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -527,6 +528,7 @@ function validateCommand(type, payload) {
   if (type === 'process.kill' && (!Number.isInteger(Number(payload.pid)) || Number(payload.pid) <= 0)) return 'Valid PID required';
   if (type === 'watchdog.launch' && !payload.ruleId) return 'ruleId required';
   if (type === 'window.capture' && !payload.processName) return 'processName required';
+  if (type === 'system.execute' && !payload.command?.trim()) return 'command required';
   return null;
 }
 

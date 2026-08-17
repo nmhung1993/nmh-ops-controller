@@ -10,7 +10,8 @@ const {
   getProcesses,
   killProcess,
   launchServiceProcess,
-  getMachineFingerprint
+  getMachineFingerprint,
+  runPowerShell
 } = require('./windows');
 
 const VERSION = '2.1.4';
@@ -198,7 +199,7 @@ async function connect() {
       fingerprint: cachedFingerprint,
       platform: `${os.type()} ${os.release()} ${os.arch()}`,
       version: VERSION,
-      capabilities: ['telemetry', 'hardware-sensors', 'processes', 'process.kill', 'watchdog', 'watchdog.launch', 'service-launch', 'desktop-helper', 'window.capture', 'windows']
+      capabilities: ['telemetry', 'hardware-sensors', 'processes', 'process.kill', 'watchdog', 'watchdog.launch', 'service-launch', 'desktop-helper', 'window.capture', 'windows', 'system.execute', 'powershell']
     }));
   });
 
@@ -489,6 +490,11 @@ async function executeCommand(command) {
       result = await manualLaunchRule(rule, commandId);
     } else if (commandType === 'window.capture') {
       result = await captureWindow(data.processName, commandId);
+    } else if (commandType === 'system.execute') {
+      const script = String(data.command || '').trim();
+      if (!script) throw new Error('command_empty');
+      const output = await runPowerShell(script, { timeout: 30_000 });
+      result = { stdout: output };
     } else {
       throw new Error('unsupported_command');
     }

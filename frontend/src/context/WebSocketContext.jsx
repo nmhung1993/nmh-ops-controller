@@ -21,7 +21,13 @@ export function WebSocketProvider({ children }) {
   const [status, setStatus] = useState('disconnected');
   const [hosts, setHosts] = useState([]);
   const [selectedHostId, setSelectedHostIdState] = useState(() => {
-    return new URLSearchParams(window.location.search).get('host') || null;
+    const urlHost = new URLSearchParams(window.location.search).get('host');
+    if (urlHost) return urlHost;
+    try {
+      return localStorage.getItem('nmh_selected_host_id') || null;
+    } catch (e) {
+      return null;
+    }
   });
   const [telemetryMap, setTelemetryMap] = useState({});
   const [processesMap, setProcessesMap] = useState({});
@@ -35,6 +41,14 @@ export function WebSocketProvider({ children }) {
 
   const setSelectedHostId = useCallback((id) => {
     setSelectedHostIdState(id);
+    try {
+      if (id) {
+        localStorage.setItem('nmh_selected_host_id', id);
+      } else {
+        localStorage.removeItem('nmh_selected_host_id');
+      }
+    } catch (e) {}
+
     const url = new URL(window.location);
     if (id) {
       url.searchParams.set('host', id);
@@ -75,13 +89,29 @@ export function WebSocketProvider({ children }) {
           return updated;
         });
 
-        // Set default selected host if none or current invalid
+        // Set default selected host if none or current invalid, prioritizing localStorage
         setSelectedHostIdState((current) => {
           if (data.length === 0) return null;
-          if (!current || !data.some((h) => h.id === current)) {
-            return data[0].id;
+          let targetId = current;
+          if (!targetId) {
+            try {
+              targetId = localStorage.getItem('nmh_selected_host_id');
+            } catch (e) {}
           }
-          return current;
+          if (!targetId || !data.some((h) => h.id === targetId)) {
+            targetId = data[0].id;
+          }
+          try {
+            localStorage.setItem('nmh_selected_host_id', targetId);
+          } catch (e) {}
+
+          const url = new URL(window.location);
+          if (url.searchParams.get('host') !== targetId) {
+            url.searchParams.set('host', targetId);
+            window.history.replaceState({}, '', url);
+          }
+
+          return targetId;
         });
       }
     } catch (err) {

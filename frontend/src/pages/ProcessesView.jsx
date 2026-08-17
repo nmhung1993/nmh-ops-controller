@@ -27,8 +27,19 @@ import {
   Trash2,
   Lock,
   Camera,
-  Server
+  Server,
+  Terminal,
+  Play,
+  Copy,
+  Check
 } from 'lucide-react';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Chip
+} from '@mui/material';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import { useWebSocket } from '../context/WebSocketContext';
@@ -54,6 +65,75 @@ export default function ProcessesView() {
   const [killTarget, setKillTarget] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+
+  // Terminal Dialog state
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [terminalCmd, setTerminalCmd] = useState('');
+  const [terminalHistory, setTerminalHistory] = useState([
+    { command: '# Remote PowerShell / Shell Console đã sẵn sàng', stdout: 'Nhập lệnh hoặc chọn mẫu lệnh bên dưới để thực thi trên máy trạm.', time: '' }
+  ]);
+  const [runningCmd, setRunningCmd] = useState(false);
+  const [copiedIdx, setCopiedIdx] = useState(null);
+
+  const handleRunTerminal = async (cmdToRun) => {
+    const script = (cmdToRun || terminalCmd).trim();
+    if (!script || !selectedHostId) return;
+    setRunningCmd(true);
+    try {
+      const res = await apiRequest(`/api/v1/hosts/${selectedHostId}/commands`, {
+        method: 'POST',
+        body: JSON.stringify({
+          type: 'system.execute',
+          payload: { command: script }
+        })
+      });
+      const cmdId = res.id;
+      
+      // Poll for command completion (up to 15s)
+      let done = false;
+      let attempts = 0;
+      while (!done && attempts < 15) {
+        await new Promise(r => setTimeout(r, 1000));
+        attempts++;
+        const cmds = await apiRequest(`/api/v1/hosts/${selectedHostId}/commands`);
+        const target = cmds.find(c => c.id === cmdId);
+        if (target && (target.status === 'succeeded' || target.status === 'failed')) {
+          done = true;
+          setTerminalHistory(prev => [
+            ...prev,
+            {
+              command: script,
+              stdout: target.result?.stdout || target.error || (target.status === 'succeeded' ? '(Thực thi thành công không có output)' : 'Lỗi thực thi'),
+              status: target.status,
+              time: new Date().toLocaleTimeString()
+            }
+          ]);
+        }
+      }
+      if (!done) {
+        setTerminalHistory(prev => [
+          ...prev,
+          { command: script, stdout: 'Lệnh đã được gửi đến Agent và đang chạy ngầm...', status: 'queued', time: new Date().toLocaleTimeString() }
+        ]);
+      }
+      setTerminalCmd('');
+    } catch (err) {
+      setTerminalHistory(prev => [
+        ...prev,
+        { command: script, stdout: `Lỗi: ${err.message}`, status: 'failed', time: new Date().toLocaleTimeString() }
+      ]);
+    } finally {
+      setRunningCmd(false);
+    }
+  };
+
+  const PRESET_COMMANDS = [
+    { label: 'ipconfig /all', cmd: 'ipconfig /all' },
+    { label: 'Get-Service', cmd: 'Get-Service | Where-Object {$_.Status -eq "Running"} | Select-Object -First 15 Name, DisplayName, Status' },
+    { label: 'Get-NetIPAddress', cmd: 'Get-NetIPAddress -AddressFamily IPv4 | Select-Object IPAddress, InterfaceAlias' },
+    { label: 'Top 10 CPU Processes', cmd: 'Get-Process | Sort-Object CPU -Descending | Select-Object -First 10 Id, ProcessName, CPU' },
+    { label: 'Test DNS (8.8.8.8)', cmd: 'Test-NetConnection -ComputerName 8.8.8.8 -Port 53' }
+  ];
 
   const fetchProcesses = async () => {
     if (!selectedHostId) return;
@@ -168,6 +248,18 @@ export default function ProcessesView() {
           >
             {t('process.fetch')}
           </Button>
+
+          {isAdmin && (
+            <Button
+              variant="outlined"
+              color="primary"
+              startIcon={<Terminal size={18} />}
+              onClick={() => setTerminalOpen(true)}
+              sx={{ whiteSpace: 'nowrap', fontWeight: 700 }}
+            >
+              Console / Terminal
+            </Button>
+          )}
         </Stack>
       </Stack>
 
@@ -279,6 +371,159 @@ export default function ProcessesView() {
           onClose={() => setKillTarget(null)}
         />
       )}
+
+      {/* Remote Interactive Terminal Dialog */}
+      <Dialog
+        open={terminalOpen}
+        onClose={() => setTerminalOpen(false)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: theme.palette.mode === 'dark' ? '#0f172a' : '#1e293b',
+            color: '#f8fafc',
+            borderRadius: 2
+          }
+        }}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1.5, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+          <Stack direction="row" alignItems="center" spacing={1.5}>
+            <Terminal size={22} color="#38bdf8" />
+            <Typography variant="h6" sx={{ fontWeight: 800, color: '#f8fafc' }}>
+              Remote PowerShell Console • {selectedHost?.displayName || selectedHost?.hostname}
+            </Typography>
+          </Stack>
+          <Button
+            size="small"
+            variant="text"
+            sx={{ color: '#94a3b8' }}
+            onClick={() => setTerminalHistory([])}
+          >
+            Xóa màn hình (Clear)
+          </Button>
+        </DialogTitle>
+
+        <DialogContent sx={{ py: 2.5 }}>
+          {/* Quick Presets */}
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block', mb: 1, fontWeight: 700 }}>
+              MẪU LỆNH NHANH:
+            </Typography>
+            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+              {PRESET_COMMANDS.map((preset, idx) => (
+                <Chip
+                  key={idx}
+                  label={preset.label}
+                  size="small"
+                  onClick={() => handleRunTerminal(preset.cmd)}
+                  disabled={runningCmd}
+                  sx={{
+                    bgcolor: 'rgba(56, 189, 248, 0.15)',
+                    color: '#38bdf8',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    '&:hover': { bgcolor: 'rgba(56, 189, 248, 0.3)' }
+                  }}
+                />
+              ))}
+            </Stack>
+          </Box>
+
+          {/* Terminal Output Window */}
+          <Box
+            sx={{
+              p: 2,
+              minHeight: 280,
+              maxHeight: 400,
+              overflowY: 'auto',
+              bgcolor: '#020617',
+              borderRadius: 1.5,
+              border: '1px solid rgba(255,255,255,0.1)',
+              fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+              fontSize: '0.85rem',
+              lineHeight: 1.5
+            }}
+          >
+            {terminalHistory.map((item, idx) => (
+              <Box key={idx} sx={{ mb: 1.5 }}>
+                <Stack direction="row" justifyContent="space-between" alignItems="center">
+                  <Typography sx={{ color: '#38bdf8', fontWeight: 700, fontFamily: 'inherit', fontSize: 'inherit' }}>
+                    PS &gt; {item.command}
+                  </Typography>
+                  {item.time && (
+                    <Typography sx={{ color: '#64748b', fontSize: '0.75rem', fontFamily: 'inherit' }}>
+                      {item.time}
+                    </Typography>
+                  )}
+                </Stack>
+                <Typography
+                  component="pre"
+                  sx={{
+                    mt: 0.5,
+                    color: item.status === 'failed' ? '#f87171' : '#cbd5e1',
+                    fontFamily: 'inherit',
+                    fontSize: 'inherit',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    m: 0
+                  }}
+                >
+                  {item.stdout}
+                </Typography>
+              </Box>
+            ))}
+            {runningCmd && (
+              <Typography sx={{ color: '#facc15', fontStyle: 'italic', fontFamily: 'inherit' }}>
+                ⏳ Đang thực thi lệnh trên Agent...
+              </Typography>
+            )}
+          </Box>
+        </DialogContent>
+
+        <DialogActions sx={{ p: 2, pt: 0, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleRunTerminal();
+            }}
+            style={{ width: '100%', display: 'flex', gap: '8px', alignItems: 'center' }}
+          >
+            <TextField
+              placeholder="Nhập lệnh PowerShell hoặc CMD (ví dụ: Get-Service, ipconfig)..."
+              value={terminalCmd}
+              onChange={(e) => setTerminalCmd(e.target.value)}
+              disabled={runningCmd}
+              size="small"
+              fullWidth
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  bgcolor: '#020617',
+                  color: '#f8fafc',
+                  fontFamily: 'Consolas, Monaco, monospace',
+                  fontSize: '0.875rem',
+                  '& fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                  '&:hover fieldset': { borderColor: '#38bdf8' }
+                }
+              }}
+            />
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={runningCmd || !terminalCmd.trim()}
+              startIcon={<Play size={16} />}
+              sx={{
+                bgcolor: '#0284c7',
+                color: '#ffffff',
+                fontWeight: 700,
+                minWidth: 100,
+                '&:hover': { bgcolor: '#0369a1' }
+              }}
+            >
+              {runningCmd ? 'Chạy...' : 'Chạy'}
+            </Button>
+          </form>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

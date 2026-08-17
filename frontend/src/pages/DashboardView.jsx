@@ -139,9 +139,10 @@ export default function DashboardView() {
     ? t('dashboard.powerPartsMeasured', { count: powerParts.length })
     : (Number.isFinite(powerWatts) ? 'Công suất hệ thống' : t('dashboard.sensorUnavailable'));
 
-  // Disks
+  // Disks & S.M.A.R.T Physical Disks
   const rawDisks = telemetry.disk || telemetry.disks || [];
   const disks = Array.isArray(rawDisks) ? rawDisks : [];
+  const physicalDisks = Array.isArray(telemetry.physicalDisks) ? telemetry.physicalDisks : [];
 
   // All sensors for display
   const allSensors = temperatures.length > 0 || powerParts.length > 0
@@ -597,6 +598,46 @@ export default function DashboardView() {
                       </Box>
                     );
                   })}
+
+                  {/* S.M.A.R.T Physical Disks Health */}
+                  {physicalDisks.length > 0 && (
+                    <Box sx={{ mt: 2, pt: 2, borderTop: `1px dashed ${theme.palette.divider}` }}>
+                      <Typography variant="caption" sx={{ fontWeight: 800, color: 'text.secondary', display: 'block', mb: 1.5, letterSpacing: 0.5 }}>
+                        SỨC KHỎE Ổ CỨNG VẬT LÝ (S.M.A.R.T)
+                      </Typography>
+                      <Stack spacing={1.5}>
+                        {physicalDisks.map((pDisk, pIdx) => {
+                          const isHealthy = pDisk.healthStatus === 'Healthy' || pDisk.operationalStatus === 'OK';
+                          return (
+                            <Stack
+                              key={pIdx}
+                              direction="row"
+                              alignItems="center"
+                              justifyContent="space-between"
+                              sx={{
+                                p: 1.25,
+                                borderRadius: 1.5,
+                                bgcolor: alpha(theme.palette.background.default, 0.6),
+                                border: `1px solid ${theme.palette.divider}`
+                              }}
+                            >
+                              <Box sx={{ minWidth: 0, mr: 1 }}>
+                                <Typography variant="subtitle2" noWrap sx={{ fontWeight: 700, fontSize: '0.8125rem' }}>
+                                  {pDisk.name}
+                                </Typography>
+                                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                  {pDisk.mediaType || 'Disk'} • {pDisk.busType || 'NVMe/SATA'} • {formatBytes(pDisk.size)}
+                                </Typography>
+                              </Box>
+                              <Label color={isHealthy ? 'success' : 'error'}>
+                                {pDisk.healthStatus || 'OK'}
+                              </Label>
+                            </Stack>
+                          );
+                        })}
+                      </Stack>
+                    </Box>
+                  )}
                 </Stack>
               )}
             </CardContent>
