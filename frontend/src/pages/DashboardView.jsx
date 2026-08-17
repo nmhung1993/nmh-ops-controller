@@ -216,36 +216,41 @@ export default function DashboardView() {
     return [{ name: 'Công suất (W)', data: seriesData }];
   }, [chartPoints]);
 
-  const chartCpuSeries = [{ name: 'CPU %', data: chartPoints.map((item) => Number(item.cpu?.usage || 0).toFixed(1)) }];
-  const chartMemSeries = [{ name: 'RAM %', data: chartPoints.map((item) => Number(item.memory?.percent || 0).toFixed(1)) }];
+  const chartCpuSeries = useMemo(() => [
+    { name: 'CPU %', data: chartPoints.map((item) => Number(item.cpu?.usage || 0).toFixed(1)) }
+  ], [chartPoints]);
 
-  const cpuChartOptions = {
+  const chartMemSeries = useMemo(() => [
+    { name: 'RAM %', data: chartPoints.map((item) => Number(item.memory?.percent || 0).toFixed(1)) }
+  ], [chartPoints]);
+
+  const cpuChartOptions = useMemo(() => ({
     colors: [theme.palette.primary.main],
     xaxis: { categories: chartTimestamps, labels: { rotate: -30, rotateAlways: chartPoints.length > 20 } },
     yaxis: { min: 0, max: 100, labels: { formatter: (v) => `${v}%` } },
     tooltip: { y: { formatter: (v) => `${v}%` } }
-  };
+  }), [theme.palette.primary.main, chartTimestamps, chartPoints.length]);
 
-  const memChartOptions = {
+  const memChartOptions = useMemo(() => ({
     colors: [theme.palette.info.main],
     xaxis: { categories: chartTimestamps, labels: { rotate: -30, rotateAlways: chartPoints.length > 20 } },
     yaxis: { min: 0, max: 100, labels: { formatter: (v) => `${v}%` } },
     tooltip: { y: { formatter: (v) => `${v}%` } }
-  };
+  }), [theme.palette.info.main, chartTimestamps, chartPoints.length]);
 
-  const tempChartOptions = {
+  const tempChartOptions = useMemo(() => ({
     colors: [theme.palette.warning.main],
     xaxis: { categories: chartTimestamps, labels: { rotate: -30, rotateAlways: chartPoints.length > 20 } },
     yaxis: { min: 0, max: 100, labels: { formatter: (v) => `${v}°C` } },
     tooltip: { y: { formatter: (v) => `${v}°C` } }
-  };
+  }), [theme.palette.warning.main, chartTimestamps, chartPoints.length]);
 
-  const powerChartOptions = {
+  const powerChartOptions = useMemo(() => ({
     colors: [theme.palette.error.main],
     xaxis: { categories: chartTimestamps, labels: { rotate: -30, rotateAlways: chartPoints.length > 20 } },
     yaxis: { min: 0, labels: { formatter: (v) => `${v} W` } },
     tooltip: { y: { formatter: (v) => `${v} W` } }
-  };
+  }), [theme.palette.error.main, chartTimestamps, chartPoints.length]);
 
   if (!selectedHost) {
     return (

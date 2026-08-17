@@ -499,7 +499,7 @@ export default function NetworkMonitorView() {
       colors: [theme.palette.primary.main],
       chart: {
         toolbar: { show: false },
-        animations: { enabled: true }
+        animations: { enabled: false }
       },
       stroke: { curve: 'smooth', width: 2.5 },
       fill: {
@@ -525,7 +525,7 @@ export default function NetworkMonitorView() {
         }
       }
     };
-  }, [theme, chartTimestamps]);
+  }, [theme.palette.primary.main, chartTimestamps]);
 
   return (
     <Box>

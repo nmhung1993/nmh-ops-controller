@@ -18,6 +18,7 @@ const {
   parseJson
 } = require('./database');
 const { networkRouter } = require('./network-monitor');
+const { alertEngine } = require('./alert-engine');
 
 const PORT = Number(process.env.PORT || 3003);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -417,6 +418,17 @@ function storeTelemetry(agentId, message) {
       Number(telemetry.memory?.percent || 0), JSON.stringify(telemetry));
     if (result.changes) lastTelemetryPersistedAt.set(agentId, timestampMs);
   }
+
+  // Smart Threshold Evaluation
+  const host = getHost(agentId);
+  if (host) {
+    alertEngine.evaluateTelemetry({
+      id: host.id,
+      hostname: host.hostname,
+      displayName: host.display_name
+    }, telemetry);
+  }
+
   broadcastUi('ui.telemetry', telemetry, agentId);
 }
 
@@ -987,6 +999,44 @@ app.put('/api/v1/system/settings', authenticate, requireSuperAdmin, (req, res) =
   saveJsonFile(SYSTEM_SETTINGS_FILE, systemSettings);
   broadcastUi('ui.system.settings', systemSettings);
   res.json({ success: true, settings: systemSettings });
+});
+
+// GET Alert Rules & Notification Channels
+app.get('/api/v1/alerts/rules', authenticate, (req, res) => {
+  res.json(alertEngine.config);
+});
+
+// PUT Alert Rules & Notification Channels (Super Admin only)
+app.put('/api/v1/alerts/rules', authenticate, requireSuperAdmin, (req, res) => {
+  const success = alertEngine.saveConfig(req.body || {});
+  if (success) {
+    // If discord webhook was updated, sync to db legacy setting as well
+    if (req.body?.channels?.discord?.webhookUrl !== undefined) {
+      setSetting(db, 'discord_webhook', req.body.channels.discord.webhookUrl);
+    }
+    res.json({ success: true, config: alertEngine.config });
+  } else {
+    res.status(500).json({ error: 'Failed to save alert rules' });
+  }
+});
+
+// POST Send Test Alert Notification
+app.post('/api/v1/alerts/test', authenticate, requireSuperAdmin, async (req, res) => {
+  try {
+    await alertEngine.dispatchAlert({
+      hostName: 'Central Controller (Test)',
+      title: 'Kiểm tra thông báo cảnh báo',
+      message: 'Đây là thông báo thử nghiệm từ hệ thống NMH Ops.',
+      severity: 'info',
+      details: [
+        { name: 'Kênh kiểm tra', value: 'Telegram / Discord / Webhook' },
+        { name: 'Trạng thái', value: 'Hoạt động bình thường' }
+      ]
+    });
+    res.json({ success: true, message: 'Đã gửi thông báo kiểm tra' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/api/v1/screenshots/:id', authenticate, (req, res) => {

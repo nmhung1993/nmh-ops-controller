@@ -1,15 +1,21 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import ReactApexChart from 'react-apexcharts';
 import { useTheme } from '@mui/material/styles';
 import { Box } from '@mui/material';
 
-export default function Chart({ type, series, options, height = 300, ...other }) {
+function ChartComponent({ type, series, options, height = 300, ...other }) {
   const theme = useTheme();
 
-  const customOptions = {
+  const customOptions = useMemo(() => ({
     chart: {
       toolbar: { show: false },
       zoom: { enabled: false },
+      animations: {
+        enabled: false, // Disabling dynamic redraw animation prevents main-thread stutter on live streams
+        dynamicAnimation: {
+          enabled: false
+        }
+      },
       foreColor: theme.palette.text.disabled,
       fontFamily: theme.typography.fontFamily,
       ...options?.chart
@@ -41,7 +47,7 @@ export default function Chart({ type, series, options, height = 300, ...other })
     },
     dataLabels: { enabled: false, ...options?.dataLabels },
     stroke: {
-      width: 3,
+      width: 2.5,
       curve: 'smooth',
       lineCap: 'round',
       ...options?.stroke
@@ -85,7 +91,7 @@ export default function Chart({ type, series, options, height = 300, ...other })
       ...options?.legend
     },
     ...options
-  };
+  }), [theme.palette.mode, theme.palette.text.disabled, theme.palette.text.primary, theme.palette.divider, theme.palette.background.paper, theme.typography.fontFamily, options]);
 
   return (
     <Box
@@ -95,7 +101,7 @@ export default function Chart({ type, series, options, height = 300, ...other })
         },
         '& .apexcharts-tooltip': {
           borderRadius: '10px !important',
-          boxShadow: `${theme.customShadows.dropdown} !important`,
+          boxShadow: `${theme.customShadows?.dropdown || '0 8px 16px rgba(0,0,0,0.1)'} !important`,
           border: `1px solid ${theme.palette.divider} !important`,
           backgroundColor: `${theme.palette.background.paper} !important`,
           color: `${theme.palette.text.primary} !important`
@@ -106,3 +112,6 @@ export default function Chart({ type, series, options, height = 300, ...other })
     </Box>
   );
 }
+
+const Chart = React.memo(ChartComponent);
+export default Chart;

@@ -685,6 +685,434 @@ return mgr.api('/api/xqnetwork/set_all_wifi', 'POST', querystring.stringify(payl
 }
 
 // ==========================================
+// Gecoos AP Manager (192.168.31.43)
+// ==========================================
+class GecoosManager {
+  constructor(config = {}) {
+    this.host = config.host || '192.168.31.43';
+    this.password = config.password !== undefined ? config.password : '@nmhung1993';
+    this.token = null;
+    this.cookie = '';
+    this.cachedStationMap = null;
+    this.lastStationMapFetch = 0;
+  }
+
+  formatDuration(seconds) {
+    if (isNaN(seconds) || seconds <= 0) return '0 giây';
+    const d = Math.floor(seconds / 86400);
+    const h = Math.floor((seconds % 86400) / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const parts = [];
+    if (d > 0) parts.push(`${d} ngày`);
+    if (h > 0 || d > 0) parts.push(`${h} giờ`);
+    if (m > 0 || h > 0 || d > 0) parts.push(`${m} phút`);
+    return parts.join(' ');
+  }
+
+  md5(str) {
+    return crypto.createHash('md5').update(Buffer.from(str, 'utf8')).digest('hex');
+  }
+
+  httpRequest(path, method = 'GET', data = null, headers = {}, timeoutMs = 2500) {
+    return new Promise((resolve, reject) => {
+      let isDone = false;
+      const done = (err, res) => {
+        if (isDone) return;
+        isDone = true;
+        clearTimeout(timer);
+        if (err) reject(err);
+        else resolve(res);
+      };
+
+      const timer = setTimeout(() => {
+        if (!isDone) {
+          try { req.destroy(); } catch {}
+          done(new Error(`Gecoos timeout (${timeoutMs}ms) requesting ${path}`));
+        }
+      }, timeoutMs);
+
+      const defaultHeaders = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'X-Requested-With': 'XMLHttpRequest'
+      };
+      if (this.cookie) defaultHeaders['Cookie'] = this.cookie;
+      if (data) {
+        defaultHeaders['Content-Type'] = 'application/x-www-form-urlencoded';
+        defaultHeaders['Content-Length'] = Buffer.byteLength(data);
+      }
+
+      const req = http.request({
+        hostname: this.host,
+        port: 80,
+        path,
+        method,
+        headers: { ...defaultHeaders, ...headers }
+      }, res => {
+        let body = '';
+        res.on('data', c => body += c);
+        res.on('end', () => done(null, { statusCode: res.statusCode, headers: res.headers, body }));
+        res.on('error', err => done(err));
+      });
+
+      req.on('error', err => done(err));
+      if (data) req.write(data);
+      req.end();
+    });
+  }
+
+  async login() {
+    try {
+      const randRes = await this.httpRequest('/cgi-bin/api/admin/getrandom', 'GET', null, {}, 2000);
+      const randJson = JSON.parse(randRes.body || '{}');
+      const rand = randJson.random;
+      if (!rand) throw new Error('Failed to get Gecoos random token');
+
+      const hash = this.md5(rand + this.password);
+      const payload = querystring.stringify({ username: 'root', password: hash });
+
+      const authRes = await this.httpRequest('/cgi-bin/api/admin/sysauth', 'POST', payload, {}, 2500);
+      const authJson = JSON.parse(authRes.body || '{}');
+      if (authJson.ret === 1 && authJson.token) {
+        this.token = authJson.token;
+        this.cookie = authRes.headers['set-cookie'] ? authRes.headers['set-cookie'].join('; ') : `sysauth=${this.token}`;
+        return this.token;
+      }
+      throw new Error(authJson.msg || 'Gecoos login failed');
+    } catch (e) {
+      this.token = null;
+      throw e;
+    }
+  }
+
+  async fetchStatus() {
+    try {
+      if (!this.token) await this.login();
+      const resData = await this.httpRequest(`/cgi-bin/api/admin/status/overview?status=1&randtime=${Date.now()}`, 'GET', null, {}, 2500);
+      let res = JSON.parse(resData.body || '{}');
+
+      if (res.ret === -99) {
+        this.token = null;
+        await this.login();
+        const retryData = await this.httpRequest(`/cgi-bin/api/admin/status/overview?status=1&randtime=${Date.now()}`, 'GET', null, {}, 2500);
+        res = JSON.parse(retryData.body || '{}');
+      }
+
+      const uptimeSec = res.uptime || 0;
+      const memTotal = res.memtotal || 184968;
+      const memFree = res.memfree || 72340;
+      const memUsagePct = memTotal > 0 ? Math.round(((memTotal - memFree) / memTotal) * 100) : 61;
+
+      let cpuPct = 10;
+      if (Array.isArray(res.loadavg) && res.loadavg.length > 0) {
+        cpuPct = Math.min(100, Math.max(1, Math.round(Number(res.loadavg[0]) * 100)));
+      }
+
+      const wifinets = res.wifinets || {};
+      let total24 = 0;
+      let total50 = 0;
+      const clients = [];
+
+      Object.keys(wifinets).forEach(radioKey => {
+        const net = wifinets[radioKey];
+        if (net && Array.isArray(net.networks)) {
+          net.networks.forEach(nw => {
+            const is5g = String(nw.channel || '').length >= 3 || Number(nw.channel) >= 36 || nw.freq === '5GHz';
+            const stations = Array.isArray(nw.stations) ? nw.stations : [];
+            if (is5g) total50 += stations.length;
+            else total24 += stations.length;
+
+            stations.forEach(st => {
+              clients.push({
+                name: st.hostname || st.name || `Client (${(st.ip || '').split('.').pop()})`,
+                ip: st.ip || '--',
+                mac: (st.mac || '').toUpperCase(),
+                band: is5g ? '5GHz' : '2.4GHz',
+                signal: st.signal || -60,
+                txrate: st.tx_rate || 0,
+                rxrate: st.rx_rate || 0
+              });
+            });
+          });
+        }
+      });
+
+      const totalWifi = total24 + total50;
+
+      return {
+        host: this.host,
+        online: true,
+        routerName: 'Gecoos Router (AP Gateway - WIA3600)',
+        hardware: res.model || 'WIA3600-Enterprise',
+        version: res.version || 'Gecoos-OS-2.4',
+        uptime: uptimeSec,
+        uptimeFormatted: this.formatDuration(uptimeSec),
+        wan: {
+          ip: res.wan?.ip || '192.168.31.43',
+          gateway: res.wan?.gateway || '192.168.31.1',
+          dns: '192.168.31.1, 8.8.8.8'
+        },
+        cpu: cpuPct,
+        memory: memUsagePct,
+        wifi: {
+          count: totalWifi,
+          wifi24Count: total24,
+          wifi50Count: total50
+        },
+        clients,
+        meshNodes: [],
+        updatedAt: new Date().toISOString()
+      };
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async getAuthoritativeStationMap() {
+    const now = Date.now();
+    if (this.cachedStationMap && (now - this.lastStationMapFetch < 15000)) {
+      return this.cachedStationMap;
+    }
+
+    try {
+      const status = await this.fetchStatus();
+      if (status && Array.isArray(status.clients)) {
+        const map = new Map();
+        status.clients.forEach(c => {
+          if (c.ip && c.ip !== '--') {
+            map.set(c.ip, {
+              mac: c.mac,
+              name: c.name,
+              band: c.band
+            });
+          }
+        });
+        if (map.size > 0) {
+          this.cachedStationMap = map;
+          this.lastStationMapFetch = now;
+          return map;
+        }
+      }
+    } catch (e) {}
+    return this.cachedStationMap;
+  }
+
+  async reboot() {
+    return this.httpRequest('/cgi-bin/api/admin/reboot', 'GET', null, {}, 2500);
+  }
+}
+
+// Router instance
+let savedRouterConfig = loadJson(ROUTER_CONFIG_FILE, { host: '192.168.31.1', password: '@nmhung1993' });
+let routerInstance = new RouterManager(savedRouterConfig);
+let gecoosInstance = new GecoosManager({ host: '192.168.31.43', password: '@nmhung1993' });
+
+// Periodically run auto-discovery sync
+setInterval(async () => {
+  try {
+    await routerInstance.getAuthoritativeDeviceMap();
+    await gecoosInstance.getAuthoritativeStationMap();
+  } catch (e) {}
+}, 30000);
+
+// Preload router devices immediately on startup
+setTimeout(async () => {
+  try {
+    await routerInstance.getAuthoritativeDeviceMap();
+    await gecoosInstance.getAuthoritativeStationMap();
+  } catch (e) {}
+}, 2000);
+
+// ==========================================
+// Subnet IP Scanner with Non-Blocking ARP & DNS
+// ==========================================
+let cachedArpTable = new Map();
+function refreshArpTableAsync() {
+  return new Promise((resolve) => {
+    if (process.platform === 'linux' && fs.existsSync('/proc/net/arp')) {
+      try {
+        const content = fs.readFileSync('/proc/net/arp', 'utf8');
+        const map = new Map();
+        content.split('\n').slice(1).forEach(line => {
+          const parts = line.trim().split(/\s+/);
+          if (parts.length >= 4 && parts[3] && parts[3] !== '00:00:00:00:00:00') {
+            map.set(parts[0], parts[3].toUpperCase().replace(/-/g, ':'));
+          }
+        });
+        cachedArpTable = map;
+      } catch {}
+      return resolve(cachedArpTable);
+    }
+    exec('arp -a', { timeout: 1000, windowsHide: true }, (err, stdout) => {
+      if (!err && stdout) {
+        const map = new Map();
+        const lines = stdout.split('\n');
+        for (const line of lines) {
+          const match = line.match(/(\d+\.\d+\.\d+\.\d+)\s+([0-9a-fA-F]{2}[-:][0-9a-fA-F]{2}[-:][0-9a-fA-F]{2}[-:][0-9a-fA-F]{2}[-:][0-9a-fA-F]{2}[-:][0-9a-fA-F]{2})/);
+          if (match) {
+            map.set(match[1], match[2].toUpperCase().replace(/-/g, ':'));
+          }
+        }
+        cachedArpTable = map;
+      }
+      resolve(cachedArpTable);
+    });
+  });
+}
+
+// Pre-fill ARP cache
+refreshArpTableAsync().catch(() => {});
+setInterval(refreshArpTableAsync, 15000);
+
+const OUI_VENDORS = {
+  'A4:39:B3': 'Xiaomi Router (CR8806)',
+  '04:35:38': 'Xiaomi Mesh Node',
+  '7C:6A:60': 'Gecoos AP (Enterprise)',
+  '1C:86:0B': 'Server Host (LAN)',
+  '00:50:08': 'Synology NAS (LAN)',
+  'BE:FB:65': 'Xiaomi 13 Lite',
+  'EC:FA:BC': 'ESP8266 IoT Device',
+  '24:62:AB': 'ESP32 Smart Device',
+  '2C:F4:32': 'ESP32 IoT Sensor',
+  'B4:E6:2D': 'ESP8266 IoT Switch',
+  'E0:98:06': 'ESP Smart Device',
+  'CC:98:8B': 'Sony Smart TV / Device',
+  '04:CF:8C': 'Xiaomi Air Purifier',
+  '64:CB:E9': 'LG Smart AC / Appliance',
+  '14:7F:67': 'LG Smart Home AC',
+  '1C:4D:89': 'NOMI Smart IP Camera',
+  '90:6A:94': 'NOMI Security Camera',
+  '78:0F:77': 'RMMINI Telecom Smart Dev',
+  '84:98:66': 'Android Smart Device',
+  '2A:62:F0': 'Samsung Galaxy Phone',
+  '90:3C:92': 'Apple iPhone / iPad'
+};
+
+function getVendorName(mac) {
+  if (!mac || mac === 'N/A') return null;
+  const prefix = mac.slice(0, 8).toUpperCase();
+  return OUI_VENDORS[prefix] || null;
+}
+
+function resolveHostname(ip) {
+  return new Promise((resolve) => {
+    dns.reverse(ip, (err, hostnames) => {
+      if (!err && hostnames && hostnames.length > 0) {
+        resolve(hostnames[0].replace(/\.lan$/i, '').replace(/\.local$/i, ''));
+      } else {
+        resolve(null);
+      }
+    });
+  });
+}
+
+function resolveNetbiosName(ip) {
+  return new Promise((resolve) => {
+    if (process.platform !== 'win32') return resolve(null);
+    exec(`nbtstat -A ${ip}`, { timeout: 800, windowsHide: true }, (err, stdout) => {
+      if (err || !stdout) return resolve(null);
+      const match = stdout.match(/<00>\s+UNIQUE\s+Registered\s+(\w+)/i) || stdout.match(/([a-zA-Z0-9_-]+)\s+<00>\s+UNIQUE/i);
+      resolve(match ? match[1] : null);
+    });
+  });
+}
+
+async function scanSubnet(subnetCidr = '192.168.31.0/24') {
+  if (scanState.isScanning) return scanState;
+
+  const baseIp = subnetCidr.split('/')[0].split('.').slice(0, 3).join('.');
+  scanState = { isScanning: true, current: 0, total: 254, abort: false, results: [] };
+
+  (async () => {
+    let routerDeviceMap = new Map();
+    try {
+      routerDeviceMap = await routerInstance.getAuthoritativeDeviceMap();
+    } catch (e) {}
+
+    try {
+      const gecoosMap = await gecoosInstance.getAuthoritativeStationMap();
+      if (gecoosMap) {
+        for (const [ip, info] of gecoosMap.entries()) {
+          if (!routerDeviceMap.has(ip)) routerDeviceMap.set(ip, info);
+        }
+      }
+    } catch (e) {}
+
+    const queue = [];
+    for (let i = 1; i <= 254; i++) {
+      queue.push(`${baseIp}.${i}`);
+    }
+
+    const allDiscoveredMap = new Map();
+    const concurrency = 30;
+    const worker = async () => {
+      while (queue.length > 0 && !scanState.abort) {
+        const ip = queue.shift();
+        scanState.current += 1;
+        try {
+          const res = await pingHost(ip, 600);
+          if (res.alive) {
+            allDiscoveredMap.set(ip, { latency: res.latency });
+          }
+        } catch (e) {}
+      }
+    };
+
+    const workers = Array(concurrency).fill(null).map(() => worker());
+    await Promise.all(workers);
+
+    for (const [ip, info] of routerDeviceMap.entries()) {
+      if (!allDiscoveredMap.has(ip)) {
+        allDiscoveredMap.set(ip, { latency: 1 });
+      }
+    }
+
+    const arpTable = await refreshArpTableAsync();
+
+    for (const [ip, item] of allDiscoveredMap.entries()) {
+      const routerInfo = routerDeviceMap.get(ip) || {};
+      const mac = routerInfo.mac || arpTable.get(ip) || 'N/A';
+
+      let autoName = routerInfo.name || null;
+      if (!autoName) autoName = await resolveHostname(ip);
+      if (!autoName) autoName = await resolveNetbiosName(ip);
+      if (!autoName) {
+        const vendor = getVendorName(mac);
+        autoName = vendor ? `${vendor} (${ip.split('.').pop()})` : `Thiết bị LAN (${ip.split('.').pop()})`;
+      }
+
+      const customName = customNames[ip] || null;
+      scanState.results.push({
+        ip,
+        mac,
+        hostname: customName || autoName,
+        customName,
+        autoName,
+        latency: item.latency,
+        status: 'online',
+        discoveredAt: new Date().toISOString()
+      });
+    }
+
+    scanState.results.sort((a, b) => Number(a.ip.split('.').pop()) - Number(b.ip.split('.').pop()));
+    scanState.isScanning = false;
+
+    const scanSession = {
+      id: `scan_${Date.now()}`,
+      scannedAt: new Date().toISOString(),
+      subnet: subnetCidr,
+      totalDiscovered: scanState.results.length,
+      isPinned: false,
+      results: scanState.results
+    };
+    scanHistory.unshift(scanSession);
+    scanHistory = pruneScanHistory(scanHistory);
+    saveJson(SCAN_HISTORY_FILE, scanHistory);
+  })();
+
+  return scanState;
+}
+
+// ==========================================
 // Express Router API
 // ==========================================
 const router = express.Router();

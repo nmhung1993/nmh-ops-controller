@@ -127,24 +127,73 @@ export default function AdminView() {
   const [discordWebhook, setDiscordWebhook] = useState('');
   const [savingWebhook, setSavingWebhook] = useState(false);
 
+  // Smart Multi-Channel Alerting State
+  const [alertConfig, setAlertConfig] = useState({
+    enabled: true,
+    cooldownMinutes: 10,
+    channels: {
+      telegram: { enabled: false, botToken: '', chatId: '' },
+      discord: { enabled: false, webhookUrl: '' },
+      webhook: { enabled: false, url: '' }
+    },
+    thresholds: {
+      cpuPercent: 90,
+      memoryPercent: 90,
+      tempCelsius: 80,
+      pingLossPercent: 20
+    }
+  });
+  const [savingAlerts, setSavingAlerts] = useState(false);
+  const [testingAlerts, setTestingAlerts] = useState(false);
+
   const fetchAdminData = async () => {
     setLoading(true);
     try {
-      const [agentsData, pendingData, usersData, settingsData] = await Promise.all([
+      const [agentsData, pendingData, usersData, settingsData, alertRulesData] = await Promise.all([
         apiRequest('/api/v1/agents'),
         apiRequest('/api/v1/agents/pending'),
         apiRequest('/api/v1/users'),
-        apiRequest('/api/v1/settings')
+        apiRequest('/api/v1/settings'),
+        apiRequest('/api/v1/alerts/rules').catch(() => null)
       ]);
       setAllAgents(agentsData || []);
       setPendingAgents(pendingData || []);
       setUsers(usersData || []);
       setSettings(settingsData || {});
       setDiscordWebhook(settingsData?.discordWebhook || '');
+      if (alertRulesData) setAlertConfig(alertRulesData);
     } catch (err) {
       console.error('Failed to load admin data:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveAlerts = async (e) => {
+    e?.preventDefault();
+    setSavingAlerts(true);
+    try {
+      await apiRequest('/api/v1/alerts/rules', {
+        method: 'PUT',
+        body: JSON.stringify(alertConfig)
+      });
+      setToastMessage('Đã lưu cấu hình cảnh báo thành công');
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSavingAlerts(false);
+    }
+  };
+
+  const handleTestAlert = async () => {
+    setTestingAlerts(true);
+    try {
+      await apiRequest('/api/v1/alerts/test', { method: 'POST' });
+      setToastMessage('Đã gửi thông báo kiểm tra đến Telegram/Discord');
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setTestingAlerts(false);
     }
   };
 
@@ -622,32 +671,222 @@ export default function AdminView() {
           </Card>
         </Grid>
 
-        {/* Section 5: Discord Webhook Integration */}
+        {/* Section 5: Smart Multi-Channel Alerting & Thresholds */}
         <Grid item xs={12}>
           <Card>
             <CardHeader
-              title={t('admin.integrations')}
-              subheader={t('admin.webhookCentral')}
+              title="Cảnh báo Thông minh & Tích hợp Đa kênh (Telegram, Discord, Webhook)"
+              subheader="Đặt ngưỡng cảnh báo tự động cho CPU, RAM, Nhiệt độ và Ping rớt gói"
               titleTypographyProps={{ typography: 'h6', fontWeight: 700 }}
               action={<Bell size={22} color={theme.palette.text.secondary} />}
             />
             <CardContent>
-              <form onSubmit={handleSaveWebhook}>
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                  <TextField
-                    label={t('admin.discordWebhook')}
-                    placeholder="https://discord.com/api/webhooks/..."
-                    value={discordWebhook}
-                    onChange={(e) => setDiscordWebhook(e.target.value)}
-                    fullWidth
+              <form onSubmit={handleSaveAlerts}>
+                {/* Master Switch & Cooldown */}
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} alignItems={{ xs: 'flex-start', sm: 'center' }} sx={{ mb: 3 }}>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={alertConfig.enabled}
+                        onChange={(e) => setAlertConfig({ ...alertConfig, enabled: e.target.checked })}
+                      />
+                    }
+                    label={<Typography sx={{ fontWeight: 700 }}>Kích hoạt cảnh báo tự động toàn hệ thống</Typography>}
                   />
+
+                  <TextField
+                    label="Thời gian chờ chống Spam (Phút)"
+                    type="number"
+                    size="small"
+                    value={alertConfig.cooldownMinutes || 10}
+                    onChange={(e) => setAlertConfig({ ...alertConfig, cooldownMinutes: Number(e.target.value) || 10 })}
+                    sx={{ width: { xs: 1, sm: 220 } }}
+                  />
+                </Stack>
+
+                <Divider sx={{ my: 2.5 }} />
+
+                {/* Notification Channels */}
+                <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 2, color: 'primary.main' }}>
+                  1. CẤU HÌNH KÊNH THÔNG BÁO
+                </Typography>
+
+                <Grid container spacing={2.5} sx={{ mb: 3 }}>
+                  {/* Telegram Bot */}
+                  <Grid item xs={12} md={6}>
+                    <Card variant="outlined" sx={{ p: 2, height: 1 }}>
+                      <Stack spacing={2}>
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={Boolean(alertConfig.channels?.telegram?.enabled)}
+                              onChange={(e) => setAlertConfig({
+                                ...alertConfig,
+                                channels: {
+                                  ...alertConfig.channels,
+                                  telegram: { ...alertConfig.channels?.telegram, enabled: e.target.checked }
+                                }
+                              })}
+                            />
+                          }
+                          label={<Typography sx={{ fontWeight: 700 }}>✈️ Telegram Bot Channel</Typography>}
+                        />
+                        <TextField
+                          label="Telegram Bot Token"
+                          placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ..."
+                          size="small"
+                          value={alertConfig.channels?.telegram?.botToken || ''}
+                          onChange={(e) => setAlertConfig({
+                            ...alertConfig,
+                            channels: {
+                              ...alertConfig.channels,
+                              telegram: { ...alertConfig.channels?.telegram, botToken: e.target.value.trim() }
+                            }
+                          })}
+                          fullWidth
+                        />
+                        <TextField
+                          label="Telegram Chat ID (User / Group ID)"
+                          placeholder="-1001234567890 hoặc 987654321"
+                          size="small"
+                          value={alertConfig.channels?.telegram?.chatId || ''}
+                          onChange={(e) => setAlertConfig({
+                            ...alertConfig,
+                            channels: {
+                              ...alertConfig.channels,
+                              telegram: { ...alertConfig.channels?.telegram, chatId: e.target.value.trim() }
+                            }
+                          })}
+                          fullWidth
+                        />
+                      </Stack>
+                    </Card>
+                  </Grid>
+
+                  {/* Discord Webhook */}
+                  <Grid item xs={12} md={6}>
+                    <Card variant="outlined" sx={{ p: 2, height: 1 }}>
+                      <Stack spacing={2}>
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={Boolean(alertConfig.channels?.discord?.enabled)}
+                              onChange={(e) => setAlertConfig({
+                                ...alertConfig,
+                                channels: {
+                                  ...alertConfig.channels,
+                                  discord: { ...alertConfig.channels?.discord, enabled: e.target.checked }
+                                }
+                              })}
+                            />
+                          }
+                          label={<Typography sx={{ fontWeight: 700 }}>💬 Discord Webhook Channel</Typography>}
+                        />
+                        <TextField
+                          label="Discord Webhook URL"
+                          placeholder="https://discord.com/api/webhooks/..."
+                          size="small"
+                          value={alertConfig.channels?.discord?.webhookUrl || discordWebhook}
+                          onChange={(e) => {
+                            setDiscordWebhook(e.target.value);
+                            setAlertConfig({
+                              ...alertConfig,
+                              channels: {
+                                ...alertConfig.channels,
+                                discord: { ...alertConfig.channels?.discord, webhookUrl: e.target.value.trim() }
+                              }
+                            });
+                          }}
+                          fullWidth
+                        />
+                        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                          Gửi rich embed có gắn màu mức độ cảnh báo đến kênh Discord được chỉ định.
+                        </Typography>
+                      </Stack>
+                    </Card>
+                  </Grid>
+                </Grid>
+
+                <Divider sx={{ my: 2.5 }} />
+
+                {/* Threshold Configuration */}
+                <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 2, color: 'primary.main' }}>
+                  2. CẤU HÌNH NGƯỠNG KÍCH HOẠT CẢNH BÁO
+                </Typography>
+
+                <Grid container spacing={2.5}>
+                  <Grid item xs={6} sm={3}>
+                    <TextField
+                      label="Ngưỡng CPU (%)"
+                      type="number"
+                      size="small"
+                      value={alertConfig.thresholds?.cpuPercent || 90}
+                      onChange={(e) => setAlertConfig({
+                        ...alertConfig,
+                        thresholds: { ...alertConfig.thresholds, cpuPercent: Number(e.target.value) }
+                      })}
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid item xs={6} sm={3}>
+                    <TextField
+                      label="Ngưỡng RAM (%)"
+                      type="number"
+                      size="small"
+                      value={alertConfig.thresholds?.memoryPercent || 90}
+                      onChange={(e) => setAlertConfig({
+                        ...alertConfig,
+                        thresholds: { ...alertConfig.thresholds, memoryPercent: Number(e.target.value) }
+                      })}
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid item xs={6} sm={3}>
+                    <TextField
+                      label="Nhiệt độ CPU (°C)"
+                      type="number"
+                      size="small"
+                      value={alertConfig.thresholds?.tempCelsius || 80}
+                      onChange={(e) => setAlertConfig({
+                        ...alertConfig,
+                        thresholds: { ...alertConfig.thresholds, tempCelsius: Number(e.target.value) }
+                      })}
+                      fullWidth
+                    />
+                  </Grid>
+                  <Grid item xs={6} sm={3}>
+                    <TextField
+                      label="Rớt gói Ping (%)"
+                      type="number"
+                      size="small"
+                      value={alertConfig.thresholds?.pingLossPercent || 20}
+                      onChange={(e) => setAlertConfig({
+                        ...alertConfig,
+                        thresholds: { ...alertConfig.thresholds, pingLossPercent: Number(e.target.value) }
+                      })}
+                      fullWidth
+                    />
+                  </Grid>
+                </Grid>
+
+                <Stack direction="row" spacing={2} justifyContent="flex-end" sx={{ mt: 3 }}>
+                  <Button
+                    type="button"
+                    variant="outlined"
+                    color="inherit"
+                    onClick={handleTestAlert}
+                    disabled={testingAlerts}
+                  >
+                    {testingAlerts ? 'Đang gửi...' : '🔔 Gửi thử cảnh báo'}
+                  </Button>
                   <Button
                     type="submit"
                     variant="contained"
-                    disabled={savingWebhook}
-                    sx={{ minWidth: 140, whiteSpace: 'nowrap' }}
+                    color="primary"
+                    disabled={savingAlerts}
+                    sx={{ minWidth: 160, fontWeight: 700 }}
                   >
-                    {savingWebhook ? '...' : t('admin.saveSettings')}
+                    {savingAlerts ? 'Đang lưu...' : 'Lưu cấu hình cảnh báo'}
                   </Button>
                 </Stack>
               </form>
