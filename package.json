@@ -5,20 +5,32 @@
   "main": "server/server.js",
   "scripts": {
     "start": "node server/server.js",
-    "dev": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File deploy/start-dev-server.ps1",
+    "build": "vite build",
+    "dev:ui": "vite --host 0.0.0.0",
+    "dev": "npm run build && powershell.exe -NoProfile -ExecutionPolicy Bypass -File deploy/start-dev-server.ps1",
     "dev:standalone": "node --watch server/server.js",
     "agent": "node agent/agent.js",
     "desktop-helper": "node agent/desktop-helper.js",
-    "check": "node --check server/server.js && node --check server/database.js && node --check agent/agent.js && node --check agent/windows.js && node --check agent/desktop-helper.js && node --check linux-agent/agent.js && node --check synology-agent/agent.js && node --check homeassistant-addon/agent.js && node --check public/js/app.js",
+    "check": "node --check server/server.js && node --check server/database.js && node --check agent/agent.js && node --check agent/windows.js && node --check agent/desktop-helper.js && node --check linux-agent/agent.js && node --check synology-agent/agent.js && node --check homeassistant-addon/agent.js && npm run build",
     "test": "node --test test/*.test.js"
   },
   "engines": {
     "node": ">=22.5"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "ws": "^8.18.0",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^9.3.1",
+    "@mui/material": "^9.3.1",
     "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.2"
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.0.5",
+    "vite": "^8.2.1"
   }
 }
