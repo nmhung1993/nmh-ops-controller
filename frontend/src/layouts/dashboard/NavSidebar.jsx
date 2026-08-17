@@ -19,7 +19,8 @@ import {
   ShieldCheck,
   History,
   Settings,
-  Radio
+  Radio,
+  Globe
 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
@@ -28,6 +29,7 @@ import { useWebSocket } from '../../context/WebSocketContext';
 export const NAV_ITEMS = [
   { id: 'fleet', path: '#fleet', labelKey: 'nav.fleet', icon: Server },
   { id: 'dashboard', path: '#dashboard', labelKey: 'nav.dashboard', icon: LayoutDashboard },
+  { id: 'network', path: '#network', labelKey: 'nav.network', icon: Globe },
   { id: 'processes', path: '#processes', labelKey: 'nav.processes', icon: Activity },
   { id: 'watchdog', path: '#watchdog', labelKey: 'nav.watchdog', icon: ShieldCheck },
   { id: 'activity', path: '#activity', labelKey: 'nav.activity', icon: History },

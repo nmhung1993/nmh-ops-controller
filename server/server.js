@@ -17,6 +17,7 @@ const {
   attachLegacyDataToLocalAgent,
   parseJson
 } = require('./database');
+const { networkRouter } = require('./network-monitor');
 
 const PORT = Number(process.env.PORT || 3003);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -642,6 +643,9 @@ app.post('/api/login', async (req, res) => {
   const token = jwt.sign({ username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
   res.json({ token, username: user.username, role: user.role, mustChangePassword: Boolean(user.must_change_password) });
 });
+
+// Network Monitoring (Ping, Subnet Scanner, Xiaomi Router/Mesh)
+app.use('/api/v1/network', authenticate, networkRouter);
 
 app.get('/api/v1/hosts', authenticate, (req, res) => {
   res.json(getAccessibleHosts(req.user).map(serializeHost));

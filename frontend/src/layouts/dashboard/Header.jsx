@@ -97,52 +97,61 @@ export default function Header({ onOpenNav, currentPage, onOpenPasswordDialog })
         }}
       >
         {/* Left Side: Mobile Menu Button & Page Title */}
-        <Stack direction="row" alignItems="center" spacing={1.5}>
+        <Stack direction="row" alignItems="center" spacing={{ xs: 1, sm: 1.5 }} sx={{ minWidth: 0 }}>
           <IconButton
             onClick={onOpenNav}
             sx={{
               display: { lg: 'none' },
-              color: 'text.primary'
+              color: 'text.primary',
+              flexShrink: 0
             }}
           >
             <MenuIcon size={20} />
           </IconButton>
 
-          <Box>
-            <Typography variant="overline" sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.65rem' }}>
+          <Box sx={{ minWidth: 0, display: { xs: 'none', md: 'block' } }}>
+            <Typography variant="overline" noWrap sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.65rem', display: 'block' }}>
               {t(`page.${currentPage}.kicker`)}
             </Typography>
-            <Typography variant="h5" sx={{ color: 'text.primary', fontWeight: 800, lineHeight: 1.15 }}>
+            <Typography variant="h6" noWrap sx={{ color: 'text.primary', fontWeight: 800, lineHeight: 1.15 }}>
               {t(`page.${currentPage}.title`)}
             </Typography>
           </Box>
         </Stack>
 
         {/* Right Side: Host Selector & Actions */}
-        <Stack direction="row" alignItems="center" spacing={{ xs: 1, sm: 1.5 }}>
+        <Stack direction="row" alignItems="center" spacing={{ xs: 0.5, sm: 1.5 }} sx={{ minWidth: 0 }}>
           {/* Socket Live Status */}
           <Label
             variant="soft"
             color={socketInfo.color}
             startIcon={socketInfo.icon}
-            sx={{ display: { xs: 'none', sm: 'inline-flex' }, py: 0.5, px: 1 }}
+            sx={{ display: { xs: 'none', sm: 'inline-flex' }, py: 0.5, px: 1, flexShrink: 0 }}
           >
             {socketInfo.label}
           </Label>
 
-          {/* Host Selector (shown on pages where host matters) */}
+          {/* Host Selector */}
           {hosts.length > 0 && (
-            <FormControl size="small" sx={{ minWidth: { xs: 120, sm: 200 } }}>
+            <FormControl size="small" sx={{ width: { xs: 130, sm: 180, md: 220 }, flexShrink: 0 }}>
               <Select
                 value={selectedHostId || ''}
                 onChange={(e) => setSelectedHostId(e.target.value)}
                 displayEmpty
                 sx={{
-                  height: 38,
-                  fontSize: '0.8125rem',
-                  fontWeight: 600,
-                  bgcolor: 'background.paper',
-                  boxShadow: theme.customShadows.z1
+                  borderRadius: 1.5,
+                  fontSize: { xs: '0.75rem', sm: '0.85rem' },
+                  bgcolor: alpha(theme.palette.grey[500], 0.08),
+                  '& .MuiSelect-select': {
+                    py: 0.75,
+                    px: 1.25,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 0.75,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
+                  }
                 }}
               >
                 {hosts.map((h) => (

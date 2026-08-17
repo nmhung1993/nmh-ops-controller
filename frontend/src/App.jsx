@@ -13,6 +13,7 @@ import ProcessesView from './pages/ProcessesView';
 import WatchdogView from './pages/WatchdogView';
 import ActivityView from './pages/ActivityView';
 import AdminView from './pages/AdminView';
+import NetworkMonitorView from './pages/NetworkMonitorView';
 import LoginView from './pages/LoginView';
 import SetupView from './pages/SetupView';
 import PasswordChangeDialog from './pages/PasswordChangeDialog';
@@ -22,7 +23,7 @@ function MainApp() {
   const { user, token, isSetupRequired, isLoading } = useAuth();
   const [currentPage, setCurrentPage] = useState(() => {
     const hash = window.location.hash.replace('#', '');
-    return ['fleet', 'dashboard', 'processes', 'watchdog', 'activity', 'admin'].includes(hash)
+    return ['fleet', 'dashboard', 'network', 'processes', 'watchdog', 'activity', 'admin'].includes(hash)
       ? hash
       : 'fleet';
   });
@@ -33,7 +34,7 @@ function MainApp() {
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.replace('#', '');
-      if (['fleet', 'dashboard', 'processes', 'watchdog', 'activity', 'admin'].includes(hash)) {
+      if (['fleet', 'dashboard', 'network', 'processes', 'watchdog', 'activity', 'admin'].includes(hash)) {
         setCurrentPage(hash);
       }
     };
@@ -72,6 +73,7 @@ function MainApp() {
         <ErrorBoundary>
           {currentPage === 'fleet' && <FleetView onNavigate={handleNavigate} />}
           {currentPage === 'dashboard' && <DashboardView />}
+          {currentPage === 'network' && <NetworkMonitorView />}
           {currentPage === 'processes' && <ProcessesView />}
           {currentPage === 'watchdog' && <WatchdogView />}
           {currentPage === 'activity' && <ActivityView />}
