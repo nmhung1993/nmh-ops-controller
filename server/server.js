@@ -389,7 +389,11 @@ function insertEvent(agentId, message) {
     JSON.stringify(payload), occurredAt, new Date().toISOString());
   if (result.changes) {
     broadcastUi('ui.event', { ...payload, severity, occurredAt }, agentId);
-    if (severity === 'error' || payload.eventType?.startsWith('watchdog.') || payload.eventType?.startsWith('process.manual.') || payload.eventType?.includes('watchdog')) {
+    if (payload.eventType?.startsWith('process.manual.')) {
+      const host = getHost(agentId);
+      const content = formatDiscordEvent(host?.display_name || host?.hostname || agentId, { ...payload, severity });
+      if (content) sendDiscord(content);
+    } else if (payload.eventType?.startsWith('watchdog.') || payload.eventType?.includes('watchdog')) {
       const host = getHost(agentId);
 
       // Dedicated Watchdog Self-Healing & Process Alerting (strictly for this host)
