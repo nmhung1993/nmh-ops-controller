@@ -759,6 +759,20 @@ export default function AdminView() {
                           })}
                           fullWidth
                         />
+                        <TextField
+                          label="Telegram Topic ID (Tùy chọn cho Supergroup Topics)"
+                          placeholder="Ví dụ: 123 (Để trống nếu gửi vào chat chung)"
+                          size="small"
+                          value={alertConfig.channels?.telegram?.topicId || ''}
+                          onChange={(e) => setAlertConfig({
+                            ...alertConfig,
+                            channels: {
+                              ...alertConfig.channels,
+                              telegram: { ...alertConfig.channels?.telegram, topicId: e.target.value.trim() }
+                            }
+                          })}
+                          fullWidth
+                        />
                       </Stack>
                     </Card>
                   </Grid>

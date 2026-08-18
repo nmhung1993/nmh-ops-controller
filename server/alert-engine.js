@@ -76,18 +76,24 @@ class AlertEngine {
     this.lastAlertTimes.set(key, Date.now());
   }
 
-  async sendTelegram(message) {
-    const { botToken, chatId, enabled } = this.config.channels.telegram || {};
-    if (!enabled || !botToken || !chatId) return false;
+  async sendTelegram(message, options = {}) {
+    const channelConfig = options.channelConfig || this.config.channels.telegram || {};
+    const { botToken, chatId, topicId, enabled } = channelConfig;
+    if (options.bypassEnabledCheck ? (!botToken || !chatId) : (!enabled || !botToken || !chatId)) return false;
 
     return new Promise((resolve) => {
-      const payload = JSON.stringify({
+      const bodyObj = {
         chat_id: chatId,
         text: message,
         parse_mode: 'HTML'
-      });
+      };
+      const finalTopicId = options.topicId !== undefined ? options.topicId : topicId;
+      if (finalTopicId && !isNaN(Number(finalTopicId))) {
+        bodyObj.message_thread_id = Number(finalTopicId);
+      }
+      const payload = JSON.stringify(bodyObj);
 
-      const options = {
+      const req = https.request({
         hostname: 'api.telegram.org',
         port: 443,
         path: `/bot${botToken}/sendMessage`,
@@ -97,9 +103,7 @@ class AlertEngine {
           'Content-Length': Buffer.byteLength(payload)
         },
         timeout: 5000
-      };
-
-      const req = https.request(options, (res) => {
+      }, (res) => {
         let body = '';
         res.on('data', chunk => body += chunk);
         res.on('end', () => resolve(res.statusCode >= 200 && res.statusCode < 300));
@@ -114,8 +118,9 @@ class AlertEngine {
     });
   }
 
-  async sendDiscord(title, description, severity = 'warning', fields = []) {
-    const { webhookUrl, enabled } = this.config.channels.discord || {};
+  async sendDiscord(title, description, severity = 'warning', fields = [], customWebhookUrl = null) {
+    const webhookUrl = customWebhookUrl || this.config.channels.discord?.webhookUrl;
+    const enabled = customWebhookUrl ? true : this.config.channels.discord?.enabled;
     if (!enabled || !webhookUrl) return false;
 
     const colors = {
@@ -160,6 +165,49 @@ class AlertEngine {
         resolve(false);
       }
     });
+  }
+
+  // Dedicated Watchdog Self-Healing & Process Alerting
+  async sendWatchdogAlert(event, host, watchdogConfig) {
+    const notifyConfig = watchdogConfig?.notifications;
+    const { eventType, message, data = {} } = event;
+    const hostName = host?.displayName || host?.hostname || 'Máy trạm';
+    const processName = data.processName || data.ruleName || 'Tiến trình';
+    const timestamp = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+
+    let title = '🛡️ [WATCHDOG TỰ PHỤC HỒI TIẾN TRÌNH]';
+    let severity = 'info';
+    if (eventType.includes('crash') || eventType.includes('failed') || eventType.includes('killed')) {
+      title = '🚨 [WATCHDOG TIẾN TRÌNH GẶP SỰ CỐ]';
+      severity = 'critical';
+    } else if (eventType.includes('launch') || eventType.includes('restarted')) {
+      title = '✅ [WATCHDOG ĐÃ KHỞI CHẠY LẠI TIẾN TRÌNH]';
+      severity = 'success';
+    }
+
+    const text = `
+<b>${title}</b>
+<b>Máy trạm:</b> <code>${hostName}</code>
+<b>Tiến trình:</b> <code>${processName}</code>
+<b>Sự kiện:</b> <code>${eventType}</code>
+<b>Chi tiết:</b> ${message || 'Tự động kích hoạt quy trình phục hồi'}
+<b>Thời gian:</b> <i>${timestamp}</i>
+    `.trim();
+
+    // 1. Send to Watchdog-specific Telegram (or fallback to Central Telegram if notifyConfig not set)
+    const tg = notifyConfig?.telegram?.enabled ? notifyConfig.telegram : (this.config.channels.telegram?.enabled ? this.config.channels.telegram : null);
+    if (tg && tg.botToken && tg.chatId) {
+      await this.sendTelegram(text, { channelConfig: tg, bypassEnabledCheck: true });
+    }
+
+    // 2. Send to Watchdog-specific Discord (or fallback to Central Discord if notifyConfig not set)
+    const dc = notifyConfig?.discord?.enabled ? notifyConfig.discord : (this.config.channels.discord?.enabled ? this.config.channels.discord : null);
+    if (dc && dc.webhookUrl) {
+      await this.sendDiscord(title, `Máy trạm **${hostName}** kích hoạt sự kiện tự phục hồi: ${message || ''}`, severity, [
+        { name: 'Tiến trình', value: `\`${processName}\``, inline: true },
+        { name: 'Sự kiện', value: `\`${eventType}\``, inline: true }
+      ], dc.webhookUrl);
+    }
   }
 
   async sendCustomWebhook(payloadData) {

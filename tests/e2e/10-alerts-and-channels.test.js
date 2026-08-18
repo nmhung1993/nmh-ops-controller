@@ -15,6 +15,9 @@ test('10. Smart Alerts & Multi-Channel Notifications (Telegram, Discord, Thresho
     const tgChannel = page.getByText(/Telegram Bot Channel/i);
     assert.ok(await tgChannel.isVisible(), 'Telegram Bot Channel section should be visible');
 
+    const tgTopicInput = page.getByLabel(/Telegram Topic ID/i).first();
+    assert.ok(await tgTopicInput.isVisible(), 'Telegram Topic ID input should be visible in Admin');
+
     const discordChannel = page.getByText(/Discord Webhook Channel/i);
     assert.ok(await discordChannel.isVisible(), 'Discord Webhook Channel section should be visible');
 

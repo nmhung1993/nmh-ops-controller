@@ -1,7 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import {
+  ShieldCheck,
+  Plus,
+  Play,
+  Edit2,
+  Trash2,
+  Camera,
+  Server,
+  Terminal,
+  Layers,
+  RotateCcw,
+  Bell,
+  Send,
+  Save
+} from 'lucide-react';
+import {
   Box,
   Card,
+  CardHeader,
+  CardContent,
   Grid,
   Stack,
   Typography,
@@ -20,21 +37,10 @@ import {
   Checkbox,
   Alert,
   Tooltip,
+  Divider,
   useTheme
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
-import {
-  ShieldCheck,
-  Plus,
-  Play,
-  Edit2,
-  Trash2,
-  Camera,
-  Server,
-  Terminal,
-  Layers,
-  RotateCcw
-} from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import { useWebSocket } from '../context/WebSocketContext';
@@ -51,6 +57,17 @@ export default function WatchdogView() {
   const [watchdogData, setWatchdogData] = useState({ version: 0, rules: [] });
   const [loading, setLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+
+  // Watchdog Notifications State
+  const [notifications, setNotifications] = useState({
+    enabled: false,
+    telegram: { enabled: false, botToken: '', chatId: '', topicId: '' },
+    discord: { enabled: false, webhookUrl: '' },
+    notifyOnCrash: true,
+    notifyOnRestart: true,
+    notifyOnFailure: true
+  });
+  const [savingNotify, setSavingNotify] = useState(false);
 
   // Dialog State
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -72,6 +89,16 @@ export default function WatchdogView() {
     try {
       const data = await apiRequest(`/api/v1/hosts/${selectedHostId}/watchdog`);
       setWatchdogData(data);
+      if (data.notifications) {
+        setNotifications({
+          enabled: Boolean(data.notifications.enabled),
+          telegram: { enabled: false, botToken: '', chatId: '', topicId: '', ...data.notifications.telegram },
+          discord: { enabled: false, webhookUrl: '', ...data.notifications.discord },
+          notifyOnCrash: data.notifications.notifyOnCrash !== false,
+          notifyOnRestart: data.notifications.notifyOnRestart !== false,
+          notifyOnFailure: data.notifications.notifyOnFailure !== false
+        });
+      }
     } catch (err) {
       console.error('Failed to fetch watchdog:', err);
     } finally {
@@ -84,6 +111,27 @@ export default function WatchdogView() {
       fetchWatchdog();
     }
   }, [selectedHostId]);
+
+  const handleSaveNotifications = async (e) => {
+    e?.preventDefault();
+    if (!selectedHostId) return;
+    setSavingNotify(true);
+    try {
+      const res = await apiRequest(`/api/v1/hosts/${selectedHostId}/watchdog`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          rules: watchdogData.rules || [],
+          notifications
+        })
+      });
+      setWatchdogData(res);
+      setToastMessage('Đã lưu cấu hình thông báo Watchdog thành công');
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSavingNotify(false);
+    }
+  };
 
   const handleOpenAdd = () => {
     setEditingRule(null);
@@ -148,7 +196,7 @@ export default function WatchdogView() {
 
       const res = await apiRequest(`/api/v1/hosts/${selectedHostId}/watchdog`, {
         method: 'PUT',
-        body: JSON.stringify({ rules: updatedRules })
+        body: JSON.stringify({ rules: updatedRules, notifications })
       });
 
       setWatchdogData(res);
@@ -168,7 +216,7 @@ export default function WatchdogView() {
       const updatedRules = watchdogData.rules.filter((r) => r.id !== deleteTarget.id);
       const res = await apiRequest(`/api/v1/hosts/${selectedHostId}/watchdog`, {
         method: 'PUT',
-        body: JSON.stringify({ rules: updatedRules })
+        body: JSON.stringify({ rules: updatedRules, notifications })
       });
       setWatchdogData(res);
       setToastMessage(t('watchdog.configSent'));
@@ -379,6 +427,148 @@ export default function WatchdogView() {
             </Grid>
           ))}
         </Grid>
+      )}
+
+      {/* Dedicated Watchdog Notifications Card */}
+      {isAdmin && (
+        <Card sx={{ mt: 4, border: `1px solid ${alpha(theme.palette.primary.main, 0.24)}` }}>
+          <CardHeader
+            title={
+              <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={1.5}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 800, color: 'primary.main' }}>
+                  KÊNH THÔNG BÁO SỰ CỐ WATCHDOG
+                </Typography>
+                <Label variant="filled" color="primary" sx={{ fontWeight: 700 }}>
+                  Máy: {selectedHost?.displayName || selectedHost?.hostname}
+                </Label>
+              </Stack>
+            }
+            subheader={`Cấu hình thông báo sự cố tiến trình độc lập chỉ áp dụng riêng cho máy ${selectedHost?.displayName || selectedHost?.hostname}.`}
+            action={<Bell size={22} color={theme.palette.primary.main} />}
+          />
+          <CardContent>
+            <form onSubmit={handleSaveNotifications}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={notifications.enabled}
+                    onChange={(e) => setNotifications({ ...notifications, enabled: e.target.checked })}
+                  />
+                }
+                label={
+                  <Typography sx={{ fontWeight: 700 }}>
+                    Kích hoạt thông báo tự phục hồi riêng cho máy {selectedHost?.displayName || selectedHost?.hostname}
+                  </Typography>
+                }
+                sx={{ mb: 2 }}
+              />
+
+              <Grid container spacing={2.5}>
+                {/* Telegram Bot */}
+                <Grid item xs={12} md={6}>
+                  <Card variant="outlined" sx={{ p: 2, height: 1 }}>
+                    <Stack spacing={2}>
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={Boolean(notifications.telegram?.enabled)}
+                            onChange={(e) => setNotifications({
+                              ...notifications,
+                              telegram: { ...notifications.telegram, enabled: e.target.checked }
+                            })}
+                          />
+                        }
+                        label={<Typography sx={{ fontWeight: 700 }}>✈️ Telegram Channel (Sự cố Watchdog)</Typography>}
+                      />
+                      <TextField
+                        label="Telegram Bot Token"
+                        placeholder="Để trống nếu dùng cấu hình chung từ Admin"
+                        size="small"
+                        value={notifications.telegram?.botToken || ''}
+                        onChange={(e) => setNotifications({
+                          ...notifications,
+                          telegram: { ...notifications.telegram, botToken: e.target.value.trim() }
+                        })}
+                        fullWidth
+                      />
+                      <TextField
+                        label="Telegram Chat ID"
+                        placeholder="-1001234567890 hoặc 987654321"
+                        size="small"
+                        value={notifications.telegram?.chatId || ''}
+                        onChange={(e) => setNotifications({
+                          ...notifications,
+                          telegram: { ...notifications.telegram, chatId: e.target.value.trim() }
+                        })}
+                        fullWidth
+                      />
+                      <TextField
+                        label="Telegram Topic ID (Tùy chọn cho Supergroup Topics)"
+                        placeholder="Ví dụ: 456 (Topic chuyên báo lỗi ứng dụng)"
+                        size="small"
+                        value={notifications.telegram?.topicId || ''}
+                        onChange={(e) => setNotifications({
+                          ...notifications,
+                          telegram: { ...notifications.telegram, topicId: e.target.value.trim() }
+                        })}
+                        fullWidth
+                      />
+                    </Stack>
+                  </Card>
+                </Grid>
+
+                {/* Discord Webhook */}
+                <Grid item xs={12} md={6}>
+                  <Card variant="outlined" sx={{ p: 2, height: 1 }}>
+                    <Stack spacing={2}>
+                      <FormControlLabel
+                        control={
+                          <Checkbox
+                            checked={Boolean(notifications.discord?.enabled)}
+                            onChange={(e) => setNotifications({
+                              ...notifications,
+                              discord: { ...notifications.discord, enabled: e.target.checked }
+                            })}
+                          />
+                        }
+                        label={<Typography sx={{ fontWeight: 700 }}>🎮 Discord Webhook Channel (Watchdog)</Typography>}
+                      />
+                      <TextField
+                        label="Discord Webhook URL"
+                        placeholder="https://discord.com/api/webhooks/..."
+                        size="small"
+                        value={notifications.discord?.webhookUrl || ''}
+                        onChange={(e) => setNotifications({
+                          ...notifications,
+                          discord: { ...notifications.discord, webhookUrl: e.target.value.trim() }
+                        })}
+                        fullWidth
+                      />
+                      <Box sx={{ p: 1.5, bgcolor: 'action.hover', borderRadius: 1.5 }}>
+                        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
+                          💡 <b>Lưu ý:</b> Nếu để trống Token/Webhook của Watchdog, hệ thống sẽ tự động dùng Kênh thông báo chung của Server được cài đặt tại trang Quản trị.
+                        </Typography>
+                      </Box>
+                    </Stack>
+                  </Card>
+                </Grid>
+              </Grid>
+
+              <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
+                <Button
+                  type="submit"
+                  variant="contained"
+                  color="primary"
+                  startIcon={<Save size={18} />}
+                  disabled={savingNotify}
+                  sx={{ px: 3, fontWeight: 700 }}
+                >
+                  {savingNotify ? 'Đang lưu...' : 'Lưu Kênh Thông Báo Watchdog'}
+                </Button>
+              </Box>
+            </form>
+          </CardContent>
+        </Card>
       )}
 
       {/* Add / Edit Rule Modal */}

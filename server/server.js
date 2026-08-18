@@ -28,12 +28,13 @@ const SCREENSHOT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const AGENT_OFFLINE_MS = 20_000;
 const COMMAND_TIMEOUT_MS = 60_000;
 const MAX_SCREENSHOT_BYTES = 10 * 1024 * 1024;
-const ALLOWED_COMMANDS = new Set(['process.kill', 'watchdog.launch', 'window.capture', 'system.execute']);
+const ALLOWED_COMMANDS = new Set(['process.kill', 'watchdog.launch', 'window.capture', 'system.execute', 'agent.upgrade']);
 const COMMAND_CAPABILITIES = {
   'process.kill': ['process.kill', 'processes'],
   'watchdog.launch': ['watchdog.launch', 'watchdog'],
   'window.capture': ['window.capture', 'desktop-helper'],
-  'system.execute': ['system.execute', 'powershell', 'windows', 'processes', 'telemetry']
+  'system.execute': ['system.execute', 'powershell', 'windows', 'processes', 'telemetry'],
+  'agent.upgrade': ['agent.upgrade', 'windows', 'telemetry', 'processes']
 };
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -388,10 +389,18 @@ function insertEvent(agentId, message) {
     JSON.stringify(payload), occurredAt, new Date().toISOString());
   if (result.changes) {
     broadcastUi('ui.event', { ...payload, severity, occurredAt }, agentId);
-    if (severity === 'error' || payload.eventType?.startsWith('watchdog.') || payload.eventType?.startsWith('process.manual.')) {
+    if (severity === 'error' || payload.eventType?.startsWith('watchdog.') || payload.eventType?.startsWith('process.manual.') || payload.eventType?.includes('watchdog')) {
       const host = getHost(agentId);
       const content = formatDiscordEvent(host?.display_name || host?.hostname || agentId, { ...payload, severity });
       if (content) sendDiscord(content);
+
+      // Dedicated Watchdog Self-Healing & Process Alerting
+      const watchdogConfig = getWatchdog(agentId);
+      alertEngine.sendWatchdogAlert({
+        eventType: payload.eventType || 'watchdog.event',
+        message: payload.message,
+        data: payload
+      }, host, watchdogConfig);
     }
   }
 }
@@ -529,6 +538,7 @@ function validateCommand(type, payload) {
   if (type === 'watchdog.launch' && !payload.ruleId) return 'ruleId required';
   if (type === 'window.capture' && !payload.processName) return 'processName required';
   if (type === 'system.execute' && !payload.command?.trim()) return 'command required';
+  if (type === 'agent.upgrade') return null;
   return null;
 }
 
@@ -784,6 +794,7 @@ app.get('/api/v1/hosts/:id/watchdog', authenticate, requireHostAccess, (req, res
 app.put('/api/v1/hosts/:id/watchdog', authenticate, requireHostAccess, requireHostManager, (req, res) => {
   if (!hostSupports(req.managedHost, 'watchdog')) return res.status(409).json({ error: 'capability_not_supported' });
   const rules = req.body?.rules;
+  const notifications = req.body?.notifications || {};
   if (!Array.isArray(rules)) return res.status(400).json({ error: 'rules array required' });
   for (const rule of rules) {
     if (!rule.id || !rule.processName || !rule.filePath || !['service', 'interactive'].includes(rule.runMode)) {
@@ -796,9 +807,9 @@ app.put('/api/v1/hosts/:id/watchdog', authenticate, requireHostAccess, requireHo
   db.prepare(`
     INSERT INTO watchdog_configs(agent_id, version, config_json, updated_at) VALUES (?, ?, ?, ?)
     ON CONFLICT(agent_id) DO UPDATE SET version = excluded.version, config_json = excluded.config_json, updated_at = excluded.updated_at
-  `).run(req.params.id, version, JSON.stringify({ rules }), now);
+  `).run(req.params.id, version, JSON.stringify({ rules, notifications }), now);
   pushWatchdogConfig(req.params.id);
-  res.json({ version, rules, updatedAt: now });
+  res.json({ version, rules, notifications, updatedAt: now });
 });
 
 app.get('/api/v1/hosts/:id/events', authenticate, requireHostAccess, (req, res) => {
@@ -1047,6 +1058,60 @@ app.get('/api/v1/screenshots/:id', authenticate, (req, res) => {
     return res.status(404).json({ error: 'Screenshot not found' });
   }
   res.sendFile(row.file_path);
+});
+
+// ==========================================
+// OTA (Over-The-Air) Upgrade Endpoints
+// ==========================================
+app.get('/api/v1/ota/status', authenticate, (req, res) => {
+  const version = '2.1.4';
+  res.json({
+    serverVersion: version,
+    latestAgentVersion: version,
+    releaseNotes: 'Cập nhật S.M.A.R.T Disks, Remote Web Terminal, Telegram Topics & OTA Upgrade System',
+    releaseDate: '2026-08-18'
+  });
+});
+
+app.get('/api/v1/ota/agent-bundle', (req, res) => {
+  try {
+    const agentPath = path.join(__dirname, '..', 'agent', 'agent.js');
+    const windowsPath = path.join(__dirname, '..', 'agent', 'windows.js');
+    const files = {};
+    if (fs.existsSync(agentPath)) files['agent.js'] = fs.readFileSync(agentPath, 'utf8');
+    if (fs.existsSync(windowsPath)) files['windows.js'] = fs.readFileSync(windowsPath, 'utf8');
+    res.json({
+      version: '2.1.4',
+      files
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/v1/hosts/:id/upgrade', authenticate, requireSuperAdmin, (req, res) => {
+  const agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(req.params.id);
+  if (!agent) return res.status(404).json({ error: 'Agent not found' });
+  const command = createCommand(req.params.id, 'agent.upgrade', {
+    targetVersion: '2.1.4',
+    downloadUrl: '/api/v1/ota/agent-bundle'
+  }, req.user.username, 60_000);
+  res.status(202).json({ id: command.id, status: command.status });
+});
+
+app.post('/api/v1/hosts/upgrade-all', authenticate, requireSuperAdmin, (req, res) => {
+  const agents = db.prepare("SELECT id FROM agents WHERE status = 'approved'").all();
+  const queued = [];
+  for (const a of agents) {
+    if (agentSockets.has(a.id)) {
+      const command = createCommand(a.id, 'agent.upgrade', {
+        targetVersion: '2.1.4',
+        downloadUrl: '/api/v1/ota/agent-bundle'
+      }, req.user.username, 60_000);
+      queued.push({ agentId: a.id, commandId: command.id });
+    }
+  }
+  res.json({ queuedCount: queued.length, queued });
 });
 
 app.get('*', (req, res) => res.sendFile(path.join(staticPath, 'index.html')));

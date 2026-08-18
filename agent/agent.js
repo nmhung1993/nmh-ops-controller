@@ -495,6 +495,38 @@ async function executeCommand(command) {
       if (!script) throw new Error('command_empty');
       const output = await runPowerShell(script, { timeout: 30_000 });
       result = { stdout: output };
+    } else if (commandType === 'agent.upgrade') {
+      const downloadPath = data.downloadUrl || '/api/v1/ota/agent-bundle';
+      const bundleUrl = `${config.serverUrl.replace(/\/$/, '')}${downloadPath}`;
+      console.log(`[Agent OTA] Downloading upgrade bundle from ${bundleUrl}...`);
+      let bundle;
+      if (typeof fetch === 'function') {
+        const resp = await fetch(bundleUrl);
+        if (!resp.ok) throw new Error(`Download failed: HTTP ${resp.status}`);
+        bundle = await resp.json();
+      } else {
+        const httpLib = bundleUrl.startsWith('https:') ? https : http;
+        bundle = await new Promise((res, rej) => {
+          httpLib.get(bundleUrl, (r) => {
+            let data = '';
+            r.on('data', chunk => data += chunk);
+            r.on('end', () => {
+              try { res(JSON.parse(data)); } catch (e) { rej(e); }
+            });
+          }).on('error', rej);
+        });
+      }
+      if (bundle.files) {
+        for (const [filename, content] of Object.entries(bundle.files)) {
+          const targetPath = path.join(__dirname, filename);
+          fs.writeFileSync(targetPath, content, 'utf8');
+        }
+      }
+      result = { updated: true, newVersion: bundle.version || '2.1.4' };
+      sendCommandResult(commandId, 'succeeded', result);
+      sendEvent('agent.ota.restarting', 'info', `Agent successfully upgraded to v${bundle.version || '2.1.4'}. Restarting...`);
+      setTimeout(() => process.exit(0), 1000);
+      return;
     } else {
       throw new Error('unsupported_command');
     }
