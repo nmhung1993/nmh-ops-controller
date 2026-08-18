@@ -38,6 +38,8 @@
   "role.viewer": "Viewer",
   "role.superAdmin": "Super administrator",
   "nav.fleet": "Fleet",
+  "nav.docker": "Docker Fleet",
+  "nav.network": "Network & Mesh",
   "nav.dashboard": "Dashboard",
   "nav.processes": "Processes",
   "nav.watchdog": "Watchdog",

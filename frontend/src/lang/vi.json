@@ -38,6 +38,8 @@
   "role.viewer": "Người xem",
   "role.superAdmin": "Quản trị viên cấp cao",
   "nav.fleet": "Danh sách máy",
+  "nav.docker": "Quản lý Docker",
+  "nav.network": "Mạng & Router",
   "nav.dashboard": "Tổng quan",
   "nav.processes": "Tiến trình",
   "nav.watchdog": "Giám sát tự động",

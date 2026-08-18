@@ -19,6 +19,7 @@ const {
 } = require('./database');
 const { networkRouter } = require('./network-monitor');
 const { alertEngine } = require('./alert-engine');
+const { dockerManager } = require('./docker-manager');
 
 const PORT = Number(process.env.PORT || 3003);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -669,6 +670,39 @@ server.on('upgrade', (req, socket, head) => {
       return socket.destroy();
     }
   }
+  if (requestUrl.pathname === '/ws/docker/logs') {
+    try {
+      const claims = jwt.verify(requestUrl.searchParams.get('token') || '', JWT_SECRET);
+      const user = db.prepare('SELECT username, role FROM users WHERE username = ?').get(claims.username);
+      if (!user) throw new Error('user_not_found');
+      const containerId = requestUrl.searchParams.get('containerId');
+      const tail = Number(requestUrl.searchParams.get('tail')) || 100;
+      if (!containerId) throw new Error('containerId required');
+
+      return dockerWss.handleUpgrade(req, socket, head, ws => {
+        dockerManager.streamLogsToWebSocket(containerId, ws, { tail });
+      });
+    } catch {
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      return socket.destroy();
+    }
+  }
+  if (requestUrl.pathname === '/ws/docker/exec') {
+    try {
+      const claims = jwt.verify(requestUrl.searchParams.get('token') || '', JWT_SECRET);
+      const user = db.prepare('SELECT username, role FROM users WHERE username = ?').get(claims.username);
+      if (!user) throw new Error('user_not_found');
+      const execId = requestUrl.searchParams.get('execId');
+      if (!execId) throw new Error('execId required');
+
+      return dockerWss.handleUpgrade(req, socket, head, ws => {
+        dockerManager.attachExecToWebSocket(execId, ws);
+      });
+    } catch {
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      return socket.destroy();
+    }
+  }
   socket.destroy();
 });
 
@@ -1137,6 +1171,174 @@ app.post('/api/v1/hosts/upgrade-all', authenticate, requireSuperAdmin, (req, res
     }
   }
   res.json({ queuedCount: queued.length, queued });
+});
+
+function requireDockerAdmin(req, res, next) {
+  if (req.user?.role !== 'super_admin' && req.user?.role !== 'admin') {
+    return res.status(403).json({ error: 'Docker management permission required' });
+  }
+  next();
+}
+
+// ==========================================
+// Docker Fleet & Container Management APIs
+// ==========================================
+app.get('/api/v1/docker/hosts', authenticate, async (req, res) => {
+  const isLocalAvail = await dockerManager.isAvailable();
+  const hosts = [
+    {
+      id: 'local',
+      name: 'Máy Chủ Trung Tâm (Local Docker)',
+      ip: '127.0.0.1',
+      isLocal: true,
+      available: isLocalAvail,
+      online: true
+    }
+  ];
+
+  // Include approved LAN agents
+  const agents = db.prepare("SELECT id, display_name, hostname, last_seen, capabilities_json FROM agents WHERE status = 'approved'").all();
+  for (const a of agents) {
+    const caps = parseJson(a.capabilities_json, []);
+    const online = a.last_seen && Date.now() - Date.parse(a.last_seen) <= AGENT_OFFLINE_MS;
+    hosts.push({
+      id: a.id,
+      name: a.display_name || a.hostname,
+      ip: a.hostname,
+      isLocal: false,
+      available: online && caps.includes('docker'),
+      online
+    });
+  }
+
+  res.json({ hosts });
+});
+
+app.get('/api/v1/docker/:hostId/info', authenticate, async (req, res) => {
+  if (req.params.hostId === 'local') {
+    const info = await dockerManager.getSystemInfo();
+    return res.json(info);
+  }
+  res.json({ available: false, error: 'Remote agent docker info not yet registered' });
+});
+
+app.get('/api/v1/docker/:hostId/containers', authenticate, async (req, res) => {
+  if (req.params.hostId === 'local') {
+    const containers = await dockerManager.listContainers({ all: req.query.all !== 'false' });
+    return res.json({ containers });
+  }
+  res.json({ containers: [] });
+});
+
+app.get('/api/v1/docker/:hostId/containers/:id', authenticate, async (req, res) => {
+  try {
+    if (req.params.hostId === 'local') {
+      const details = await dockerManager.getContainerDetails(req.params.id);
+      return res.json(details);
+    }
+    res.status(404).json({ error: 'Container not found' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/v1/docker/:hostId/containers/:id/stats', authenticate, async (req, res) => {
+  try {
+    if (req.params.hostId === 'local') {
+      const stats = await dockerManager.getContainerStats(req.params.id);
+      return res.json(stats);
+    }
+    res.status(404).json({ error: 'Container not found' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/v1/docker/:hostId/containers/:id/action', authenticate, requireDockerAdmin, async (req, res) => {
+  try {
+    const { action, options } = req.body || {};
+    if (!action) return res.status(400).json({ error: 'Action required' });
+    if (req.params.hostId === 'local') {
+      await dockerManager.containerAction(req.params.id, action, options);
+      return res.json({ success: true, action, containerId: req.params.id });
+    }
+    res.status(400).json({ error: 'Remote host action not supported directly' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/v1/docker/:hostId/containers/:id/logs', authenticate, async (req, res) => {
+  try {
+    if (req.params.hostId === 'local') {
+      const logs = await dockerManager.getContainerLogs(req.params.id, { tail: req.query.tail || 200 });
+      return res.json({ logs });
+    }
+    res.json({ logs: '' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/v1/docker/:hostId/containers/:id/exec', authenticate, requireDockerAdmin, async (req, res) => {
+  try {
+    const cmd = Array.isArray(req.body.cmd) ? req.body.cmd : ['/bin/sh'];
+    if (req.params.hostId === 'local') {
+      const execId = await dockerManager.createExecInstance(req.params.id, { cmd, tty: true });
+      return res.json({ success: true, execId });
+    }
+    res.status(400).json({ error: 'Remote host exec not supported' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/v1/docker/:hostId/stacks', authenticate, async (req, res) => {
+  if (req.params.hostId === 'local') {
+    const stacks = await dockerManager.listStacks();
+    return res.json({ stacks });
+  }
+  res.json({ stacks: [] });
+});
+
+app.get('/api/v1/docker/:hostId/images', authenticate, async (req, res) => {
+  if (req.params.hostId === 'local') {
+    const images = await dockerManager.listImages();
+    return res.json({ images });
+  }
+  res.json({ images: [] });
+});
+
+app.post('/api/v1/docker/:hostId/images/prune', authenticate, requireDockerAdmin, async (req, res) => {
+  try {
+    if (req.params.hostId === 'local') {
+      const result = await dockerManager.pruneImages();
+      return res.json({ success: true, result });
+    }
+    res.status(400).json({ error: 'Remote host prune not supported' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/v1/docker/:hostId/volumes', authenticate, async (req, res) => {
+  if (req.params.hostId === 'local') {
+    const volumes = await dockerManager.listVolumes();
+    return res.json({ volumes });
+  }
+  res.json({ volumes: [] });
+});
+
+app.post('/api/v1/docker/:hostId/volumes/prune', authenticate, requireDockerAdmin, async (req, res) => {
+  try {
+    if (req.params.hostId === 'local') {
+      const result = await dockerManager.pruneVolumes();
+      return res.json({ success: true, result });
+    }
+    res.status(400).json({ error: 'Remote host prune not supported' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('*', (req, res) => res.sendFile(path.join(staticPath, 'index.html')));
