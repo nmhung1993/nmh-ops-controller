@@ -1,630 +1,263 @@
-# Windows Controller Fleet
-
-Windows Controller Fleet là webapp giám sát và điều khiển tập trung tối đa khoảng 20 máy Windows trong cùng mạng LAN tin cậy. Một máy chạy **Central Server**, còn mỗi máy cần quản lý chạy **Windows Agent**. Máy Central Server cũng nên cài Agent để xuất hiện và được quản lý giống các máy còn lại.
-
-> Bản triển khai mặc định dùng HTTP trong LAN. Không port-forward TCP 3003 và không đưa trực tiếp dịch vụ này ra Internet. Nếu dùng ngoài LAN tin cậy, hãy đặt server sau HTTPS/reverse proxy.
-
-## Kiến trúc
-
-```text
-Trình duyệt -- HTTP/WebSocket --> Central Server (Node.js + Express + SQLite)
-                                      ^
-                                      | WebSocket outbound
-                               Windows Agent Service
-                                      |
-                         Named Pipe có secret và ACL nội bộ
-                                      |
-                         Desktop Helper khi người dùng login
-
-Windows Agent Service
-  |-- Node.js/os + PowerShell/CIM: CPU, RAM, disk, network, process
-  |-- nvidia-smi: nhiệt độ/công suất GPU NVIDIA
-  |-- ACPI WMI + Windows Energy/Power Meter: sensor chuẩn do Windows cung cấp
-  `-- LibreHardwareMonitorLib + PawnIO: CPU Package, mainboard, storage và sensor thấp tầng
-```
-
-### Vai trò của từng thành phần
-
-- **Central Server** cung cấp web UI, REST API `/api/v1`, WebSocket cho UI/Agent, xác thực người dùng, phê duyệt Agent, lưu SQLite, backup, cleanup và gửi Discord webhook.
-- **Windows Agent Service** chạy bằng `LocalSystem`, tự khởi động cùng Windows, thu thập telemetry, chạy watchdog và chỉ nhận các command đã định nghĩa sẵn.
-- **Desktop Helper** chạy trong interactive user session khi đăng nhập, dùng Named Pipe để nhận yêu cầu mở/đưa cửa sổ lên trước và chụp screenshot. Service trong Session 0 không thể tự thao tác cửa sổ desktop.
-- **WinSW** chỉ bọc Node.js thành Windows Service và giữ service chạy nền. WinSW không có engine đọc nhiệt độ hay công suất.
-- **Hardware Probe** là bridge .NET chạy nền bằng `SYSTEM`, đọc trực tiếp `LibreHardwareMonitorLib` và ghi snapshot JSON mỗi 5 giây.
-- **PawnIO** là driver thấp tầng đi kèm LibreHardwareMonitor, cho phép đọc MSR/LPC trên phần cứng được hỗ trợ, đặc biệt hữu ích với CPU Xeon/X99.
-
-## Engine thu thập dữ liệu
-
-| Dữ liệu | Engine/nguồn | Cơ chế |
-|---|---|---|
-| CPU usage | Node.js `os.cpus()` | Tính delta idle/total giữa hai lần lấy mẫu, không dùng giá trị tích lũy trực tiếp. |
-| RAM, uptime, OS | Node.js `os` | Đọc tổng RAM, RAM trống, uptime và phiên bản Windows. |
-| Disk | PowerShell/CIM `Win32_LogicalDisk` | Đọc dung lượng tổng, đã dùng và còn trống; cache 30 giây. |
-| Network | `Get-NetAdapterStatistics` | Tính tốc độ gửi/nhận từ delta byte theo thời gian. |
-| Process | PowerShell `Get-Process` | Danh sách tải theo yêu cầu; CPU process được tính theo delta và số logical core. |
-| GPU NVIDIA | `nvidia-smi` | Đọc nhiệt độ GPU, công suất hiện tại và power limit. |
-| ACPI temperature | WMI `MSAcpi_ThermalZoneTemperature` | Chỉ có dữ liệu khi BIOS/firmware công bố thermal zone cho Windows. |
-| System power meter | Windows `Energy Meter`/`Power Meter` counter | Nếu có, đây là công suất tổng thật. Nếu không có, ứng dụng chỉ cộng các linh kiện đọc được và đánh dấu `partial`. |
-| CPU/mainboard/storage | `LibreHardwareMonitorLib` | Bridge .NET đọc CPU Package, core, Super-I/O/LPC, GPU và SMART/NVMe sensor được phần cứng hỗ trợ. |
-| Low-level MSR/LPC | PawnIO | Mở quyền truy cập thanh ghi thấp tầng cho LibreHardwareMonitor. Không tự tạo sensor nếu BIOS/chip không hỗ trợ. |
-
-Ứng dụng không ước lượng nhiệt độ hoặc công suất bị thiếu. Sensor không hợp lệ như ngưỡng NVMe, công suất `0 W`, hoặc AUXTIN bị hở trên Nuvoton NCT6779D được loại bỏ thay vì hiển thị như dữ liệu thật.
-
-## Yêu cầu
-
-- Windows 10/11 hoặc Windows Server.
-- Node.js `22.5+`; khuyến nghị Node.js 24 LTS.
-- Tài khoản Administrator để cài service, Scheduled Task, firewall và PawnIO.
-- Windows Firewall cho phép TCP 3003 từ **LocalSubnet**; profile Public/Domain vẫn dùng được nếu LAN được quản trị tin cậy.
-- Central Server nên có static IP hoặc DHCP reservation.
-- Kết nối Internet trong lần cài đầu để tải npm package, WinSW, LibreHardwareMonitor và .NET runtime. LibreHardwareMonitor có thể dùng ZIP offline, nhưng các dependency khác vẫn phải có sẵn.
-
-Kiểm tra Node.js:
-
-```powershell
-node --version
-npm --version
-```
-
-## Cài Central Server
-
-Mở PowerShell bằng **Run as administrator**, chuyển tới thư mục project rồi chạy đúng một installer server:
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\deploy\install-server.ps1 -Port 3003
-```
-
-Installer server sẽ:
-
-- copy backend, UI và dependency manifest vào `%ProgramData%\WindowsController\server`;
-- chạy `npm ci --omit=dev`;
-- tải WinSW nếu máy chưa có bản dành cho ứng dụng;
-- tạo service tự khởi động `Windows Controller Central Server`;
-- bind webapp tại `0.0.0.0:3003`;
-- mở inbound TCP 3003 cho LocalSubnet trên mọi Windows network profile (không mở toàn Internet);
-- tạo SQLite, JWT secret ngẫu nhiên và thư mục backup;
-- import dữ liệu JSON cũ ở lần chạy đầu nếu có.
-
-Cuối quá trình, installer in các URL LAN, ví dụ:
-
-```text
-http://192.168.1.10:3003
-```
-
-### Chạy Central Server trên Synology
-
-Synology nên chạy Central Server bằng **Container Manager**; Agent Synology vẫn chạy riêng để NAS tự xuất hiện trong fleet. Container chỉ giữ code/runtime, còn SQLite, JWT secret, screenshot và backup nằm ở thư mục bind mount nên có thể backup và di chuyển nguyên vẹn.
-
-1. Trên máy Windows cũ, dừng Central Server rồi export toàn bộ thư mục data:
-
-```powershell
-.\synology-server\export-server-data.ps1 -Destination .\windows-controller-server-data.zip
-```
-
-2. Copy **toàn bộ repository** lên NAS, ví dụ `/volume1/docker/windows-controller`. Docker image tự build React từ `frontend/` bằng `vite.config.js`, nên không chỉ copy riêng `public/`.
-3. Giải nén archive vào `/volume1/docker/windows-controller/data` **trước lần chạy đầu tiên**. Giữ cả `windows-controller.db`, `windows-controller.db-wal`, `windows-controller.db-shm` nếu chúng tồn tại.
-4. SSH vào NAS và build/start container:
-
-```sh
-sudo sh ./synology-server/install-synology-server.sh \
-  --project-dir /volume1/docker/windows-controller \
-  --data-dir /volume1/docker/windows-controller/data
-```
-
-5. Mở `http://<synology-lan-ip>:3003`, đăng nhập bằng user hiện có và kiểm tra hosts/telemetry trước khi tắt server cũ. Nếu archive không có dữ liệu, trang sẽ yêu cầu tạo Super Admin lần đầu.
-
-Container Manager phải cho phép TCP 3003 từ LAN tin cậy. Không port-forward cổng này ra Internet. Sau khi cutover, đổi `serverUrl` của Windows Agent và các connector sang IP Synology; Agent Synology dùng `http://127.0.0.1:3003` nếu chạy cùng NAS.
-
-Mở URL từ trình duyệt. Nếu chưa có user, trang đầu tiên yêu cầu tạo tài khoản quản trị đầu tiên. Tài khoản đầu tiên là **Super Admin** và ứng dụng không có mật khẩu mặc định.
-
-### Cài Agent trên chính máy Central Server
-
-Central Server không tự giám sát hệ điều hành của nó. Sau khi cài server, tiếp tục chạy installer Agent trên cùng máy:
-
-```powershell
-.\agent\install-agent.ps1 -ServerUrl "http://192.168.1.10:3003"
-```
-
-Sau đó approve máy này trong trang Admin giống mọi Agent khác.
-
-## Cài Agent bằng một file duy nhất
-
-Giữ nguyên toàn bộ thư mục `agent` trên máy client, nhưng quản trị viên **chỉ cần chạy một entry point** là `install-agent.ps1`. Không cần chạy riêng `install-hardware-monitor.ps1` trong quy trình thông thường.
-
-Mở PowerShell bằng **Run as administrator**:
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\agent\install-agent.ps1 -ServerUrl "http://192.168.1.10:3003"
-```
-
-Thay `192.168.1.10` bằng IP cố định của Central Server.
-
-Một lần chạy trên sẽ tự động:
-
-1. kiểm tra URL server và Node.js;
-2. copy Agent runtime vào `%ProgramData%\WindowsController\agent`;
-3. cài production dependency;
-4. tạo WinSW service `Windows Controller Agent` chạy bằng `LocalSystem` và ẩn cửa sổ;
-5. tạo Desktop Helper Scheduled Task chạy khi user hiện tại đăng nhập;
-6. tạo Named Pipe secret và ACL cục bộ;
-7. tạo outbound firewall rule cho port của Central Server;
-8. gọi hardware installer nội bộ;
-9. tải/cài LibreHardwareMonitor và local .NET 10 SDK/Windows Desktop Runtime;
-10. build Hardware Probe, cài PawnIO và tạo Scheduled Task `Windows Controller Hardware Monitor`;
-11. in hostname và MachineGuid fingerprint để Admin đối chiếu.
-
-### Tùy chọn Agent installer
-
-Bỏ qua hardware monitor trên máy không cần sensor nhiệt/công suất:
-
-```powershell
-.\agent\install-agent.ps1 `
-  -ServerUrl "http://192.168.1.10:3003" `
-  -SkipHardwareMonitor
-```
-
-Dùng gói LibreHardwareMonitor ZIP đã tải từ repository chính thức:
-
-```powershell
-.\agent\install-agent.ps1 `
-  -ServerUrl "http://192.168.1.10:3003" `
-  -HardwareMonitorPackagePath "C:\Install\LibreHardwareMonitor.NET.10.zip"
-```
-
-`install-hardware-monitor.ps1` vẫn được giữ để sửa chữa hoặc cài lại riêng phần sensor, nhưng không còn là bước bắt buộc sau khi cài Agent.
-
-## Phê duyệt Agent
-
-1. Installer in `Hostname` và `Fingerprint` ở cuối.
-2. Đăng nhập web bằng tài khoản Super Admin.
-3. Mở **Admin → Pending agents**.
-4. So sánh hostname/fingerprint với màn hình installer.
-5. Chọn **Approve** và đặt display name.
-6. Agent nhận token riêng; token được bảo vệ bằng Windows DPAPI machine scope.
-
-Agent chưa approve hoặc đã revoke không thể gửi telemetry hợp lệ hay nhận command. Chỉ Super Admin có thể approve/revoke Agent và cài lại để enroll lại khi cần.
-
-## Phân quyền user theo máy
-
-Hệ thống có ba role:
-
-- **Super Admin**: thấy và quản lý toàn bộ máy; approve/revoke Agent; tạo, sửa, xóa user; phân danh sách máy; quản lý Discord/settings. Tài khoản được tạo trong First-run Setup là Super Admin mặc định.
-- **Admin**: chỉ thấy các máy được Super Admin gán và có quyền quản lý các máy đó, gồm process kill, launch, capture và chỉnh Watchdog. Admin không được quản lý user, pending Agent hoặc settings toàn hệ thống.
-- **Viewer**: chỉ xem telemetry, process đã ẩn path, Watchdog và activity của các máy được gán; không được gửi command hay thay đổi cấu hình.
-
-Để phân máy: mở **Admin → Tài khoản người dùng → Chỉnh sửa**, chọn role và đánh dấu danh sách máy. Ví dụ `adminA` được gán máy A sẽ không thể thấy hoặc gọi API của máy B. Việc chặn được thực thi tại REST API, WebSocket và endpoint screenshot, không chỉ ẩn bằng giao diện.
-
-Khi nâng cấp database cũ, tài khoản admin được tạo sớm nhất sẽ thành Super Admin. Các admin/viewer cũ được giữ quyền trên những máy đã tồn tại tại thời điểm migration để tránh mất truy cập; Super Admin có thể chỉnh lại danh sách sau đó.
-
-## Hướng dẫn sử dụng
-
-### Fleet Overview
-
-- Super Admin xem tất cả máy đã approve; Admin/Viewer chỉ thấy các máy được phân quyền, cùng trạng thái online/offline, last seen, CPU, RAM và cảnh báo.
-- Agent được xem là offline nếu Central Server không nhận heartbeat trong 20 giây.
-- Chọn một host để Dashboard, Processes và Watchdog giữ đúng `hostId` khi reload.
-
-### Dashboard
-
-- Telemetry realtime được Agent gửi mỗi 2 giây.
-- Server chỉ ghi telemetry lịch sử tối đa mỗi 10 giây để giảm kích thước database.
-- Theo dõi CPU, RAM, uptime, network, disk, nhiệt độ và công suất theo linh kiện.
-- `totalWatts` chỉ là công suất tổng thật khi nguồn là Windows Energy/Power Meter; nếu cộng từ một số linh kiện, coverage hiển thị `partial`.
-
-### Processes
-
-- Danh sách process chỉ tải khi mở trang hoặc refresh, không truyền liên tục.
-- Viewer chỉ xem và không thấy executable path. Admin được phân máy và Super Admin có thể kill process hoặc yêu cầu capture cửa sổ.
-- CPU process được tính từ delta CPU time, tránh nhầm giá trị CPU tích lũy.
-
-### Watchdog
-
-- Mỗi rule có process name, executable path, trạng thái enable, `runMode` và tùy chọn screenshot.
-- `runMode: service` chạy executable trong Session 0, phù hợp service/background process.
-- `runMode: interactive` yêu cầu user đã login và Desktop Helper đang chạy, phù hợp ứng dụng GUI.
-- Agent cache rule/version và kiểm tra mỗi 10 giây, nên watchdog vẫn restart process khi Central Server offline.
-- Nút **Launch** sẽ tìm cửa sổ hợp lệ có kích thước lớn hơn `0x0`, restore/bring-to-front nếu process đã chạy, hoặc launch executable nếu chưa chạy.
-- Với launch mới, Agent chờ khoảng 30 giây rồi capture; với cửa sổ đã tồn tại, capture bắt đầu sớm hơn và có retry.
-
-### Screenshot và Discord
-
-- Desktop Helper ưu tiên `PrintWindow`, sau đó dùng screen-copy fallback.
-- Nếu không có user session, command interactive trả `interactive_session_unavailable`.
-- Central Server giữ Discord webhook; webhook không được gửi xuống Agent.
-- Event launch/watchdog được gửi bằng nội dung tiếng Việt. Khi capture thành công, Central Server đính kèm screenshot; khi thất bại, gửi một thông báo lỗi thay thế.
-- Cấu hình Discord webhook trong trang Admin settings.
-
-### Giao diện
-
-- UI hỗ trợ tiếng Việt và tiếng Anh.
-- Theme sáng/tối được lưu trên trình duyệt.
-- Viewer chỉ xem máy được gán; Admin quản lý máy được gán; Super Admin quản lý toàn bộ fleet, user, approval và settings.
-
-## Cơ chế realtime và offline
-
-- Agent gửi telemetry mỗi 2 giây và ping mỗi 5 giây.
-- Central Server đánh dấu offline trong tối đa 20 giây.
-- Khi mất kết nối, Agent giữ tối đa 300 telemetry frame, tương đương khoảng 10 phút, và tối đa 1.000 event.
-- WebSocket reconnect dùng exponential backoff từ 1 đến 30 giây. Agent cũng tự retry khi bước tạo kết nối/fingerprint lỗi và chủ động đóng socket nếu không nhận phản hồi từ server trong 20 giây.
-- Khi nâng cấp mã Agent, chạy `install-agent.ps1` một lần để cập nhật runtime service. Sau đó các lần Central Server restart hoặc mất mạng không cần cài lại Agent.
-- Frame dùng envelope gồm `type`, `messageId`, `agentId`, `sentAt`, `seq`, `payload`.
-- Agent lưu tối đa 500 command đã hoàn tất để tránh thực thi lại cùng `commandId`.
-- Command hết hạn sau 60 giây và có trạng thái `queued`, `sent`, `acknowledged`, `succeeded`, `failed` hoặc `expired`.
-- Chỉ hỗ trợ `process.kill`, `watchdog.launch`, `window.capture`; không có remote shell hay arbitrary command execution.
-
-## Lưu trữ, retention và backup
-
-Central Server dùng SQLite qua engine `node:sqlite` ở WAL mode:
-
-```text
-Development: .\data\windows-controller.db
-Service:     C:\ProgramData\WindowsController\server\data\windows-controller.db
-```
-
-- Telemetry: 7 ngày.
-- Screenshot: 7 ngày và tối đa tổng cộng 1 GB.
-- Event và command audit: 30 ngày.
-- Backup nhất quán bằng `VACUUM INTO`: mỗi ngày tại `data\backups`.
-- JSON legacy được backup trước khi migration.
-
-Chart.js được phục vụ từ thư mục `public`, không phụ thuộc CDN nên UI vẫn chạy khi LAN mất Internet.
-
-## Bảo mật
-
-- Agent kết nối outbound tới server; client không cần mở inbound port.
-- Agent mới luôn ở trạng thái pending.
-- Mỗi Agent có token ngẫu nhiên riêng; server chỉ lưu SHA-256 hash, client lưu token bằng DPAPI.
-- Web UI/WebSocket dùng JWT.
-- Password được hash bằng bcrypt.
-- Named Pipe Desktop Helper dùng secret cục bộ và ACL giới hạn.
-- Secret/path nhạy cảm bị giới hạn theo role.
-- Mọi host-scoped REST API, WebSocket event và screenshot đều kiểm tra bảng `user_host_access`.
-- Không thể xóa hoặc hạ quyền Super Admin cuối cùng.
-- Không có tài khoản, password hoặc JWT secret hardcode.
-- HTTP không mã hóa credential/token trên đường truyền; chỉ dùng trong LAN tin cậy hoặc chuyển sang HTTPS.
-
-## Thư mục và log quan trọng
-
-```text
-C:\ProgramData\WindowsController\server
-  data\windows-controller.db
-  data\backups
-  data\screenshots
-  WindowsControllerServer.*.log
-
-C:\ProgramData\WindowsController\agent
-  runtime
-  state
-  helper\desktop-helper.log
-  WindowsControllerAgent.*.log
-
-C:\ProgramData\WindowsController\hardware-monitor
-  hardware-sensors.json
-  hardware-report.txt
-  hardware-probe.log
-  pawnio-installed.txt
-```
-
-Kiểm tra service và task:
-
-```powershell
-Get-Service WindowsControllerServer, WindowsControllerAgent
-Get-ScheduledTask -TaskName 'Windows Controller Desktop Helper','Windows Controller Hardware Monitor'
-```
-
-## Xử lý sự cố
-
-### Agent không xuất hiện trong Pending agents
-
-```powershell
-Get-Service WindowsControllerAgent
-Get-Content 'C:\ProgramData\WindowsController\agent\WindowsControllerAgent.out.log' -Tail 50
-Get-Content 'C:\ProgramData\WindowsController\agent\WindowsControllerAgent.err.log' -Tail 50
-Test-NetConnection 192.168.1.10 -Port 3003
-```
-
-Kiểm tra `ServerUrl`, firewall server, LocalSubnet và việc browser có mở được URL server từ máy Agent hay không.
-
-### Không có nhiệt độ/công suất
-
-```powershell
-Get-ScheduledTask -TaskName 'Windows Controller Hardware Monitor'
-Get-Content 'C:\ProgramData\WindowsController\hardware-monitor\hardware-probe.log' -Tail 50
-Get-Content 'C:\ProgramData\WindowsController\hardware-monitor\pawnio-installed.txt'
-Get-Content 'C:\ProgramData\WindowsController\hardware-monitor\hardware-sensors.json'
-```
-
-Không phải bo mạch/CPU nào cũng công bố sensor. Nếu PawnIO đã cài nhưng report vẫn không có `CPU Package`, `TjMax` bằng 0 hoặc không tìm thấy Super-I/O, ứng dụng sẽ báo unavailable thay vì tạo giá trị giả.
-
-### Nuvoton NCT6779D hiển thị 108–109°C
-
-Một số bo X99 trả các kênh hở dưới tên `Temperature #4/#5/#6`, tương ứng AUXTIN1/2/3. Agent map lại sensor NCT6779D, loại các AUXTIN từ 100°C trở lên, ưu tiên `Mainboard`, đồng thời giữ `CPU (PECI)` thành sensor CPU dự phòng.
-
-Sau khi update source, chạy lại một installer Agent duy nhất:
-
-```powershell
-.\agent\install-agent.ps1 -ServerUrl "http://192.168.1.10:3003"
-```
-
-### `interactive_session_unavailable`
-
-- Đảm bảo có user đăng nhập trực tiếp/RDP và desktop chưa bị logoff.
-- Kiểm tra Scheduled Task `Windows Controller Desktop Helper` đang Running/Ready.
-- Dùng `runMode: interactive` cho GUI; `service` chỉ dành cho process nền.
-- Xem `%ProgramData%\WindowsController\agent\helper\desktop-helper.log`.
-
-## Gỡ cài đặt
-
-Gỡ Agent, Desktop Helper và Hardware Monitor Scheduled Task nhưng giữ các file dữ liệu/PawnIO:
-
-```powershell
-.\agent\uninstall-agent.ps1
-```
-
-Giữ Hardware Monitor tiếp tục chạy khi gỡ Agent:
-
-```powershell
-.\agent\uninstall-agent.ps1 -KeepHardwareMonitor
-```
-
-Chỉ dùng `-RemoveData` khi thực sự muốn xóa Agent state, hardware monitor runtime và local .NET runtime:
-
-```powershell
-.\agent\uninstall-agent.ps1 -RemoveData
-```
-
-PawnIO driver được giữ lại vì có thể đang được LibreHardwareMonitor hoặc công cụ khác sử dụng.
-
-Gỡ service Central Server nhưng giữ database: mở PowerShell Administrator và chạy các lệnh sau tại thư mục cài đặt:
-
-```powershell
-$root = 'C:\ProgramData\WindowsController\server'
-& "$root\WindowsControllerServer.exe" stop
-& "$root\WindowsControllerServer.exe" uninstall
-Remove-NetFirewallRule -DisplayName 'Windows Controller Central Server' -ErrorAction SilentlyContinue
-```
-
-Không xóa `$root\data` nếu còn cần SQLite, screenshot hoặc backup.
-
-## API chính
-
-Tất cả endpoint fleet đều host-scoped dưới `/api/v1`:
-
-```text
-GET    /hosts
-GET    /hosts/:id
-GET    /hosts/:id/telemetry
-GET    /hosts/:id/processes
-POST   /hosts/:id/commands
-GET    /hosts/:id/watchdog
-PUT    /hosts/:id/watchdog
-GET    /hosts/:id/events
-GET    /hosts/:id/commands
-GET    /agents/pending
-POST   /agents/:id/approve
-POST   /agents/:id/revoke
-GET    /users
-POST   /users
-PUT    /users/:username
-DELETE /users/:username
-```
-
-Agent realtime dùng `/ws/agent`; browser realtime dùng `/ws/ui` trên cùng port.
-
-## Chạy development và test
-
-```powershell
-npm.cmd install
-# Mở PowerShell bằng quyền Administrator nếu Central Server service đang chạy
-npm.cmd run dev
-```
-
-Mở `http://localhost:3003`. Lệnh `npm.cmd run dev` build React/MUI từ `frontend/` vào `public/`, sau đó dev launcher tạm dừng service `WindowsControllerServer` và phục vụ `server/` cùng bundle mới, nhưng vẫn dùng database tại `C:\ProgramData\WindowsController\server\data`. Sau mỗi thay đổi ở `frontend/`, dừng launcher và chạy lại `npm.cmd run dev`; không cần chạy lại `install-server.ps1`, và Agent vẫn giữ nguyên danh tính/token đã được duyệt.
-
-Nhấn `Ctrl+C` để thoát dev mode; launcher sẽ tự khởi động lại Central Server service. Nếu không có service đã cài và muốn dùng database trong source, chạy `npm.cmd run dev:standalone`.
-
-Chạy Agent không cài service:
-
-```powershell
-Copy-Item .\agent\config.example.json .\agent\config.json
-# Sửa serverUrl trong config.json
-node .\agent\agent.js --config .\agent\config.json
-```
-
-Kiểm tra source và test:
-
-```powershell
-npm.cmd run check
-npm.cmd test
-```
-
-## Synology DSM Agent
-
-Synology dùng Agent Linux riêng trong thư mục `synology-agent`. Agent này dùng cùng WebSocket enrollment/token với Agent Windows và hỗ trợ:
-
-- CPU delta từ `/proc/stat`, RAM từ `/proc/meminfo`, network rate từ `/proc/net/dev`;
-- volume từ `df`, process snapshot từ `ps`;
-- nhiệt độ/công suất nếu DSM expose sensor qua `/sys/class/thermal` hoặc `/sys/class/hwmon`;
-- `process.kill`, watchdog process và launch executable nền;
-- cache telemetry/event, heartbeat và reconnect exponential backoff.
-
-Không hỗ trợ Desktop Helper, interactive window, screenshot hoặc LibreHardwareMonitor.
-
-### Cài trên Synology
-
-1. Cài package Node.js 18+ trong Synology Package Center.
-2. Bật SSH, copy toàn bộ thư mục `synology-agent` lên NAS.
-3. Chạy bằng `root`:
-
-```sh
-sudo sh ./synology-agent/install-synology.sh \
-  --server-url http://192.168.1.10:3003
-```
-
-Mặc định Agent được cài tại `/volume1/@appdata/windows-controller-agent` và tạo startup script `/usr/local/etc/rc.d/WindowsControllerSynologyAgent.sh`.
-
-```sh
-# Trạng thái và log
-sudo /usr/local/etc/rc.d/WindowsControllerSynologyAgent.sh status
-tail -f /volume1/@appdata/windows-controller-agent/agent.log
-
-# Gỡ service nhưng giữ identity/token để có thể cài lại mà không enroll máy mới
-sudo sh ./synology-agent/uninstall-synology.sh
-```
-
-Sau khi Agent kết nối lần đầu, duyệt hostname/fingerprint trong trang Admin giống Agent Windows.
-
-## Home Assistant Connector
-
-Home Assistant dùng connector chỉ đọc qua REST API. Connector gửi CPU/RAM nếu đã có entity System Monitor, số lượng entity, entity unavailable và các sensor nhiệt độ/công suất được chọn. Connector không nhận lệnh process, watchdog, launch hoặc screenshot.
-
-### Home Assistant OS / Supervised Add-on
-
-1. Copy thư mục `homeassistant-addon` vào `/addons/windows_controller_connector` trên máy Home Assistant.
-2. Vào **Settings → Add-ons → Add-on Store**, mở menu và chọn **Check for updates**.
-3. Cài **Windows Controller Home Assistant Connector**.
-4. Điền `central_server_url`. Giữ `home_assistant_url` là `http://supervisor/core`; Supervisor token được cấp tự động.
-5. Chọn entity CPU/RAM và danh sách sensor muốn tổng hợp:
-
-```yaml
-cpu_entity_id: sensor.processor_use
-memory_entity_id: ""
-memory_used_entity_id: sensor.memory_use
-memory_free_entity_id: sensor.memory_free
-disk_used_percent_entity_id: sensor.system_monitor_disk_use_percent
-disk_free_entity_id: sensor.system_monitor_disk_free
-power_entity_ids:
-  - sensor.server_total_power
-temperature_entity_ids:
-  - sensor.cpu_package_temperature
-```
-
-Connector tự đổi `sensor.memory_use` và `sensor.memory_free` từ MiB sang byte, sau đó tính tổng RAM và phần trăm đang dùng. Với ổ đĩa, connector kết hợp `sensor.system_monitor_disk_use_percent` với `sensor.system_monitor_disk_free` theo GiB để suy ra dung lượng tổng, đã dùng và còn trống. `memory_entity_id` chỉ là phương án tương thích cũ khi hệ thống có một sensor RAM phần trăm duy nhất.
-
-Chỉ thêm các power entity không chồng lặp vì `TOTAL POWER` là tổng của danh sách `power_entity_ids`.
-
-Nếu log báo `home_assistant_http_401_supervisor_token_rejected`, hãy kiểm tra add-on có bật `homeassistant_api: true`, URL chính xác là `http://supervisor/core` và add-on đã được **Rebuild** sau khi thay đổi manifest. Nếu chạy Home Assistant Container/Core bằng URL trực tiếp (ví dụ `http://homeassistant:8123`), không dùng `SUPERVISOR_TOKEN`; hãy tạo **Long-Lived Access Token** rồi điền vào `home_assistant_token`.
-
-Khi cập nhật source add-on, cần copy cả `Dockerfile`, `build.yaml`, `config.yaml`, `package.json`, `agent.js` và `run.sh`, sau đó chọn **Rebuild**. File `build.yaml` ánh xạ đúng Home Assistant base image cho `amd64`, `aarch64` và `armv7`.
-
-### Home Assistant Container/Core
-
-Tạo long-lived access token trong Home Assistant profile, sao chép `config.example.json`, sau đó chạy connector cạnh Home Assistant:
-
-```sh
-cd homeassistant-addon
-cp config.example.json config.json
-npm install --omit=dev
-node agent.js --config ./config.json
-```
-
-Nên quản lý process này bằng systemd, Docker restart policy hoặc process supervisor của host. Sau lần kết nối đầu tiên, approve connector trong Central Server.
-
-Central Server dùng trường `capabilities` để tự ẩn chức năng không tương thích. Vì vậy Home Assistant không hiển thị kill/screenshot/watchdog, còn Synology không hiển thị các thao tác cửa sổ Windows.
+# MinhHungOps — Unified Fleet, Docker & LAN Operations Controller
+
+[![Node.js](https://img.shields.io/badge/Node.js-24%20LTS-green.svg)](https://nodejs.org/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
+[![Playwright Tests](https://img.shields.io/badge/Playwright%20E2E-41%2F41%20Passed-brightgreen.svg)](https://playwright.dev/)
+[![Unit Tests](https://img.shields.io/badge/Unit%20Tests-28%2F28%20Passed-brightgreen.svg)](https://nodejs.org/api/test.html)
+[![License](https://img.shields.io/badge/Author-%40nmhung1993-orange.svg)](https://github.com/nmhung1993)
+[![Timezone](https://img.shields.io/badge/Timezone-GMT%2B7%20(Asia%2FHo__Chi__Minh)-blueviolet.svg)]()
+
+**MinhHungOps** là nền tảng quản trị và giám sát tập trung toàn diện cho hạ tầng máy chủ, máy trạm Windows, Linux, Synology NAS và cụm container Docker trong mạng LAN tin cậy. Hệ thống tích hợp khả năng quản lý Docker chuẩn Dockhand, giám sát phần cứng S.M.A.R.T, tự phục hồi Watchdog với cảnh báo Telegram Topic/Discord riêng biệt từng máy, kiểm tra mạng/Router Mesh, và thực thi lệnh từ xa an toàn.
 
 ---
 
-## English quick guide
+## 🌟 Tính Năng Nổi Bật
 
-Windows Controller Fleet monitors and controls up to roughly 20 Windows hosts on a trusted LAN. Install the Central Server on one machine and install an Agent on every managed machine, including the Central Server itself.
+### 🐳 1. Quản lý Docker Fleet Chuẩn Dockhand (Local & LAN Hosts)
+- **Quản lý Vòng đời Container (Lifecycle Control)**: Thao tác 1-Click: *Start, Stop, Restart, Pause, Unpause, Kill, Remove, Prune*.
+- **Gom nhóm theo Compose Stack (Group by Stack)**: Tự động gom nhóm các container theo project, hỗ trợ đóng/mở (Collapse/Expand) từng stack hoặc toàn bộ.
+- **Giám sát CPU & RAM thời gian thực**:
+  - Từng container: Hiển thị thanh đo % CPU và RAM thực tế (MB/GB).
+  - Toàn bộ Stack: Huy hiệu tổng hợp CPU % và RAM tiêu thụ của cả stack (ví dụ: `⚡ 0.2% CPU` | `💾 695 MB RAM`).
+- **Bộ lọc & Sắp xếp Đa tiêu chí**: Sắp xếp theo Tên (A-Z / Z-A), CPU cao nhất, RAM cao nhất, Trạng thái chạy.
+- **Live Logs Streaming**: Stream log trực tiếp từ Docker daemon qua WebSocket với màu sắc ANSI, hỗ trợ tải file log `.log`.
+- **Interactive Web Terminal (Exec Console)**: Mở shell hai chiều (`/bin/sh` hoặc `/bin/bash`) trực tiếp bên trong container ngay trên trình duyệt web.
+- **Inspect Chi tiết Container**: Xem toàn bộ biến môi trường (Env vars), Mounts/Volumes, Cổng mạng, IP Address, và chính sách Restart Policy.
+- **Images & Volumes**: Thống kê dung lượng, hỗ trợ tính năng **Prune (Dọn rác)** 1-click an toàn.
 
-Optional platform connectors are included for Synology DSM (`synology-agent`) and Home Assistant (`homeassistant-addon`). Synology supports Linux telemetry, processes and watchdog rules. Home Assistant is read-only and publishes configured REST API entities; platform capabilities automatically hide unsupported Windows commands in the UI.
+### 🖥️ 2. Giám sát & Quản trị Máy Trạm Đa Nền Tảng (Multi-Platform Fleet)
+- **Windows Agent**: Chạy dưới dạng Windows Service (`WinSW`), đọc phần cứng thấp tầng qua `LibreHardwareMonitorLib`, chip Nuvoton LPC/Xeon, và `nvidia-smi`.
+- **Linux Agent**: Chạy qua `systemd`, thu thập telemetry chuẩn từ `/proc`, `sysfs`, `df`.
+- **Synology NAS Agent**: Chạy độc lập hoặc trong container để giám sát Synology DSM.
+- **Home Assistant Connector**: Đồng bộ telemetry từ các entity của Home Assistant.
+- **Ẩn Hostname Thô (Hostname Masking)**: Tự động ẩn các tên máy thô dạng `DESKTOP-XXXXXX`, ưu tiên hiển thị Tên gợi nhớ (Display Name) tùy chỉnh.
+- **Phân quyền Truy cập Máy (Host-Scoped RBAC)**: Phân quyền chặt chẽ giữa *Super Admin*, *Admin* (chỉ quản lý các máy được gán) và *Viewer* (chỉ xem).
 
-### Synology Central Server
+### 📈 3. Giám sát Phần Cứng S.M.A.R.T & Telemetry
+- **Đồ thị thời gian thực đa dải**: Hỗ trợ xem biểu đồ 60 phút, 8 giờ, 1 ngày, 1 tuần, 1 tháng, 6 tháng, 1 năm.
+- **Nhiệt độ & Công suất (Power / Thermal)**: Ưu tiên CPU Package, nhiệt độ từng core, công suất tổng hệ thống thật.
+- **S.M.A.R.T Disk Health**: Đọc tình trạng sức khỏe ổ đĩa NVMe / SSD / HDD, phân vùng và dung lượng lưu trữ.
 
-Run the Central Server in Synology Container Manager using `synology-server/compose.yaml`. Stop the old Windows server first, export its complete `data` directory with `synology-server/export-server-data.ps1`, extract it to `/volume1/docker/windows-controller/data`, then run:
+### 🛡️ 4. Watchdog Tự Phục Hồi & Cảnh Báo Đa Kênh Riêng Biệt
+- **Tự động khởi chạy lại ứng dụng/tiến trình** khi bị crash hoặc tắt đột ngột.
+- **Cấu hình Cảnh báo Riêng Biệt Từng Máy (Per-Host Dedicated Alerts)**:
+  - Hỗ trợ **Telegram Topic ID (`topicId`)**: Bắn cảnh báo sự cố vào đúng Topic của từng máy trong nhóm Supergroup Telegram.
+  - Hỗ trợ **Discord Webhook URL riêng**: Tách biệt kênh thông báo cho từng cụm máy trạm.
+- **Chụp ảnh màn hình tự động**: Chụp ảnh cửa sổ ứng dụng khi khởi chạy qua Watchdog hoặc khởi chạy thủ công.
 
-```sh
-sudo sh ./synology-server/install-synology-server.sh \
-  --project-dir /volume1/docker/windows-controller \
-  --data-dir /volume1/docker/windows-controller/data
+### 🌐 5. Giám sát Mạng & Router Mesh
+- **Ping Latency Monitor**: Theo dõi độ trễ kết nối mạng theo các mốc 1 giờ, 8 giờ, 1 ngày, 1 tuần.
+- **LAN Subnet Scanner**: Quét và phát hiện toàn bộ thiết bị trong dải mạng nội bộ.
+- **Xiaomi Router & Mesh Topology**: Hiển thị cấu trúc các node Router chính và Router phụ (Mesh).
+
+### 💻 6. Remote PowerShell Console & OTA Upgrade
+- **PowerShell Console**: Chạy lệnh và script PowerShell từ xa an toàn với preset câu lệnh tiện lợi.
+- **Trung tâm Nâng cấp OTA (Over-The-Air)**: Nâng cấp phiên bản Agent hàng loạt chỉ với 1 click kèm Release Notes.
+
+---
+
+## 🏗️ Kiến Trúc Hệ Thống
+
+```mermaid
+flowchart TD
+    subgraph Client["🖥️ Trình duyệt Web (MinhHungOps Dashboard)"]
+        UI["React 18 + MUI v6 + Vite"]
+        DockerTab["Docker Fleet & Stacks Management"]
+        LogsTerm["Live Log Stream (WebSocket)"]
+        WebExec["Web Container Terminal (WebSocket)"]
+    end
+
+    subgraph CentralServer["⚡ Central Server (Port 3003)"]
+        Router["Express REST API Gateway (/api/v1)"]
+        DockerMgr["Docker Engine Manager (Local & LAN)"]
+        AlertEng["Smart Alert Engine (Telegram Topic / Discord)"]
+        AuthEng["JWT Auth & Host-Scoped RBAC"]
+        DB[(SQLite Database + Data Retention)]
+    end
+
+    subgraph LocalEngine["Docker Engine Cục bộ"]
+        LocalSock["/var/run/docker.sock / Named Pipe"]
+        LocalContainers["Containers (minhhungops-controller, apps...)"]
+    end
+
+    subgraph LANHosts["🌐 Mạng LAN Máy Trạm & Server"]
+        WinAgent["Windows Agent (WinSW Service)"]
+        LinuxAgent["Linux Agent (systemd)"]
+        SynoAgent["Synology Agent (Container)"]
+    end
+
+    UI <-->|REST & WebSocket| Router
+    DockerTab <-->|REST| Router
+    LogsTerm <-->|/ws/docker/logs| CentralServer
+    WebExec <-->|/ws/docker/exec| CentralServer
+
+    DockerMgr <--> LocalSock
+    LocalSock <--> LocalContainers
+
+    Router <-->|/ws/agent| WinAgent
+    Router <-->|/ws/agent| LinuxAgent
+    Router <-->|/ws/agent| SynoAgent
 ```
 
-The bind mount preserves SQLite, JWT secret, screenshots and backups across image updates. Keep TCP 3003 restricted to the trusted LAN and point all agents/connectors at the Synology LAN IP.
+---
 
-### Requirements
+## 🚀 Hướng Dẫn Triển Khai & Cài Đặt
 
-- Windows 10/11 or Windows Server
-- Node.js 22.5+ (Node.js 24 LTS recommended)
-- Administrator rights
-- Trusted LAN; inbound TCP is limited to the Windows `LocalSubnet` firewall scope
-- Static IP or DHCP reservation for the Central Server
+### 1. Triển Khai Nhanh Bằng Docker Compose (Khuyến Nghị)
 
-### Install the Central Server
+Central Server được đóng gói sẵn trong Docker container `minhhungops-controller`, tự động mount socket Docker của máy chủ để quản lý container:
 
-Run in an elevated PowerShell terminal:
+```yaml
+services:
+  minhhungops-controller:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: minhhungops-controller
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3003
+      - DATA_DIR=/app/data
+      - TZ=Asia/Bangkok
+    volumes:
+      - ./data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+```
 
+Khởi chạy container:
+```bash
+docker compose up -d --build
+```
+Truy cập giao diện tại: **`http://localhost:3003`** (hoặc `http://<IP_LAN>:3003`).
+
+---
+
+### 2. Cài Đặt Central Server Trực Tiếp Trên Windows
+
+Mở PowerShell bằng quyền **Run as Administrator**:
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\deploy\install-server.ps1 -Port 3003
 ```
+Installer sẽ:
+- Tạo service `Windows Controller Central Server` chạy nền.
+- Mở cổng tường lửa Windows TCP 3003 cho dải mạng nội bộ (`LocalSubnet`).
+- Khởi tạo cơ sở dữ liệu SQLite và thư mục dữ liệu an toàn.
 
-Open the printed `http://<server-ip>:3003` URL and create the first account. The first account is the default Super Admin.
+---
 
-### Install an Agent with one installer entry point
+### 3. Cài Đặt Agent Trên Máy Trạm
 
-Keep the complete `agent` directory, but run only `install-agent.ps1`:
-
+#### A. Máy Trạm Windows:
+Chạy lệnh trong PowerShell (Administrator):
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\agent\install-agent.ps1 -ServerUrl "http://192.168.1.10:3003"
 ```
+*(Tự động cài đặt WinSW Agent Service, Desktop Helper, LibreHardwareMonitor bridge và driver PawnIO).*
 
-By default this single command installs the WinSW Agent service, Desktop Helper, firewall rule, LibreHardwareMonitor bridge, local .NET runtime and PawnIO. Use `-SkipHardwareMonitor` only when hardware temperature/power monitoring is not required. Use `-HardwareMonitorPackagePath` for an offline official LibreHardwareMonitor ZIP.
-
-Approve the printed hostname/fingerprint in **Admin → Pending agents**.
-
-### Host-scoped access control
-
-- **Super Admin** sees every host and manages users, assignments, enrollment and settings.
-- **Admin** can view and control only assigned hosts.
-- **Viewer** has read-only access to assigned hosts.
-
-Use **Admin → Users → Edit** to select a role and the allowed machine list. Enforcement applies to REST, WebSocket and screenshot access, not only to UI visibility.
-
-### Data engines
-
-- Node.js `os` delta sampling: CPU, RAM, uptime and OS.
-- PowerShell/CIM: disks, network and processes.
-- `nvidia-smi`: NVIDIA GPU temperature and power.
-- ACPI WMI and Windows Energy/Power Meter: firmware/OS-exposed sensors.
-- `LibreHardwareMonitorLib` plus PawnIO: supported CPU package, motherboard/Super-I/O, GPU and storage sensors.
-- WinSW hosts the services only; it does not read hardware sensors.
-
-### Runtime
-
-- Telemetry every 2 seconds; persisted at most every 10 seconds.
-- Heartbeat every 5 seconds; offline within 20 seconds.
-- Watchdog every 10 seconds using cached versioned rules.
-- 7-day telemetry/screenshots, 30-day events/commands, daily SQLite backups.
-- Only predefined commands are supported: process kill, watchdog launch and window capture. There is no remote shell.
-
-### Important paths
-
-```text
-C:\ProgramData\WindowsController\server
-C:\ProgramData\WindowsController\agent
-C:\ProgramData\WindowsController\hardware-monitor
-```
-
-This deployment uses HTTP and must not be exposed directly to the Internet. Use HTTPS before operating outside a trusted LAN.
-
-## Linux Agent
-
-Linux hosts use `linux-agent`, a standalone Node.js agent that speaks the same authenticated `/ws/agent` protocol as Windows and Synology agents. It collects CPU, memory, uptime, disk, network, process, thermal and power telemetry from `/proc`, `df`, and Linux sysfs. It supports process listing/killing, watchdog launch, offline buffers, reconnect backoff, pending enrollment, and manual approval.
-
-Requirements: Linux with `systemd`, Node.js 18+, npm, and root privileges for installation. From the repository checkout:
-
-```sh
+#### B. Máy Trạm Linux (Ubuntu / Debian / CentOS / Alpine):
+```bash
 sudo ./linux-agent/install-linux.sh --server-url http://192.168.1.10:3003
 ```
 
-The installer copies the runtime to `/var/lib/windows-controller-agent`, creates a `600`-permission config and state directory, installs dependencies, and enables `windows-controller-agent.service`. Approve the hostname under **Admin -> Pending agents**. Check runtime status with:
+#### C. Synology NAS:
+Triển khai file `synology-server/compose.yaml` hoặc chạy container Synology Agent kết nối về Central Server qua port 3003.
 
-```sh
-systemctl status windows-controller-agent.service
-journalctl -u windows-controller-agent.service -n 50 --no-pager
+Sau khi cài Agent, vào mục **Quản trị ➔ Danh sách máy chờ duyệt** trên Dashboard để phê duyệt (Approve) máy trạm vào hệ thống.
+
+---
+
+## 🧪 Kiểm Thử & Đảm Bảo Chất Lượng (QA)
+
+MinhHungOps được xây dựng với quy chuẩn kiểm thử tự động nghiêm ngặt:
+
+### 1. Unit & Integration Tests (28 Test Suites)
+```bash
+npm test
+```
+```text
+✔ Home Assistant connector escapes a WebSocket attempt stuck in CONNECTING
+✔ Windows Agent reconnects after retry attempt
+✔ desktop helper is launched through hidden VBS host
+✔ Linux Agent ships systemd installer & telemetry protocol
+✔ Synology Central Server deployment persists data
+✔ DockerManager: socket config, demuxing, container actions & stats
+✔ English and Vietnamese dictionaries cover UI translation keys
+✔ Theme assets expose persistent light and dark variants
+✔ Super admin UI role guards & host access assignments
+ℹ tests 28 | suites 0 | pass 28 | fail 0 (100% Passed)
 ```
 
-Linux watchdog rules must use absolute executable paths and `runMode: service`; interactive desktop capture is not available on headless Linux hosts.
+### 2. Playwright End-to-End Tests (13 Suites - 41 Tests)
+```bash
+node --test tests/e2e/*.test.js
+```
+```text
+▶ 01. Auth & Roles: Login flow, token persistence, and role guards (3/3 Passed)
+▶ 02. Dashboard & Telemetry: Live metrics & multi-range filters (2/2 Passed)
+▶ 03. Fleet Management: Agent list, search, OTA Center & hostname masking (4/4 Passed)
+▶ 04. Processes: Process listing, search filter, and pagination (1/1 Passed)
+▶ 05. Watchdog & Automation: Heartbeat rules & dedicated per-host alerts (2/2 Passed)
+▶ 06. Activity Logs: Audit log filtering and search (1/1 Passed)
+▶ 07. Network Monitor: Ping Monitor ranges, Subnet Scanner & Mesh (2/2 Passed)
+▶ 08. Admin & System Settings: Branding & Timezone GMT+7 (2/2 Passed)
+▶ 09. Theme & i18n: Dark/Light mode and Vietnamese/English language (2/2 Passed)
+▶ 10. Smart Alerts: Multi-Channel Notifications & Thresholds (1/1 Passed)
+▶ 11. Remote PowerShell Console & Presets (2/2 Passed)
+▶ 12. S.M.A.R.T Disk Health & Storage Breakdown (1/1 Passed)
+▶ 13. Docker Fleet Management: Stack grouping, CPU/RAM, Sorting, Inspector (6/6 Passed)
+ℹ tests 41 | suites 0 | pass 41 | fail 0 (100% Passed)
+```
+
+---
+
+## 📂 Cấu Trúc Thư Mục Dự Án
+
+```text
+MinhHungOps/
+├── server/                   # Backend Node.js Central Server
+│   ├── server.js             # Express API gateway, WebSocket hub, Auth & Routing
+│   ├── docker-manager.js     # Docker Engine Socket Client, Stats cache & Exec bridge
+│   ├── database.js           # SQLite schema, migrations & data retention
+│   ├── alert-engine.js       # Telegram (Topics), Discord Webhooks & Thresholds
+│   ├── network-monitor.js    # Ping monitor, Subnet scanner & Xiaomi mesh
+│   └── hardware-detector.js  # Sensor & hardware telemetry aggregation
+├── frontend/                 # React 18 Single Page Application
+│   ├── src/
+│   │   ├── pages/            # DockerView, FleetView, DashboardView, NetworkView...
+│   │   ├── layouts/          # DashboardLayout, NavSidebar, Header
+│   │   ├── context/          # Auth, Language, Theme, WebSocket Contexts
+│   │   └── locales/          # vi.json, en.json (Đa ngôn ngữ)
+│   └── dist/                 # Production bundle biên dịch bởi Vite
+├── agent/                    # Windows Agent runtime & installers
+├── linux-agent/              # Linux Agent runtime & systemd installer
+├── synology-server/          # Synology DSM Container Manager compose & scripts
+├── homeassistant-addon/      # Home Assistant connector addon
+├── tests/
+│   ├── e2e/                  # 13 Playwright E2E Test Suites
+│   └── helpers/              # E2E test browser context & auth helpers
+├── test/                     # 28 Backend & Unit Test Suites
+├── docker-compose.yml        # Docker Compose configuration (minhhungops-controller)
+└── Dockerfile                # Multi-stage production container build
+```
+
+---
+
+## 🛡️ Bảo Mật & Lưu Ý Vận Hành
+
+- Bản triển khai mặc định hoạt động trong mạng nội bộ LAN tin cậy.
+- Không port-forward trực tiếp cổng 3003 ra ngoài Internet nếu không có lớp bảo vệ SSL/HTTPS (Reverse Proxy như Caddy, Nginx hoặc Cloudflare Tunnel).
+- Phân quyền nghiêm ngặt: Tạo tài khoản *Admin* hoặc *Viewer* được giới hạn chỉ truy cập đúng các máy trạm cần thiết.
+- Khóa bí mật (JWT secret) được tạo ngẫu nhiên an toàn theo từng lần cài đặt tại thư mục dữ liệu `data/`.
+
+---
+
+## 👨‍💻 Tác Giả & Bản Quyền
+
+- **Phát triển bởi**: `@nmhung1993`
+- **Múi giờ vận hành**: GMT+7 (`Asia/Ho_Chi_Minh`)
+- **Dự án**: MinhHungOps Unified Operations Controller
