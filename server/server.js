@@ -29,13 +29,26 @@ const SCREENSHOT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const AGENT_OFFLINE_MS = 20_000;
 const COMMAND_TIMEOUT_MS = 60_000;
 const MAX_SCREENSHOT_BYTES = 10 * 1024 * 1024;
-const ALLOWED_COMMANDS = new Set(['process.kill', 'watchdog.launch', 'window.capture', 'system.execute', 'agent.upgrade']);
+const ALLOWED_COMMANDS = new Set([
+  'process.kill', 'watchdog.launch', 'window.capture', 'system.execute', 'agent.upgrade',
+  'docker.info', 'docker.containers', 'docker.container.details', 'docker.container.stats',
+  'docker.container.action', 'docker.container.logs', 'docker.images', 'docker.volumes', 'docker.prune'
+]);
 const COMMAND_CAPABILITIES = {
   'process.kill': ['process.kill', 'processes'],
   'watchdog.launch': ['watchdog.launch', 'watchdog'],
   'window.capture': ['window.capture', 'desktop-helper'],
   'system.execute': ['system.execute', 'powershell', 'windows', 'processes', 'telemetry'],
-  'agent.upgrade': ['agent.upgrade', 'windows', 'telemetry', 'processes']
+  'agent.upgrade': ['agent.upgrade', 'windows', 'telemetry', 'processes'],
+  'docker.info': ['docker'],
+  'docker.containers': ['docker'],
+  'docker.container.details': ['docker'],
+  'docker.container.stats': ['docker'],
+  'docker.container.action': ['docker'],
+  'docker.container.logs': ['docker'],
+  'docker.images': ['docker'],
+  'docker.volumes': ['docker'],
+  'docker.prune': ['docker']
 };
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -478,6 +491,8 @@ function storeScreenshot(agentId, message) {
   broadcastUi('ui.screenshot', { id: screenshotId, processName: payload.processName }, agentId);
 }
 
+const pendingCommandPromises = new Map();
+
 function updateCommandResult(agentId, message) {
   const payload = message.payload || {};
   const command = db.prepare('SELECT * FROM commands WHERE id = ? AND agent_id = ?').get(payload.commandId, agentId);
@@ -489,6 +504,15 @@ function updateCommandResult(agentId, message) {
   } else {
     db.prepare('UPDATE commands SET status = ?, completed_at = ?, result_json = ? WHERE id = ?')
       .run(status, now, JSON.stringify(payload.result || { error: payload.error }), command.id);
+
+    // Resolve or reject waiting async API caller
+    const pending = pendingCommandPromises.get(command.id);
+    if (pending) {
+      clearTimeout(pending.timer);
+      pendingCommandPromises.delete(command.id);
+      if (status === 'succeeded') pending.resolve(payload.result);
+      else pending.reject(new Error(payload.error || 'Agent command failed'));
+    }
   }
   broadcastUi('ui.command', { commandId: command.id, status, result: payload.result, error: payload.error }, agentId);
 }
@@ -536,12 +560,29 @@ function createCommand(agentId, type, payload, username, timeoutMs = COMMAND_TIM
   return command;
 }
 
+function executeAgentCommand(agentId, type, payload = {}, timeoutMs = 12000, username = 'api') {
+  return new Promise((resolve, reject) => {
+    const ws = agentSockets.get(agentId);
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      return reject(new Error('Agent is not connected or offline'));
+    }
+    const command = createCommand(agentId, type, payload, username, timeoutMs);
+    const timer = setTimeout(() => {
+      pendingCommandPromises.delete(command.id);
+      reject(new Error(`Agent command '${type}' timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    pendingCommandPromises.set(command.id, { resolve, reject, timer });
+  });
+}
+
 function validateCommand(type, payload) {
   if (!ALLOWED_COMMANDS.has(type)) return 'Unsupported command type';
   if (type === 'process.kill' && (!Number.isInteger(Number(payload.pid)) || Number(payload.pid) <= 0)) return 'Valid PID required';
   if (type === 'watchdog.launch' && !payload.ruleId) return 'ruleId required';
   if (type === 'window.capture' && !payload.processName) return 'processName required';
   if (type === 'system.execute' && !payload.command?.trim()) return 'command required';
+  if (type.startsWith('docker.')) return null;
   if (type === 'agent.upgrade') return null;
   return null;
 }
@@ -1216,19 +1257,29 @@ app.get('/api/v1/docker/hosts', authenticate, async (req, res) => {
 });
 
 app.get('/api/v1/docker/:hostId/info', authenticate, async (req, res) => {
-  if (req.params.hostId === 'local') {
-    const info = await dockerManager.getSystemInfo();
-    return res.json(info);
+  try {
+    if (req.params.hostId === 'local') {
+      const info = await dockerManager.getSystemInfo();
+      return res.json(info);
+    }
+    const result = await executeAgentCommand(req.params.hostId, 'docker.info', {}, 8000, req.user?.username);
+    res.json(result || { available: false });
+  } catch (err) {
+    res.json({ available: false, error: err.message });
   }
-  res.json({ available: false, error: 'Remote agent docker info not yet registered' });
 });
 
 app.get('/api/v1/docker/:hostId/containers', authenticate, async (req, res) => {
-  if (req.params.hostId === 'local') {
-    const containers = await dockerManager.listContainers({ all: req.query.all !== 'false' });
-    return res.json({ containers });
+  try {
+    if (req.params.hostId === 'local') {
+      const containers = await dockerManager.listContainers({ all: req.query.all !== 'false' });
+      return res.json({ containers });
+    }
+    const result = await executeAgentCommand(req.params.hostId, 'docker.containers', { all: req.query.all !== 'false' }, 10000, req.user?.username);
+    res.json(result || { containers: [] });
+  } catch (err) {
+    res.json({ containers: [], error: err.message });
   }
-  res.json({ containers: [] });
 });
 
 app.get('/api/v1/docker/:hostId/containers/:id', authenticate, async (req, res) => {
@@ -1237,7 +1288,8 @@ app.get('/api/v1/docker/:hostId/containers/:id', authenticate, async (req, res) 
       const details = await dockerManager.getContainerDetails(req.params.id);
       return res.json(details);
     }
-    res.status(404).json({ error: 'Container not found' });
+    const result = await executeAgentCommand(req.params.hostId, 'docker.container.details', { containerId: req.params.id }, 10000, req.user?.username);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1249,7 +1301,8 @@ app.get('/api/v1/docker/:hostId/containers/:id/stats', authenticate, async (req,
       const stats = await dockerManager.getContainerStats(req.params.id);
       return res.json(stats);
     }
-    res.status(404).json({ error: 'Container not found' });
+    const result = await executeAgentCommand(req.params.hostId, 'docker.container.stats', { containerId: req.params.id }, 10000, req.user?.username);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1263,7 +1316,8 @@ app.post('/api/v1/docker/:hostId/containers/:id/action', authenticate, requireDo
       await dockerManager.containerAction(req.params.id, action, options);
       return res.json({ success: true, action, containerId: req.params.id });
     }
-    res.status(400).json({ error: 'Remote host action not supported directly' });
+    const result = await executeAgentCommand(req.params.hostId, 'docker.container.action', { containerId: req.params.id, action, options }, 15000, req.user?.username);
+    res.json(result || { success: true, action, containerId: req.params.id });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1275,7 +1329,8 @@ app.get('/api/v1/docker/:hostId/containers/:id/logs', authenticate, async (req, 
       const logs = await dockerManager.getContainerLogs(req.params.id, { tail: req.query.tail || 200 });
       return res.json({ logs });
     }
-    res.json({ logs: '' });
+    const result = await executeAgentCommand(req.params.hostId, 'docker.container.logs', { containerId: req.params.id, tail: Number(req.query.tail) || 200 }, 10000, req.user?.username);
+    res.json(result || { logs: '' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -1288,26 +1343,48 @@ app.post('/api/v1/docker/:hostId/containers/:id/exec', authenticate, requireDock
       const execId = await dockerManager.createExecInstance(req.params.id, { cmd, tty: true });
       return res.json({ success: true, execId });
     }
-    res.status(400).json({ error: 'Remote host exec not supported' });
+    res.status(400).json({ error: 'Remote agent live terminal exec is supported locally or through agent shell.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 app.get('/api/v1/docker/:hostId/stacks', authenticate, async (req, res) => {
-  if (req.params.hostId === 'local') {
-    const stacks = await dockerManager.listStacks();
-    return res.json({ stacks });
+  try {
+    if (req.params.hostId === 'local') {
+      const stacks = await dockerManager.listStacks();
+      return res.json({ stacks });
+    }
+    const resContainers = await executeAgentCommand(req.params.hostId, 'docker.containers', { all: true }, 10000, req.user?.username);
+    const containers = resContainers?.containers || [];
+    const stackMap = new Map();
+    containers.forEach(c => {
+      const stackName = c.stack || 'Standalone';
+      if (!stackMap.has(stackName)) {
+        stackMap.set(stackName, { name: stackName, containers: [], containerCount: 0, runningCount: 0 });
+      }
+      const st = stackMap.get(stackName);
+      st.containers.push(c);
+      st.containerCount += 1;
+      if (c.state === 'running') st.runningCount += 1;
+    });
+    res.json({ stacks: Array.from(stackMap.values()) });
+  } catch (err) {
+    res.json({ stacks: [] });
   }
-  res.json({ stacks: [] });
 });
 
 app.get('/api/v1/docker/:hostId/images', authenticate, async (req, res) => {
-  if (req.params.hostId === 'local') {
-    const images = await dockerManager.listImages();
-    return res.json({ images });
+  try {
+    if (req.params.hostId === 'local') {
+      const images = await dockerManager.listImages();
+      return res.json({ images });
+    }
+    const result = await executeAgentCommand(req.params.hostId, 'docker.images', {}, 10000, req.user?.username);
+    res.json(result || { images: [] });
+  } catch (err) {
+    res.json({ images: [] });
   }
-  res.json({ images: [] });
 });
 
 app.post('/api/v1/docker/:hostId/images/prune', authenticate, requireDockerAdmin, async (req, res) => {
@@ -1316,18 +1393,24 @@ app.post('/api/v1/docker/:hostId/images/prune', authenticate, requireDockerAdmin
       const result = await dockerManager.pruneImages();
       return res.json({ success: true, result });
     }
-    res.status(400).json({ error: 'Remote host prune not supported' });
+    const result = await executeAgentCommand(req.params.hostId, 'docker.prune', { type: 'images' }, 15000, req.user?.username);
+    res.json(result || { success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 app.get('/api/v1/docker/:hostId/volumes', authenticate, async (req, res) => {
-  if (req.params.hostId === 'local') {
-    const volumes = await dockerManager.listVolumes();
-    return res.json({ volumes });
+  try {
+    if (req.params.hostId === 'local') {
+      const volumes = await dockerManager.listVolumes();
+      return res.json({ volumes });
+    }
+    const result = await executeAgentCommand(req.params.hostId, 'docker.volumes', {}, 10000, req.user?.username);
+    res.json(result || { volumes: [] });
+  } catch (err) {
+    res.json({ volumes: [] });
   }
-  res.json({ volumes: [] });
 });
 
 app.post('/api/v1/docker/:hostId/volumes/prune', authenticate, requireDockerAdmin, async (req, res) => {
@@ -1336,7 +1419,8 @@ app.post('/api/v1/docker/:hostId/volumes/prune', authenticate, requireDockerAdmi
       const result = await dockerManager.pruneVolumes();
       return res.json({ success: true, result });
     }
-    res.status(400).json({ error: 'Remote host prune not supported' });
+    const result = await executeAgentCommand(req.params.hostId, 'docker.prune', { type: 'volumes' }, 15000, req.user?.username);
+    res.json(result || { success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

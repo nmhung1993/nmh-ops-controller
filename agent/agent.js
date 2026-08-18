@@ -1,6 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const http = require('http');
+const https = require('https');
 const crypto = require('crypto');
 const net = require('net');
 const { execFileSync } = require('child_process');
@@ -21,6 +23,51 @@ const MAX_TELEMETRY_BUFFER = 300;
 const MAX_EVENT_BUFFER = 1000;
 const MAX_COMPLETED_COMMANDS = 500;
 const CONNECTION_ATTEMPT_TIMEOUT_MS = Number(process.env.WC_CONNECTION_ATTEMPT_TIMEOUT_MS || 10_000);
+
+function getDockerSocket() {
+  if (process.platform === 'win32') {
+    return { socketPath: '//./pipe/docker_engine' };
+  }
+  const candidates = ['/var/run/docker.sock', '/run/docker.sock'];
+  for (const p of candidates) {
+    try { if (fs.existsSync(p)) return { socketPath: p }; } catch {}
+  }
+  return null;
+}
+
+function dockerRequest(apiPath, method = 'GET', data = null, timeoutMs = 8000) {
+  const sock = getDockerSocket();
+  if (!sock) return Promise.reject(new Error('docker_socket_not_found'));
+  return new Promise((resolve, reject) => {
+    const payload = data ? (typeof data === 'string' ? data : JSON.stringify(data)) : null;
+    const req = http.request({
+      socketPath: sock.socketPath,
+      path: apiPath,
+      method,
+      headers: {
+        ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) } : {})
+      },
+      timeout: timeoutMs
+    }, (res) => {
+      let body = '';
+      res.on('data', chunk => body += chunk);
+      res.on('end', () => {
+        if (res.statusCode >= 400) {
+          return reject(new Error(`Docker API error ${res.statusCode}: ${body}`));
+        }
+        try {
+          resolve(JSON.parse(body));
+        } catch {
+          resolve(body);
+        }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('docker_timeout')); });
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
 
 let config;
 let state;
@@ -199,7 +246,7 @@ async function connect() {
       fingerprint: cachedFingerprint,
       platform: `${os.type()} ${os.release()} ${os.arch()}`,
       version: VERSION,
-      capabilities: ['telemetry', 'hardware-sensors', 'processes', 'process.kill', 'watchdog', 'watchdog.launch', 'service-launch', 'desktop-helper', 'window.capture', 'windows', 'system.execute', 'powershell']
+      capabilities: ['telemetry', 'hardware-sensors', 'processes', 'process.kill', 'watchdog', 'watchdog.launch', 'service-launch', 'desktop-helper', 'window.capture', 'windows', 'system.execute', 'powershell', ...(getDockerSocket() ? ['docker'] : [])]
     }));
   });
 
@@ -522,11 +569,113 @@ async function executeCommand(command) {
           fs.writeFileSync(targetPath, content, 'utf8');
         }
       }
-      result = { updated: true, newVersion: bundle.version || '2.1.4' };
+      result = { updated: true, newVersion: bundle.version || '2.1.5' };
       sendCommandResult(commandId, 'succeeded', result);
-      sendEvent('agent.ota.restarting', 'info', `Agent successfully upgraded to v${bundle.version || '2.1.4'}. Restarting...`);
+      sendEvent('agent.ota.restarting', 'info', `Agent successfully upgraded to v${bundle.version || '2.1.5'}. Restarting...`);
       setTimeout(() => process.exit(0), 1000);
       return;
+    } else if (commandType === 'docker.info') {
+      const info = await dockerRequest('/info');
+      const ver = await dockerRequest('/version').catch(() => ({}));
+      result = {
+        available: true,
+        containers: info.Containers || 0,
+        containersRunning: info.ContainersRunning || 0,
+        containersPaused: info.ContainersPaused || 0,
+        containersStopped: info.ContainersStopped || 0,
+        images: info.Images || 0,
+        serverVersion: info.ServerVersion || ver.Version || 'unknown',
+        operatingSystem: info.OperatingSystem || os.type(),
+        architecture: info.Architecture || os.arch(),
+        ncpu: info.NCPU || os.cpus().length,
+        memTotal: info.MemTotal || os.totalmem()
+      };
+    } else if (commandType === 'docker.containers') {
+      const all = data.all !== false;
+      const rawContainers = await dockerRequest(`/containers/json?all=${all ? 1 : 0}`);
+      const containers = (Array.isArray(rawContainers) ? rawContainers : []).map(c => ({
+        id: c.Id,
+        shortId: c.Id ? c.Id.slice(0, 12) : '',
+        name: (c.Names?.[0] || '').replace(/^\//, ''),
+        names: c.Names || [],
+        image: c.Image,
+        imageId: c.ImageID,
+        command: c.Command,
+        created: c.Created,
+        state: c.State,
+        status: c.Status,
+        ports: c.Ports || [],
+        labels: c.Labels || {},
+        stack: c.Labels?.['com.docker.compose.project'] || c.Labels?.['io.portainer.stack.name'] || 'Standalone'
+      }));
+      result = { containers };
+    } else if (commandType === 'docker.container.details') {
+      const cid = encodeURIComponent(data.containerId);
+      result = await dockerRequest(`/containers/${cid}/json`);
+    } else if (commandType === 'docker.container.stats') {
+      const cid = encodeURIComponent(data.containerId);
+      const rawStats = await dockerRequest(`/containers/${cid}/stats?stream=false`);
+      let cpuPercent = 0;
+      let memPercent = 0;
+      let memUsage = 0;
+      let memLimit = 0;
+      if (rawStats?.cpu_stats && rawStats?.precpu_stats) {
+        const cpuDelta = (rawStats.cpu_stats.cpu_usage?.total_usage || 0) - (rawStats.precpu_stats.cpu_usage?.total_usage || 0);
+        const sysDelta = (rawStats.cpu_stats.system_cpu_usage || 0) - (rawStats.precpu_stats.system_cpu_usage || 0);
+        const cpus = rawStats.cpu_stats.online_cpus || os.cpus().length || 1;
+        if (sysDelta > 0 && cpuDelta > 0) cpuPercent = Math.round(((cpuDelta / sysDelta) * cpus * 100) * 10) / 10;
+      }
+      if (rawStats?.memory_stats) {
+        const cache = rawStats.memory_stats.stats?.cache || 0;
+        memUsage = Math.max(0, (rawStats.memory_stats.usage || 0) - cache);
+        memLimit = rawStats.memory_stats.limit || 1;
+        memPercent = Math.round((memUsage / memLimit) * 1000) / 10;
+      }
+      result = { id: data.containerId, cpuPercent, memUsage, memLimit, memPercent, raw: rawStats };
+    } else if (commandType === 'docker.container.action') {
+      const cid = encodeURIComponent(data.containerId);
+      const act = data.action;
+      if (act === 'start') await dockerRequest(`/containers/${cid}/start`, 'POST');
+      else if (act === 'stop') await dockerRequest(`/containers/${cid}/stop`, 'POST');
+      else if (act === 'restart') await dockerRequest(`/containers/${cid}/restart`, 'POST');
+      else if (act === 'pause') await dockerRequest(`/containers/${cid}/pause`, 'POST');
+      else if (act === 'unpause') await dockerRequest(`/containers/${cid}/unpause`, 'POST');
+      else if (act === 'remove') await dockerRequest(`/containers/${cid}?force=true`, 'DELETE');
+      else throw new Error(`Unsupported docker action: ${act}`);
+      result = { success: true, action: act, containerId: data.containerId };
+    } else if (commandType === 'docker.container.logs') {
+      const cid = encodeURIComponent(data.containerId);
+      const tail = data.tail || 200;
+      const logs = await dockerRequest(`/containers/${cid}/logs?stdout=1&stderr=1&tail=${tail}`);
+      result = { logs: typeof logs === 'string' ? logs : JSON.stringify(logs) };
+    } else if (commandType === 'docker.images') {
+      const rawImages = await dockerRequest('/images/json');
+      const images = (Array.isArray(rawImages) ? rawImages : []).map(img => ({
+        id: img.Id,
+        shortId: img.Id ? img.Id.replace('sha256:', '').slice(0, 12) : '',
+        tags: img.RepoTags || ['<none>:<none>'],
+        size: img.Size,
+        created: img.Created,
+        containers: img.Containers || 0
+      }));
+      result = { images };
+    } else if (commandType === 'docker.volumes') {
+      const rawVolumes = await dockerRequest('/volumes');
+      const volumes = (rawVolumes?.Volumes || []).map(v => ({
+        name: v.Name,
+        driver: v.Driver,
+        mountpoint: v.Mountpoint,
+        createdAt: v.CreatedAt,
+        labels: v.Labels || {}
+      }));
+      result = { volumes };
+    } else if (commandType === 'docker.prune') {
+      const type = data.type || 'all';
+      let resPrune = {};
+      if (type === 'images' || type === 'all') resPrune.images = await dockerRequest('/images/prune?all=1', 'POST').catch(() => null);
+      if (type === 'containers' || type === 'all') resPrune.containers = await dockerRequest('/containers/prune', 'POST').catch(() => null);
+      if (type === 'volumes' || type === 'all') resPrune.volumes = await dockerRequest('/volumes/prune', 'POST').catch(() => null);
+      result = { success: true, pruned: type, result: resPrune };
     } else {
       throw new Error('unsupported_command');
     }
