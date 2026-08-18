@@ -167,20 +167,31 @@ class AlertEngine {
     });
   }
 
-  // Dedicated Watchdog Self-Healing & Process Alerting
+  // Dedicated Watchdog Self-Healing & Process Alerting (strictly isolated per host)
   async sendWatchdogAlert(event, host, watchdogConfig) {
     const notifyConfig = watchdogConfig?.notifications;
+    if (!notifyConfig || !notifyConfig.enabled) {
+      return false;
+    }
+
     const { eventType, message, data = {} } = event;
-    const hostName = host?.displayName || host?.hostname || 'Máy trạm';
+    const isCrash = eventType.includes('crash') || eventType.includes('failed') || eventType.includes('killed');
+    const isRestart = eventType.includes('launch') || eventType.includes('restarted');
+
+    if (isCrash && notifyConfig.notifyOnCrash === false) return false;
+    if (isRestart && notifyConfig.notifyOnRestart === false) return false;
+    if (eventType.includes('fail') && notifyConfig.notifyOnFailure === false) return false;
+
+    const hostName = host?.displayName || host?.display_name || host?.hostname || 'Máy trạm';
     const processName = data.processName || data.ruleName || 'Tiến trình';
     const timestamp = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
 
     let title = '🛡️ [WATCHDOG TỰ PHỤC HỒI TIẾN TRÌNH]';
     let severity = 'info';
-    if (eventType.includes('crash') || eventType.includes('failed') || eventType.includes('killed')) {
+    if (isCrash) {
       title = '🚨 [WATCHDOG TIẾN TRÌNH GẶP SỰ CỐ]';
       severity = 'critical';
-    } else if (eventType.includes('launch') || eventType.includes('restarted')) {
+    } else if (isRestart) {
       title = '✅ [WATCHDOG ĐÃ KHỞI CHẠY LẠI TIẾN TRÌNH]';
       severity = 'success';
     }
@@ -194,20 +205,27 @@ class AlertEngine {
 <b>Thời gian:</b> <i>${timestamp}</i>
     `.trim();
 
-    // 1. Send to Watchdog-specific Telegram (or fallback to Central Telegram if notifyConfig not set)
-    const tg = notifyConfig?.telegram?.enabled ? notifyConfig.telegram : (this.config.channels.telegram?.enabled ? this.config.channels.telegram : null);
-    if (tg && tg.botToken && tg.chatId) {
-      await this.sendTelegram(text, { channelConfig: tg, bypassEnabledCheck: true });
+    let sent = false;
+
+    // 1. Send strictly to this host's Watchdog-specific Telegram
+    const tg = notifyConfig.telegram;
+    if (tg?.enabled && tg.botToken && tg.chatId) {
+      const ok = await this.sendTelegram(text, { channelConfig: tg, bypassEnabledCheck: true });
+      if (ok) sent = true;
     }
 
-    // 2. Send to Watchdog-specific Discord (or fallback to Central Discord if notifyConfig not set)
-    const dc = notifyConfig?.discord?.enabled ? notifyConfig.discord : (this.config.channels.discord?.enabled ? this.config.channels.discord : null);
-    if (dc && dc.webhookUrl) {
-      await this.sendDiscord(title, `Máy trạm **${hostName}** kích hoạt sự kiện tự phục hồi: ${message || ''}`, severity, [
+    // 2. Send strictly to this host's Watchdog-specific Discord
+    const dc = notifyConfig.discord;
+    if (dc?.enabled && dc.webhookUrl) {
+      const ok = await this.sendDiscord(title, `Máy trạm **${hostName}** kích hoạt sự kiện Watchdog: ${message || ''}`, severity, [
         { name: 'Tiến trình', value: `\`${processName}\``, inline: true },
-        { name: 'Sự kiện', value: `\`${eventType}\``, inline: true }
+        { name: 'Sự kiện', value: `\`${eventType}\``, inline: true },
+        { name: 'Thời gian', value: timestamp, inline: false }
       ], dc.webhookUrl);
+      if (ok) sent = true;
     }
+
+    return sent;
   }
 
   async sendCustomWebhook(payloadData) {

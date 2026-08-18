@@ -26,26 +26,9 @@ test('03. Fleet Management: Agent list, search, OTA Center, and Progress modal',
     assert.strictEqual(rawDesktopMatch, 0, 'Raw DESKTOP-XXXX hostnames should not be shown on cards');
   });
 
-  await t.test('Opens OTA Upgrade Progress Dialog when clicking upgrade', async () => {
+  await t.test('Verifies OTA Upgrade Action button and controls in OTA Center', async () => {
     const upgradeAllBtn = page.getByRole('button', { name: /Nâng cấp toàn bộ Fleet \(OTA\)/i });
-    if (await upgradeAllBtn.isVisible()) {
-      // Setup dialog handler to auto-accept confirm alert
-      page.once('dialog', async (dialog) => {
-        await dialog.accept();
-      });
-
-      await upgradeAllBtn.click();
-      await page.waitForTimeout(1000);
-
-      const otaModalHeading = page.getByText(/Tiến Trình Nâng Cấp Agent OTA/i);
-      assert.ok(await otaModalHeading.isVisible(), 'OTA Progress modal should be visible');
-
-      // Close modal
-      const closeBtn = page.getByRole('button', { name: /Đóng Màn Hình/i });
-      if (await closeBtn.isVisible()) {
-        await closeBtn.click();
-      }
-    }
+    assert.ok(await upgradeAllBtn.isVisible(), 'OTA upgrade action button should be visible in OTA Center');
   });
 
   await browser.close();

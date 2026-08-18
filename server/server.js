@@ -391,10 +391,8 @@ function insertEvent(agentId, message) {
     broadcastUi('ui.event', { ...payload, severity, occurredAt }, agentId);
     if (severity === 'error' || payload.eventType?.startsWith('watchdog.') || payload.eventType?.startsWith('process.manual.') || payload.eventType?.includes('watchdog')) {
       const host = getHost(agentId);
-      const content = formatDiscordEvent(host?.display_name || host?.hostname || agentId, { ...payload, severity });
-      if (content) sendDiscord(content);
 
-      // Dedicated Watchdog Self-Healing & Process Alerting
+      // Dedicated Watchdog Self-Healing & Process Alerting (strictly for this host)
       const watchdogConfig = getWatchdog(agentId);
       alertEngine.sendWatchdogAlert({
         eventType: payload.eventType || 'watchdog.event',
@@ -810,6 +808,29 @@ app.put('/api/v1/hosts/:id/watchdog', authenticate, requireHostAccess, requireHo
   `).run(req.params.id, version, JSON.stringify({ rules, notifications }), now);
   pushWatchdogConfig(req.params.id);
   res.json({ version, rules, notifications, updatedAt: now });
+});
+
+app.post('/api/v1/hosts/:id/watchdog/test', authenticate, requireHostAccess, requireHostManager, async (req, res) => {
+  const host = getHost(req.params.id);
+  if (!host) return res.status(404).json({ error: 'Host not found' });
+  const currentConfig = getWatchdog(req.params.id);
+  const notifications = req.body?.notifications || currentConfig?.notifications;
+
+  if (!notifications?.enabled) {
+    return res.status(400).json({ error: 'Kênh thông báo Watchdog của máy này chưa được bật (cần tích chọn Kích hoạt thông báo).' });
+  }
+
+  const dummyEvent = {
+    eventType: 'watchdog.test',
+    message: `Thử nghiệm gửi thông báo sự cố Watchdog thành công từ máy trạm [${host.display_name || host.hostname}]`,
+    data: { processName: 'TestProcess.exe', ruleName: 'Kiểm tra kênh Watchdog' }
+  };
+
+  const sent = await alertEngine.sendWatchdogAlert(dummyEvent, host, { ...currentConfig, notifications });
+  if (!sent) {
+    return res.status(400).json({ error: 'Không thể gửi thông báo. Vui lòng kiểm tra lại Bot Token/Chat ID Telegram hoặc Webhook Discord của máy này.' });
+  }
+  res.json({ success: true, message: `Đã gửi thông báo thử nghiệm Watchdog đến kênh riêng của máy trạm [${host.display_name || host.hostname}].` });
 });
 
 app.get('/api/v1/hosts/:id/events', authenticate, requireHostAccess, (req, res) => {

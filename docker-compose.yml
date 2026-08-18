@@ -1,11 +1,9 @@
-version: '3.8'
-
 services:
-  windows-controller-server:
+  minhhungops-controller:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: windows-controller-server
+    container_name: minhhungops-controller
     restart: unless-stopped
     ports:
       - "3003:3003"

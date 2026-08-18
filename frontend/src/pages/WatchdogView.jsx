@@ -48,6 +48,15 @@ import { apiRequest } from '../utils/api';
 import Label from '../components/common/Label';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 
+const DEFAULT_NOTIFICATIONS = {
+  enabled: false,
+  telegram: { enabled: false, botToken: '', chatId: '', topicId: '' },
+  discord: { enabled: false, webhookUrl: '' },
+  notifyOnCrash: true,
+  notifyOnRestart: true,
+  notifyOnFailure: true
+};
+
 export default function WatchdogView() {
   const theme = useTheme();
   const { lang, t } = useLanguage();
@@ -58,16 +67,10 @@ export default function WatchdogView() {
   const [loading, setLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
 
-  // Watchdog Notifications State
-  const [notifications, setNotifications] = useState({
-    enabled: false,
-    telegram: { enabled: false, botToken: '', chatId: '', topicId: '' },
-    discord: { enabled: false, webhookUrl: '' },
-    notifyOnCrash: true,
-    notifyOnRestart: true,
-    notifyOnFailure: true
-  });
+  // Watchdog Notifications State (strictly per selected host)
+  const [notifications, setNotifications] = useState(DEFAULT_NOTIFICATIONS);
   const [savingNotify, setSavingNotify] = useState(false);
+  const [testingNotify, setTestingNotify] = useState(false);
 
   // Dialog State
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -89,18 +92,29 @@ export default function WatchdogView() {
     try {
       const data = await apiRequest(`/api/v1/hosts/${selectedHostId}/watchdog`);
       setWatchdogData(data);
-      if (data.notifications) {
+      if (data?.notifications && typeof data.notifications === 'object') {
         setNotifications({
           enabled: Boolean(data.notifications.enabled),
-          telegram: { enabled: false, botToken: '', chatId: '', topicId: '', ...data.notifications.telegram },
-          discord: { enabled: false, webhookUrl: '', ...data.notifications.discord },
+          telegram: {
+            enabled: Boolean(data.notifications.telegram?.enabled),
+            botToken: data.notifications.telegram?.botToken || '',
+            chatId: data.notifications.telegram?.chatId || '',
+            topicId: data.notifications.telegram?.topicId || ''
+          },
+          discord: {
+            enabled: Boolean(data.notifications.discord?.enabled),
+            webhookUrl: data.notifications.discord?.webhookUrl || ''
+          },
           notifyOnCrash: data.notifications.notifyOnCrash !== false,
           notifyOnRestart: data.notifications.notifyOnRestart !== false,
           notifyOnFailure: data.notifications.notifyOnFailure !== false
         });
+      } else {
+        setNotifications(DEFAULT_NOTIFICATIONS);
       }
     } catch (err) {
       console.error('Failed to fetch watchdog:', err);
+      setNotifications(DEFAULT_NOTIFICATIONS);
     } finally {
       setLoading(false);
     }
@@ -108,6 +122,8 @@ export default function WatchdogView() {
 
   useEffect(() => {
     if (selectedHostId) {
+      // Immediately reset to empty defaults when changing hosts so no cross-host bleed occurs
+      setNotifications(DEFAULT_NOTIFICATIONS);
       fetchWatchdog();
     }
   }, [selectedHostId]);
@@ -125,11 +141,27 @@ export default function WatchdogView() {
         })
       });
       setWatchdogData(res);
-      setToastMessage('Đã lưu cấu hình thông báo Watchdog thành công');
+      setToastMessage(`Đã lưu cấu hình thông báo Watchdog cho máy [${selectedHost?.displayName || selectedHost?.hostname}] thành công`);
     } catch (err) {
       alert(err.message);
     } finally {
       setSavingNotify(false);
+    }
+  };
+
+  const handleTestNotifications = async () => {
+    if (!selectedHostId) return;
+    setTestingNotify(true);
+    try {
+      const res = await apiRequest(`/api/v1/hosts/${selectedHostId}/watchdog/test`, {
+        method: 'POST',
+        body: JSON.stringify({ notifications })
+      });
+      setToastMessage(res.message || 'Đã gửi thông báo thử nghiệm Watchdog thành công');
+    } catch (err) {
+      alert(err.message || 'Lỗi gửi thông báo thử nghiệm Watchdog');
+    } finally {
+      setTestingNotify(false);
     }
   };
 
@@ -546,7 +578,7 @@ export default function WatchdogView() {
                       />
                       <Box sx={{ p: 1.5, bgcolor: 'action.hover', borderRadius: 1.5 }}>
                         <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
-                          💡 <b>Lưu ý:</b> Nếu để trống Token/Webhook của Watchdog, hệ thống sẽ tự động dùng Kênh thông báo chung của Server được cài đặt tại trang Quản trị.
+                          💡 <b>Độc lập từng máy:</b> Cấu hình kênh thông báo Watchdog được lưu riêng biệt cho từng máy trạm. Khi sự cố xảy ra trên máy trạm này, thông báo sẽ chỉ được gửi đến đúng Telegram/Discord của máy này.
                         </Typography>
                       </Box>
                     </Stack>
@@ -554,7 +586,18 @@ export default function WatchdogView() {
                 </Grid>
               </Grid>
 
-              <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
+              <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end', gap: 1.5 }}>
+                <Button
+                  type="button"
+                  variant="outlined"
+                  color="info"
+                  startIcon={<Send size={18} />}
+                  onClick={handleTestNotifications}
+                  disabled={testingNotify || !notifications.enabled}
+                  sx={{ px: 2.5, fontWeight: 700 }}
+                >
+                  {testingNotify ? 'Đang gửi thử...' : 'Gửi Thử Thông Báo Cho Máy Này'}
+                </Button>
                 <Button
                   type="submit"
                   variant="contained"
