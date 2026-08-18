@@ -14,7 +14,7 @@ const {
   runPowerShell
 } = require('./windows');
 
-const VERSION = '2.1.4';
+const VERSION = '2.1.5';
 const DEFAULT_STATE_DIR = path.join(process.env.PROGRAMDATA || path.join(os.homedir(), 'AppData', 'Local'), 'WindowsController', 'agent');
 const CONFIG_FILE = getArgument('--config') || process.env.WC_AGENT_CONFIG || path.join(DEFAULT_STATE_DIR, 'config.json');
 const MAX_TELEMETRY_BUFFER = 300;

@@ -79,7 +79,7 @@ export default function FleetView({ onNavigate }) {
 
   useEffect(() => {
     apiRequest('/api/v1/ota/status')
-      .then(data => setOtaStatus(data || { serverVersion: '2.1.4', latestAgentVersion: '2.1.4', releaseNotes: '', releaseDate: '2026-08-18' }))
+      .then(data => setOtaStatus(data || { serverVersion: '2.1.5', latestAgentVersion: '2.1.5', releaseNotes: '', releaseDate: '2026-08-18' }))
       .catch(() => null);
   }, []);
 

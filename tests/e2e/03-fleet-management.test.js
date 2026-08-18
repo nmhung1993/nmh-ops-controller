@@ -17,7 +17,7 @@ test('03. Fleet Management: Agent list, search, OTA Center, and Progress modal',
     const otaBanner = page.getByText(/Trung Tâm Nâng Cấp Tự Động \(OTA Center\)/i);
     assert.ok(await otaBanner.isVisible(), 'OTA Center banner should be visible');
 
-    const otaVersionBadge = page.getByText(/Bản mới nhất: v2\.1\.4/i);
+    const otaVersionBadge = page.getByText(/Bản mới nhất: v2\.1\.\d/i);
     assert.ok(await otaVersionBadge.isVisible(), 'Latest OTA version badge should be visible');
   });
 

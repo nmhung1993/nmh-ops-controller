@@ -149,25 +149,125 @@ Installer sẽ:
 
 ---
 
-### 3. Cài Đặt Agent Trên Máy Trạm
+### 3. Cài Đặt Agent Trên Máy Trạm & Các Nền Tảng
 
 #### A. Máy Trạm Windows:
-Chạy lệnh trong PowerShell (Administrator):
+Chạy lệnh trong PowerShell bằng quyền Administrator:
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\agent\install-agent.ps1 -ServerUrl "http://192.168.1.10:3003"
 ```
 *(Tự động cài đặt WinSW Agent Service, Desktop Helper, LibreHardwareMonitor bridge và driver PawnIO).*
 
-#### B. Máy Trạm Linux (Ubuntu / Debian / CentOS / Alpine):
+---
+
+#### B. Máy Trạm Linux (Ubuntu / Debian / CentOS / Alpine / Raspberry Pi):
 ```bash
 sudo ./linux-agent/install-linux.sh --server-url http://192.168.1.10:3003
 ```
+- Runtime được cài đặt vào thư mục `/var/lib/windows-controller-agent`.
+- Tự động tạo và kích hoạt `systemd service`: `windows-controller-agent.service`.
+- Kiểm tra trạng thái: `systemctl status windows-controller-agent.service`.
 
-#### C. Synology NAS:
-Triển khai file `synology-server/compose.yaml` hoặc chạy container Synology Agent kết nối về Central Server qua port 3003.
+---
 
-Sau khi cài Agent, vào mục **Quản trị ➔ Danh sách máy chờ duyệt** trên Dashboard để phê duyệt (Approve) máy trạm vào hệ thống.
+#### C. Hướng Dẫn Chi Tiết: Cài Đặt Trên Synology NAS (DSM 7.x)
+
+Synology NAS có thể hoạt động ở 2 vai trò: **Central Server** (Trạm điều khiển trung tâm) hoặc **Synology Agent** (Thiết bị con trong fleet).
+
+##### 🔹 Trường hợp 1: Chạy Central Server trên Synology (Container Manager)
+1. Tạo thư mục dữ liệu trên NAS qua File Station hoặc SSH:
+   ```bash
+   mkdir -p /volume1/docker/minhhungops/data
+   chmod 755 /volume1/docker/minhhungops/data
+   ```
+2. Mở **Container Manager** ➔ **Project** ➔ Chọn **Create** ➔ Đặt tên `minhhungops` và dán cấu hình `compose.yaml`:
+   ```yaml
+   version: '3.8'
+   services:
+     minhhungops-controller:
+       image: node:24-alpine
+       container_name: minhhungops-controller
+       restart: unless-stopped
+       working_dir: /app
+       command: sh -c "npm install --omit=dev && npm start"
+       environment:
+         - HOST=0.0.0.0
+         - PORT=3003
+         - DATA_DIR=/app/data
+         - TZ=Asia/Ho_Chi_Minh
+       ports:
+         - "3003:3003"
+       volumes:
+         - /volume1/docker/minhhungops/data:/app/data
+         - /var/run/docker.sock:/var/run/docker.sock
+   ```
+3. Khởi chạy Project. Dữ liệu SQLite, JWT Secret, Token và lịch sử ping sẽ được lưu trữ an toàn trong `/volume1/docker/minhhungops/data`.
+4. *(Tùy chọn) Chuyển dữ liệu từ máy Windows cũ sang Synology*:
+   - Trên máy Windows cũ: Chạy `.\synology-server\export-server-data.ps1` để xuất file zip `windows-controller-server-data.zip`.
+   - Giải nén toàn bộ file vào `/volume1/docker/minhhungops/data/` trước khi khởi chạy container.
+
+##### 🔹 Trường hợp 2: Chạy Synology Agent (để NAS xuất hiện trong danh sách Fleet)
+1. Copy thư mục `synology-agent` lên NAS tại `/volume1/@appdata/windows-controller-agent/` hoặc thư mục tùy chọn.
+2. Tạo file cấu hình `config.json`:
+   ```json
+   {
+     "serverUrl": "http://192.168.1.10:3003",
+     "stateDir": "/volume1/@appdata/windows-controller-agent",
+     "telemetryIntervalSeconds": 2
+   }
+   ```
+3. Chạy Agent qua Task Scheduler (Triggered Task on Boot - User `root`):
+   ```bash
+   cd /volume1/@appdata/windows-controller-agent && /usr/local/bin/node agent.js --config ./config.json
+   ```
+
+---
+
+#### D. Hướng Dẫn Chi Tiết: Cài Đặt Trên Home Assistant
+
+##### 🔹 Trường hợp 1: Cài đặt qua Home Assistant OS / Supervised (Add-on)
+1. Bật **Samba Share** hoặc **SSH & Web Terminal** trên Home Assistant.
+2. Copy toàn bộ thư mục `homeassistant-addon/` vào thư mục `/addons/local/windows-controller-connector/`.
+3. Trong Home Assistant, vào mục: **Settings (Cài đặt) ➔ Add-ons ➔ Add-on Store ➔ Menu 3 chấm góc trên phải ➔ Check for updates (Kiểm tra cập nhật)**.
+4. Bạn sẽ thấy mục **"Windows Controller Home Assistant Connector"** trong danh sách Local Add-ons.
+5. Nhấn **Install (Cài đặt)** hoặc **Rebuild**.
+6. Vào tab **Configuration (Cấu hình)** và điền:
+   ```yaml
+   central_server_url: "http://192.168.1.10:3003"
+   home_assistant_url: "http://supervisor/core"
+   home_assistant_token: "" # Để trống nếu dùng Supervisor token tự động
+   telemetry_interval_seconds: 5
+   memory_used_entity_id: "sensor.memory_use"
+   memory_free_entity_id: "sensor.memory_free"
+   disk_used_percent_entity_id: "sensor.system_monitor_disk_use_percent"
+   disk_free_entity_id: "sensor.system_monitor_disk_free"
+   power_entity_ids: []
+   temperature_entity_ids: []
+   ```
+7. Bật **Start on boot (Khởi động cùng hệ thống)** và **Watchdog**, sau đó nhấn **Start (Bắt đầu)**.
+8. Truy cập giao diện Central Server ➔ **Quản trị ➔ Danh sách máy chờ duyệt** để **Approve (Phê duyệt)** Home Assistant.
+
+##### 🔹 Trường hợp 2: Cài đặt trên Home Assistant Core / Container (Standalone)
+1. Trong giao diện Home Assistant, vào **Profile (Hồ sơ người dùng) ➔ Long-Lived Access Tokens ➔ Create Token** để tạo token truy cập API.
+2. Vào thư mục `homeassistant-addon`:
+   ```bash
+   cp config.example.json config.json
+   ```
+3. Chỉnh sửa `config.json`:
+   ```json
+   {
+     "serverUrl": "http://192.168.1.10:3003",
+     "homeAssistantUrl": "http://192.168.1.20:8123",
+     "homeAssistantToken": "eyJhbGciOiJIUzI1NiIsIn...",
+     "telemetryIntervalSeconds": 5
+   }
+   ```
+4. Khởi chạy:
+   ```bash
+   npm install --omit=dev
+   node agent.js --config ./config.json
+   ```
 
 ---
 

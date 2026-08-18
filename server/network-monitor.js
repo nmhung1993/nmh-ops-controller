@@ -155,7 +155,7 @@ function pingHost(host, timeoutMs = 2000) {
   });
 }
 
-// Record historical sample
+// Record historical sample with tiered retention (high-res recent + 1-min downsampling for up to 7-30 days)
 function recordHistorySample(target, latency, status) {
   const isDrop = status === 'offline';
   const isSpike = latency !== null && latency > 100;
@@ -170,13 +170,75 @@ function recordHistorySample(target, latency, status) {
     isSpike
   });
 
-  if (networkHistory.length > 15000) {
-    networkHistory = networkHistory.slice(-15000);
+  // Keep up to 100,000 in-memory samples before compacting
+  if (networkHistory.length > 100000) {
+    compactNetworkHistory();
   }
 }
 
-// Persist history periodically (every 1 minute)
+// Intelligently compact history: keep raw 3-sec data for recent 2 hours, and 1-minute averages for up to 7 days
+function compactNetworkHistory() {
+  const now = Date.now();
+  const twoHoursAgo = now - (2 * 60 * 60 * 1000);
+  const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+
+  const recent = [];
+  const olderBuckets = new Map();
+
+  for (const item of networkHistory) {
+    const t = new Date(item.timestamp).getTime();
+    if (t < sevenDaysAgo) continue; // Drop records older than 7 days
+
+    if (t >= twoHoursAgo) {
+      recent.push(item);
+    } else {
+      const minuteBucket = Math.floor(t / 60000) * 60000;
+      const key = `${item.targetId}_${minuteBucket}`;
+      if (!olderBuckets.has(key)) {
+        olderBuckets.set(key, {
+          timestamp: new Date(minuteBucket).toISOString(),
+          targetId: item.targetId,
+          targetName: item.targetName,
+          host: item.host,
+          sumLatency: 0,
+          countLatency: 0,
+          isDrop: false,
+          isSpike: false,
+          status: 'online'
+        });
+      }
+      const b = olderBuckets.get(key);
+      if (item.latency !== null && item.latency !== undefined) {
+        b.sumLatency += item.latency;
+        b.countLatency += 1;
+      }
+      if (item.isDrop) {
+        b.isDrop = true;
+        b.status = 'offline';
+      }
+      if (item.isSpike) b.isSpike = true;
+    }
+  }
+
+  const compactedOlder = Array.from(olderBuckets.values()).map(b => ({
+    timestamp: b.timestamp,
+    targetId: b.targetId,
+    targetName: b.targetName,
+    host: b.host,
+    latency: b.countLatency > 0 ? Math.round(b.sumLatency / b.countLatency) : null,
+    status: b.isDrop ? 'offline' : 'online',
+    isDrop: b.isDrop,
+    isSpike: b.isSpike
+  }));
+
+  networkHistory = [...compactedOlder, ...recent].sort(
+    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+  );
+}
+
+// Compact history every 5 minutes and persist periodically
 setInterval(() => {
+  compactNetworkHistory();
   saveJson(HISTORY_FILE, networkHistory);
 }, 60000);
 

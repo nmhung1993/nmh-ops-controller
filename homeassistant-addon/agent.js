@@ -6,7 +6,7 @@ const os = require('os');
 const crypto = require('crypto');
 const WebSocket = require('ws');
 
-const VERSION = '2.1.4';
+const VERSION = '2.1.5';
 const CONFIG_FILE = argument('--config') || '/data/options.json';
 const STATE_FILE = process.env.WC_STATE_FILE || path.join(path.dirname(CONFIG_FILE), 'windows-controller-state.json');
 const CONNECTION_ATTEMPT_TIMEOUT_MS = Number(process.env.WC_CONNECTION_ATTEMPT_TIMEOUT_MS || 10_000);

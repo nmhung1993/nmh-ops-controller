@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
 const WebSocket = require('ws');
 
-const VERSION = '2.1.4';
+const VERSION = '2.1.5';
 const CONFIG_FILE = argument('--config') || process.env.WC_AGENT_CONFIG || '/var/lib/windows-controller-agent/config.json';
 const CONNECTION_ATTEMPT_TIMEOUT_MS = Number(process.env.WC_CONNECTION_ATTEMPT_TIMEOUT_MS || 10_000);
 const capabilities = ['telemetry', 'hardware-sensors', 'processes', 'process.kill', 'watchdog', 'watchdog.launch', 'service-launch', 'linux'];

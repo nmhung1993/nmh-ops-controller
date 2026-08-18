@@ -87,6 +87,7 @@ const app = express();
 const server = http.createServer(app);
 const agentWss = new WebSocket.Server({ noServer: true });
 const uiWss = new WebSocket.Server({ noServer: true });
+const dockerWss = new WebSocket.Server({ noServer: true });
 const agentSockets = new Map();
 const pendingSockets = new Map();
 const uiClients = new Set();
@@ -1123,11 +1124,11 @@ app.get('/api/v1/screenshots/:id', authenticate, (req, res) => {
 // OTA (Over-The-Air) Upgrade Endpoints
 // ==========================================
 app.get('/api/v1/ota/status', authenticate, (req, res) => {
-  const version = '2.1.4';
+  const version = '2.1.5';
   res.json({
     serverVersion: version,
     latestAgentVersion: version,
-    releaseNotes: 'Cập nhật S.M.A.R.T Disks, Remote Web Terminal, Telegram Topics & OTA Upgrade System',
+    releaseNotes: 'v2.1.5: Đồng bộ Fleet Agents, Docker Web Console Shell, Nâng cấp lưu trữ mạng 7-ngày và tối ưu WebSocket',
     releaseDate: '2026-08-18'
   });
 });
@@ -1140,7 +1141,7 @@ app.get('/api/v1/ota/agent-bundle', (req, res) => {
     if (fs.existsSync(agentPath)) files['agent.js'] = fs.readFileSync(agentPath, 'utf8');
     if (fs.existsSync(windowsPath)) files['windows.js'] = fs.readFileSync(windowsPath, 'utf8');
     res.json({
-      version: '2.1.4',
+      version: '2.1.5',
       files
     });
   } catch (err) {
