@@ -15,6 +15,7 @@ class DockerManager extends EventEmitter {
     this.options = options;
     this.localAvailable = null;
     this.lastCheckTime = 0;
+    this.statsCache = new Map(); // containerId -> stats
     this.remoteHosts = new Map(); // hostId -> { agentId, name, ip, lastSeen }
   }
 
@@ -230,7 +231,7 @@ class DockerManager extends EventEmitter {
   // ==========================================
   // Containers Operations
   // ==========================================
-  async listContainers({ all = true } = {}) {
+  async listContainers({ all = true, withStats = true } = {}) {
     const isAvail = await this.isAvailable();
     if (!isAvail) return [];
 
@@ -238,7 +239,7 @@ class DockerManager extends EventEmitter {
       const raw = await this.request(`/containers/json?all=${all ? 1 : 0}`, 'GET', null, { json: true });
       if (!Array.isArray(raw)) return [];
 
-      return raw.map((c) => {
+      const list = raw.map((c) => {
         const name = (c.Names && c.Names[0] ? c.Names[0].replace(/^\//, '') : c.Id.slice(0, 12));
         const composeProject = c.Labels?.['com.docker.compose.project'] || null;
         const composeService = c.Labels?.['com.docker.compose.service'] || null;
@@ -249,6 +250,15 @@ class DockerManager extends EventEmitter {
           publicPort: p.PublicPort,
           type: p.Type
         }));
+
+        const cachedStats = this.statsCache?.get(c.Id) || {
+          cpuPercent: 0,
+          memUsageBytes: 0,
+          memLimitBytes: 0,
+          memPercent: 0,
+          netRx: 0,
+          netTx: 0
+        };
 
         return {
           id: c.Id,
@@ -265,9 +275,32 @@ class DockerManager extends EventEmitter {
           composeProject,
           composeService,
           sizeRw: c.SizeRw || 0,
-          sizeRootFs: c.SizeRootFs || 0
+          sizeRootFs: c.SizeRootFs || 0,
+          stats: cachedStats
         };
       });
+
+      if (withStats) {
+        // Trigger non-blocking asynchronous stats refresh for running containers
+        const running = list.filter(c => c.state === 'running');
+        Promise.all(running.map(async (c) => {
+          try {
+            const st = await this.getContainerStats(c.id);
+            const simplified = {
+              cpuPercent: st.cpu?.percent || 0,
+              memUsageBytes: st.memory?.usageBytes || 0,
+              memLimitBytes: st.memory?.limitBytes || 0,
+              memPercent: st.memory?.percent || 0,
+              netRx: st.network?.rxBytes || 0,
+              netTx: st.network?.txBytes || 0
+            };
+            this.statsCache.set(c.id, simplified);
+            c.stats = simplified;
+          } catch {}
+        })).catch(() => {});
+      }
+
+      return list;
     } catch (err) {
       console.error('Failed to list containers:', err.message);
       return [];
@@ -446,14 +479,33 @@ class DockerManager extends EventEmitter {
           isStandalone: projectName === '_standalone',
           containers: [],
           runningCount: 0,
-          totalCount: 0
+          totalCount: 0,
+          totalCpuPercent: 0,
+          totalMemUsageBytes: 0,
+          totalMemLimitBytes: 0,
+          totalMemPercent: 0
         });
       }
 
       const stack = stacksMap.get(projectName);
       stack.containers.push(c);
       stack.totalCount += 1;
-      if (c.state === 'running') stack.runningCount += 1;
+      if (c.state === 'running') {
+        stack.runningCount += 1;
+        const st = c.stats || {};
+        stack.totalCpuPercent += (st.cpuPercent || 0);
+        stack.totalMemUsageBytes += (st.memUsageBytes || 0);
+        if ((st.memLimitBytes || 0) > stack.totalMemLimitBytes) {
+          stack.totalMemLimitBytes = st.memLimitBytes;
+        }
+      }
+    }
+
+    for (const stack of stacksMap.values()) {
+      stack.totalCpuPercent = Number(stack.totalCpuPercent.toFixed(2));
+      if (stack.totalMemLimitBytes > 0) {
+        stack.totalMemPercent = Number(((stack.totalMemUsageBytes / stack.totalMemLimitBytes) * 100).toFixed(2));
+      }
     }
 
     return Array.from(stacksMap.values());
