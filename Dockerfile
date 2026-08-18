@@ -7,6 +7,10 @@ RUN npm ci --omit=dev
 COPY server ./server
 COPY public ./public
 COPY frontend/dist ./frontend/dist
+COPY agent ./agent
+COPY linux-agent ./linux-agent
+COPY synology-agent ./synology-agent
+COPY homeassistant-addon ./homeassistant-addon
 RUN mkdir -p /app/data
 
 ENV HOST=0.0.0.0

@@ -563,16 +563,29 @@ async function executeCommand(command) {
           }).on('error', rej);
         });
       }
-      if (bundle.files) {
-        for (const [filename, content] of Object.entries(bundle.files)) {
-          const targetPath = path.join(__dirname, filename);
-          fs.writeFileSync(targetPath, content, 'utf8');
-        }
+      if (!bundle?.files || Object.keys(bundle.files).length === 0) {
+        throw new Error('Upgrade bundle contains no files or could not be loaded from server');
+      }
+      for (const [filename, content] of Object.entries(bundle.files)) {
+        const targetPath = path.join(__dirname, filename);
+        fs.writeFileSync(targetPath, content, 'utf8');
       }
       result = { updated: true, newVersion: bundle.version || '2.1.5' };
       sendCommandResult(commandId, 'succeeded', result);
       sendEvent('agent.ota.restarting', 'info', `Agent successfully upgraded to v${bundle.version || '2.1.5'}. Restarting...`);
-      setTimeout(() => process.exit(0), 1000);
+      setTimeout(() => {
+        if (process.platform === 'win32') {
+          try {
+            const { spawn } = require('child_process');
+            spawn('powershell.exe', ['-NoProfile', '-Command', 'Start-Sleep -Seconds 1; Restart-Service WindowsControllerAgent -ErrorAction SilentlyContinue'], {
+              detached: true,
+              stdio: 'ignore',
+              windowsHide: true
+            }).unref();
+          } catch {}
+        }
+        process.exit(1);
+      }, 1000);
       return;
     } else if (commandType === 'docker.info') {
       const info = await dockerRequest('/info');

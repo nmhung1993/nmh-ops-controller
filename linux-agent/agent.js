@@ -440,6 +440,37 @@ async function executeCommand(payload) {
       if (type === 'containers' || type === 'all') resPrune.containers = await dockerRequest('/containers/prune', 'POST').catch(() => null);
       if (type === 'volumes' || type === 'all') resPrune.volumes = await dockerRequest('/volumes/prune', 'POST').catch(() => null);
       result = { success: true, pruned: type, result: resPrune };
+    } else if (commandType === 'agent.upgrade') {
+      const downloadPath = data.downloadUrl || '/api/v1/ota/agent-bundle?platform=linux';
+      const bundleUrl = `${config.serverUrl.replace(/\/$/, '')}${downloadPath}`;
+      console.log(`[Agent OTA] Downloading upgrade bundle from ${bundleUrl}...`);
+      let bundle;
+      if (typeof fetch === 'function') {
+        const resp = await fetch(bundleUrl);
+        if (!resp.ok) throw new Error(`Download failed: HTTP ${resp.status}`);
+        bundle = await resp.json();
+      } else {
+        const httpLib = bundleUrl.startsWith('https:') ? https : http;
+        bundle = await new Promise((res, rej) => {
+          httpLib.get(bundleUrl, (r) => {
+            let body = '';
+            r.on('data', chunk => body += chunk);
+            r.on('end', () => {
+              try { res(JSON.parse(body)); } catch (e) { rej(e); }
+            });
+          }).on('error', rej);
+        });
+      }
+      if (!bundle?.files || Object.keys(bundle.files).length === 0) {
+        throw new Error('Upgrade bundle contains no files or could not be loaded from server');
+      }
+      for (const [filename, content] of Object.entries(bundle.files)) {
+        const targetPath = path.join(__dirname, filename);
+        fs.writeFileSync(targetPath, content, 'utf8');
+      }
+      result = { updated: true, newVersion: bundle.version || '2.1.5' };
+      emitEvent('agent.ota.restarting', 'info', `Agent successfully upgraded to v${bundle.version || '2.1.5'}. Restarting...`);
+      setTimeout(() => process.exit(0), 1000);
     } else {
       throw new Error('unsupported_command');
     }

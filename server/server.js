@@ -1176,13 +1176,31 @@ app.get('/api/v1/ota/status', authenticate, (req, res) => {
 
 app.get('/api/v1/ota/agent-bundle', (req, res) => {
   try {
-    const agentPath = path.join(__dirname, '..', 'agent', 'agent.js');
-    const windowsPath = path.join(__dirname, '..', 'agent', 'windows.js');
+    const platform = (req.query.platform || 'windows').toLowerCase();
     const files = {};
-    if (fs.existsSync(agentPath)) files['agent.js'] = fs.readFileSync(agentPath, 'utf8');
-    if (fs.existsSync(windowsPath)) files['windows.js'] = fs.readFileSync(windowsPath, 'utf8');
+    if (platform.includes('synology')) {
+      const synoPath = path.join(__dirname, '..', 'synology-agent', 'agent.js');
+      if (fs.existsSync(synoPath)) files['agent.js'] = fs.readFileSync(synoPath, 'utf8');
+    } else if (platform.includes('linux')) {
+      const linuxPath = path.join(__dirname, '..', 'linux-agent', 'agent.js');
+      if (fs.existsSync(linuxPath)) files['agent.js'] = fs.readFileSync(linuxPath, 'utf8');
+    } else if (platform.includes('homeassistant') || platform.includes('hass')) {
+      const hassPath = path.join(__dirname, '..', 'homeassistant-addon', 'agent.js');
+      if (fs.existsSync(hassPath)) files['agent.js'] = fs.readFileSync(hassPath, 'utf8');
+    } else {
+      const agentPath = path.join(__dirname, '..', 'agent', 'agent.js');
+      const windowsPath = path.join(__dirname, '..', 'agent', 'windows.js');
+      if (fs.existsSync(agentPath)) files['agent.js'] = fs.readFileSync(agentPath, 'utf8');
+      if (fs.existsSync(windowsPath)) files['windows.js'] = fs.readFileSync(windowsPath, 'utf8');
+    }
+
+    if (Object.keys(files).length === 0) {
+      return res.status(404).json({ error: `No bundle files available for platform '${platform}'` });
+    }
+
     res.json({
       version: '2.1.5',
+      platform,
       files
     });
   } catch (err) {
@@ -1193,21 +1211,25 @@ app.get('/api/v1/ota/agent-bundle', (req, res) => {
 app.post('/api/v1/hosts/:id/upgrade', authenticate, requireSuperAdmin, (req, res) => {
   const agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(req.params.id);
   if (!agent) return res.status(404).json({ error: 'Agent not found' });
+  const p = (agent.platform || '').toLowerCase();
+  const plat = p.includes('synology') ? 'synology' : (p.includes('linux') ? 'linux' : (p.includes('hass') ? 'homeassistant' : 'windows'));
   const command = createCommand(req.params.id, 'agent.upgrade', {
-    targetVersion: '2.1.4',
-    downloadUrl: '/api/v1/ota/agent-bundle'
+    targetVersion: '2.1.5',
+    downloadUrl: `/api/v1/ota/agent-bundle?platform=${plat}`
   }, req.user.username, 60_000);
   res.status(202).json({ id: command.id, status: command.status });
 });
 
 app.post('/api/v1/hosts/upgrade-all', authenticate, requireSuperAdmin, (req, res) => {
-  const agents = db.prepare("SELECT id FROM agents WHERE status = 'approved'").all();
+  const agents = db.prepare("SELECT id, platform FROM agents WHERE status = 'approved'").all();
   const queued = [];
   for (const a of agents) {
     if (agentSockets.has(a.id)) {
+      const p = (a.platform || '').toLowerCase();
+      const plat = p.includes('synology') ? 'synology' : (p.includes('linux') ? 'linux' : (p.includes('hass') ? 'homeassistant' : 'windows'));
       const command = createCommand(a.id, 'agent.upgrade', {
-        targetVersion: '2.1.4',
-        downloadUrl: '/api/v1/ota/agent-bundle'
+        targetVersion: '2.1.5',
+        downloadUrl: `/api/v1/ota/agent-bundle?platform=${plat}`
       }, req.user.username, 60_000);
       queued.push({ agentId: a.id, commandId: command.id });
     }
