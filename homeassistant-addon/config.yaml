@@ -1,5 +1,5 @@
 name: Windows Controller Home Assistant Connector
-version: "1.0.6"
+version: "2.1.4"
 slug: windows_controller_connector
 description: Publishes Home Assistant system and selected sensor telemetry to Windows Controller Fleet.
 arch:

@@ -691,18 +691,55 @@ class DockerManager extends EventEmitter {
   // Attach WebSocket to Exec socket duplex
   async attachExecToWebSocket(execId, ws) {
     try {
-      const socket = await this.getRawSocket(`/exec/${encodeURIComponent(execId)}/start`, 'POST', {
-        'Content-Type': 'application/json'
-      });
+      const config = this.getSocketConfig();
+      let socket;
+      if (config.socketPath) {
+        socket = net.connect(config.socketPath);
+      } else {
+        socket = net.connect(config.port || 2375, config.host || '127.0.0.1');
+      }
 
-      // Send start exec payload
-      socket.write(JSON.stringify({ Detach: false, Tty: true }));
+      const body = JSON.stringify({ Detach: false, Tty: true });
 
-      // Data from container -> Browser WebSocket
-      socket.on('data', (chunk) => {
-        if (ws.readyState === ws.OPEN) {
-          ws.send(chunk.toString('utf8'));
-        }
+      socket.once('connect', () => {
+        const header = [
+          `POST /exec/${encodeURIComponent(execId)}/start HTTP/1.1`,
+          `Host: ${config.host || 'localhost'}`,
+          `Content-Type: application/json`,
+          `Connection: Upgrade`,
+          `Upgrade: tcp`,
+          `Content-Length: ${Buffer.byteLength(body)}`,
+          ``,
+          body
+        ].join('\r\n');
+
+        socket.write(header);
+
+        let responseHeader = '';
+        let upgraded = false;
+
+        const onData = (chunk) => {
+          if (!upgraded) {
+            responseHeader += chunk.toString('binary');
+            const headerEnd = responseHeader.indexOf('\r\n\r\n');
+            if (headerEnd !== -1) {
+              upgraded = true;
+              socket.removeListener('data', onData);
+              const remaining = Buffer.from(responseHeader.slice(headerEnd + 4), 'binary');
+              if (remaining.length > 0 && ws.readyState === ws.OPEN) {
+                ws.send(remaining.toString('utf8'));
+              }
+              // Forward all subsequent streaming data from container to browser
+              socket.on('data', (dataChunk) => {
+                if (ws.readyState === ws.OPEN) {
+                  ws.send(dataChunk.toString('utf8'));
+                }
+              });
+            }
+          }
+        };
+
+        socket.on('data', onData);
       });
 
       socket.on('close', () => {
@@ -711,10 +748,17 @@ class DockerManager extends EventEmitter {
         }
       });
 
+      socket.on('error', (err) => {
+        if (ws.readyState === ws.OPEN) {
+          ws.send(`\r\n[Lỗi kết nối Terminal]: ${err.message}\r\n`);
+          ws.close();
+        }
+      });
+
       // Data from Browser WebSocket -> container stdin
       ws.on('message', (msg) => {
         if (!socket.destroyed) {
-          socket.write(msg);
+          socket.write(msg.toString());
         }
       });
 

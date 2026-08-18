@@ -36,8 +36,8 @@ import { useSystemSettings } from '../../context/SystemSettingsContext';
 
 export const NAV_ITEMS = [
   { id: 'network', path: '#network', labelKey: 'nav.network', icon: Globe },
-  { id: 'fleet', path: '#fleet', labelKey: 'nav.fleet', icon: Server },
   { id: 'docker', path: '#docker', labelKey: 'nav.docker', icon: Boxes },
+  { id: 'fleet', path: '#fleet', labelKey: 'nav.fleet', icon: Server },
   { id: 'dashboard', path: '#dashboard', labelKey: 'nav.dashboard', icon: LayoutDashboard },
   { id: 'processes', path: '#processes', labelKey: 'nav.processes', icon: Activity },
   { id: 'watchdog', path: '#watchdog', labelKey: 'nav.watchdog', icon: ShieldCheck },

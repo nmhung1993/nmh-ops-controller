@@ -119,17 +119,27 @@ export function WebSocketProvider({ children }) {
     }
   }, [token]);
 
+  const selectedHostIdRef = useRef(selectedHostId);
+  useEffect(() => {
+    selectedHostIdRef.current = selectedHostId;
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN && selectedHostId) {
+      socketRef.current.send(
+        JSON.stringify({
+          type: 'ui.subscribe',
+          payload: { agentId: selectedHostId }
+        })
+      );
+    }
+  }, [selectedHostId]);
+
   const connectWebSocket = useCallback(() => {
     if (!token) {
       setStatus('disconnected');
       return;
     }
 
-    if (socketRef.current) {
-      try {
-        socketRef.current.close();
-      } catch {}
-      socketRef.current = null;
+    if (socketRef.current && (socketRef.current.readyState === WebSocket.OPEN || socketRef.current.readyState === WebSocket.CONNECTING)) {
+      return;
     }
 
     setStatus((prev) => (prev === 'connected' ? 'reconnecting' : 'connecting'));
@@ -154,11 +164,11 @@ export function WebSocketProvider({ children }) {
       }, 15000);
 
       // Subscribe to selected host if any
-      if (selectedHostId) {
+      if (selectedHostIdRef.current) {
         ws.send(
           JSON.stringify({
             type: 'ui.subscribe',
-            payload: { agentId: selectedHostId }
+            payload: { agentId: selectedHostIdRef.current }
           })
         );
       }
@@ -254,7 +264,7 @@ export function WebSocketProvider({ children }) {
         ws.close();
       } catch {}
     };
-  }, [token, selectedHostId, refreshHosts]);
+  }, [token, refreshHosts]);
 
   useEffect(() => {
     isMountedRef.current = true;

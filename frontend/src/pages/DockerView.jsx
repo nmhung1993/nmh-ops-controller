@@ -24,7 +24,6 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions,
   CircularProgress,
   LinearProgress,
   Select,
@@ -35,7 +34,6 @@ import {
   Snackbar,
   Divider,
   Collapse,
-  ButtonGroup,
   ToggleButton,
   ToggleButtonGroup
 } from '@mui/material';
@@ -44,7 +42,6 @@ import {
   Play,
   Square,
   RotateCw,
-  Pause,
   Trash2,
   Terminal,
   FileText,
@@ -55,22 +52,13 @@ import {
   Server,
   Search,
   RefreshCw,
-  ExternalLink,
-  ShieldAlert,
   Info,
   Download,
   Trash,
-  CheckCircle2,
-  AlertCircle,
-  Clock,
   ChevronDown,
   ChevronRight,
-  ChevronsUpDown,
-  ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  Copy,
-  LayoutGrid,
   List as ListIcon
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
@@ -115,7 +103,7 @@ export default function DockerView() {
   // Modals state
   const [detailModal, setDetailModal] = useState({ open: false, container: null, data: null, activeSubTab: 'overview' });
   const [modalLogs, setModalLogs] = useState({ logs: '', isStreaming: false });
-  const [modalTerm, setModalTerm] = useState({ execId: null, history: [], input: '' });
+  const [modalTerm, setModalTerm] = useState({ execId: null, history: '', input: '', isConnected: false });
   
   const [actionLoading, setActionLoading] = useState({});
   const [toast, setToast] = useState({ open: false, message: '', severity: 'info' });
@@ -173,6 +161,19 @@ export default function DockerView() {
     const interval = setInterval(() => loadData(true), 6000);
     return () => clearInterval(interval);
   }, [selectedHostId]);
+
+  // Auto-scroll Logs & Terminal
+  useEffect(() => {
+    if (logsEndRef.current) {
+      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [modalLogs.logs]);
+
+  useEffect(() => {
+    if (termEndRef.current) {
+      termEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [modalTerm.history]);
 
   // Container Action Handler
   const handleContainerAction = async (e, containerId, action, name = '') => {
@@ -273,7 +274,6 @@ export default function DockerView() {
     stopLogsStream();
     setModalLogs({ logs: 'Đang kết nối luồng log container...', isStreaming: true });
 
-    // 1. Fetch initial logs via REST for instant display
     try {
       const res = await apiRequest(`/api/v1/docker/${selectedHostId}/containers/${containerId}/logs?tail=200`);
       if (res?.logs) {
@@ -281,7 +281,6 @@ export default function DockerView() {
       }
     } catch {}
 
-    // 2. Connect WebSocket for live tailing
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws/docker/logs?containerId=${containerId}&token=${token}&tail=50`;
     
@@ -306,7 +305,7 @@ export default function DockerView() {
 
   const stopLogsStream = () => {
     if (logSocketRef.current) {
-      logSocketRef.current.close();
+      try { logSocketRef.current.close(); } catch {}
       logSocketRef.current = null;
     }
     setModalLogs({ logs: '', isStreaming: false });
@@ -315,6 +314,13 @@ export default function DockerView() {
   // Web Terminal Session
   const startTerminalSession = async (container) => {
     stopTerminalSession();
+    setModalTerm({
+      execId: null,
+      history: `[MinhHungOps Shell: ${container.name}]\r\nĐang kết nối terminal...\r\n`,
+      input: '',
+      isConnected: false
+    });
+
     try {
       const res = await apiRequest(`/api/v1/docker/${selectedHostId}/containers/${container.id}/exec`, {
         method: 'POST',
@@ -323,45 +329,55 @@ export default function DockerView() {
 
       if (!res?.execId) throw new Error('Không thể tạo phiên exec');
 
-      setModalTerm({
-        execId: res.execId,
-        history: [
-          `[MinhHungOps Container Shell: ${container.name}]\r\n`,
-          `Đang kết nối shell /bin/sh...\r\n`,
-          `Nhập lệnh Linux và nhấn Enter.\r\n\r\n`
-        ],
-        input: ''
-      });
-
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}/ws/docker/exec?execId=${res.execId}&token=${token}`;
       const ws = new WebSocket(wsUrl);
       termSocketRef.current = ws;
 
+      ws.onopen = () => {
+        setModalTerm((prev) => ({
+          ...prev,
+          execId: res.execId,
+          isConnected: true
+        }));
+      };
+
       ws.onmessage = (event) => {
-        setModalTerm((prev) => ({ ...prev, history: [...prev.history, event.data] }));
+        setModalTerm((prev) => ({
+          ...prev,
+          history: prev.history + event.data
+        }));
       };
 
       ws.onclose = () => {
-        setModalTerm((prev) => ({ ...prev, history: [...prev.history, '\r\n[Phiên Shell đã đóng]\r\n'] }));
+        setModalTerm((prev) => ({
+          ...prev,
+          isConnected: false,
+          history: prev.history + '\r\n[Phiên Terminal đã kết thúc]\r\n'
+        }));
       };
     } catch (err) {
-      setToast({ open: true, message: `Lỗi khởi tạo Terminal: ${err.message}`, severity: 'error' });
+      setModalTerm((prev) => ({
+        ...prev,
+        isConnected: false,
+        history: prev.history + `\r\n[Lỗi kết nối Shell]: ${err.message}\r\n`
+      }));
     }
   };
 
   const stopTerminalSession = () => {
     if (termSocketRef.current) {
-      termSocketRef.current.close();
+      try { termSocketRef.current.close(); } catch {}
       termSocketRef.current = null;
     }
-    setModalTerm({ execId: null, history: [], input: '' });
+    setModalTerm({ execId: null, history: '', input: '', isConnected: false });
   };
 
   const handleSendTermCommand = (e) => {
     e.preventDefault();
-    if (!modalTerm.input.trim() || !termSocketRef.current) return;
-    termSocketRef.current.send(modalTerm.input + '\n');
+    if (!termSocketRef.current || termSocketRef.current.readyState !== WebSocket.OPEN) return;
+    const cmd = modalTerm.input;
+    termSocketRef.current.send(cmd + '\n');
     setModalTerm((prev) => ({ ...prev, input: '' }));
   };
 
@@ -423,13 +439,14 @@ export default function DockerView() {
       } else if (sortBy === 'memory') {
         cmp = (a.stats?.memUsageBytes || 0) - (b.stats?.memUsageBytes || 0);
       } else if (sortBy === 'status') {
-        cmp = (a.state === 'running' ? 1 : 0) - (b.state === 'running' ? 1 : 0);
+        const stateOrder = { running: 3, paused: 2, exited: 1, dead: 0 };
+        cmp = (stateOrder[a.state] || 0) - (stateOrder[b.state] || 0);
       }
       return sortOrder === 'asc' ? cmp : -cmp;
     });
   }, [containers, searchQuery, statusFilter, sortBy, sortOrder]);
 
-  // Grouped by Stack
+  // Grouped by Stack with full multi-criteria sorting
   const groupedStacks = useMemo(() => {
     const map = new Map();
     for (const c of sortedAndFilteredContainers) {
@@ -459,13 +476,24 @@ export default function DockerView() {
       }
     }
 
-    // Convert to array and sort stacks
+    // Sort stacks themselves based on selected sortBy & sortOrder
     return Array.from(map.values()).sort((a, b) => {
-      if (a.isStandalone) return 1;
-      if (b.isStandalone) return -1;
-      return a.name.localeCompare(b.name);
+      if (a.isStandalone && !b.isStandalone) return 1;
+      if (!a.isStandalone && b.isStandalone) return -1;
+      
+      let cmp = 0;
+      if (sortBy === 'name') {
+        cmp = a.name.localeCompare(b.name);
+      } else if (sortBy === 'cpu') {
+        cmp = (a.totalCpuPercent || 0) - (b.totalCpuPercent || 0);
+      } else if (sortBy === 'memory') {
+        cmp = (a.totalMemUsageBytes || 0) - (b.totalMemUsageBytes || 0);
+      } else if (sortBy === 'status') {
+        cmp = (a.runningCount / (a.totalCount || 1)) - (b.runningCount / (b.totalCount || 1));
+      }
+      return sortOrder === 'asc' ? cmp : -cmp;
     });
-  }, [sortedAndFilteredContainers]);
+  }, [sortedAndFilteredContainers, sortBy, sortOrder]);
 
   // Status counters
   const runningCount = containers.filter((c) => c.state === 'running').length;
@@ -484,11 +512,11 @@ export default function DockerView() {
         <Box>
           <Stack direction="row" spacing={1.5} alignItems="center">
             <Typography variant="h4" sx={{ fontWeight: 800, letterSpacing: -0.5 }}>
-              Quản Lý Docker Fleet
+              {t('docker.title')}
             </Typography>
             <Chip
               icon={<Boxes size={15} />}
-              label="Dockhand Pro"
+              label={t('docker.badge')}
               size="small"
               sx={{
                 bgcolor: alpha(theme.palette.primary.main, 0.12),
@@ -498,16 +526,16 @@ export default function DockerView() {
             />
           </Stack>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-            Giám sát CPU/RAM theo Stack, điều khiển vòng đời, xem live logs và shell console tương tác trên Local & mạng LAN.
+            {t('docker.subtitle')}
           </Typography>
         </Box>
 
         <Stack direction="row" spacing={1.5} alignItems="center">
           <FormControl size="small" sx={{ minWidth: 260 }}>
-            <InputLabel>Node / Máy Chủ Docker</InputLabel>
+            <InputLabel>{t('docker.nodeSelector')}</InputLabel>
             <Select
               value={selectedHostId}
-              label="Node / Máy Chủ Docker"
+              label={t('docker.nodeSelector')}
               onChange={(e) => setSelectedHostId(e.target.value)}
             >
               {hosts.map((h) => (
@@ -539,7 +567,7 @@ export default function DockerView() {
             onClick={() => loadData(true)}
             sx={{ borderRadius: 2 }}
           >
-            Làm mới
+            {t('docker.refresh')}
           </Button>
         </Stack>
       </Stack>
@@ -558,7 +586,7 @@ export default function DockerView() {
             <CardContent sx={{ p: 2.5 }}>
               <Stack direction="row" justifyContent="space-between" alignItems="center">
                 <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase' }}>
-                  Tổng Containers
+                  {t('docker.kpi.totalContainers')}
                 </Typography>
                 <Box sx={{ p: 1, borderRadius: 2, bgcolor: alpha(theme.palette.primary.main, 0.1) }}>
                   <Boxes size={20} color={theme.palette.primary.main} />
@@ -568,8 +596,8 @@ export default function DockerView() {
                 {containers.length}
               </Typography>
               <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-                <Chip label={`${runningCount} Đang chạy`} size="small" color="success" sx={{ height: 20, fontSize: 11 }} />
-                <Chip label={`${stoppedCount} Dừng`} size="small" variant="outlined" sx={{ height: 20, fontSize: 11 }} />
+                <Chip label={`${runningCount} ${t('docker.kpi.running')}`} size="small" color="success" sx={{ height: 20, fontSize: 11 }} />
+                <Chip label={`${stoppedCount} ${t('docker.kpi.stopped')}`} size="small" variant="outlined" sx={{ height: 20, fontSize: 11 }} />
               </Stack>
             </CardContent>
           </Card>
@@ -580,7 +608,7 @@ export default function DockerView() {
             <CardContent sx={{ p: 2.5 }}>
               <Stack direction="row" justifyContent="space-between" alignItems="center">
                 <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase' }}>
-                  Compose Stacks
+                  {t('docker.kpi.stacks')}
                 </Typography>
                 <Box sx={{ p: 1, borderRadius: 2, bgcolor: alpha(theme.palette.info.main, 0.1) }}>
                   <Layers size={20} color={theme.palette.info.main} />
@@ -590,7 +618,7 @@ export default function DockerView() {
                 {stacks.length}
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                Nhóm dịch vụ compose đang quản lý
+                {t('docker.kpi.stacksDesc')}
               </Typography>
             </CardContent>
           </Card>
@@ -601,7 +629,7 @@ export default function DockerView() {
             <CardContent sx={{ p: 2.5 }}>
               <Stack direction="row" justifyContent="space-between" alignItems="center">
                 <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase' }}>
-                  Docker Images
+                  {t('docker.kpi.images')}
                 </Typography>
                 <Box sx={{ p: 1, borderRadius: 2, bgcolor: alpha(theme.palette.secondary.main, 0.1) }}>
                   <Server size={20} color={theme.palette.secondary.main} />
@@ -611,7 +639,7 @@ export default function DockerView() {
                 {images.length}
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                Tổng số images trên máy chủ
+                {t('docker.kpi.imagesDesc')}
               </Typography>
             </CardContent>
           </Card>
@@ -622,7 +650,7 @@ export default function DockerView() {
             <CardContent sx={{ p: 2.5 }}>
               <Stack direction="row" justifyContent="space-between" alignItems="center">
                 <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase' }}>
-                  Volumes Lưu Trữ
+                  {t('docker.kpi.volumes')}
                 </Typography>
                 <Box sx={{ p: 1, borderRadius: 2, bgcolor: alpha(theme.palette.warning.main, 0.1) }}>
                   <HardDrive size={20} color={theme.palette.warning.main} />
@@ -632,7 +660,7 @@ export default function DockerView() {
                 {volumes.length}
               </Typography>
               <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                Persistent storage volumes
+                {t('docker.kpi.volumesDesc')}
               </Typography>
             </CardContent>
           </Card>
@@ -650,28 +678,28 @@ export default function DockerView() {
           >
             <Tab
               value="containers"
-              label={`Containers (${containers.length})`}
+              label={`${t('docker.tabs.containers')} (${containers.length})`}
               icon={<Boxes size={18} />}
               iconPosition="start"
               sx={{ fontWeight: 700 }}
             />
             <Tab
               value="stacks"
-              label={`Compose Stacks (${stacks.length})`}
+              label={`${t('docker.tabs.stacks')} (${stacks.length})`}
               icon={<Layers size={18} />}
               iconPosition="start"
               sx={{ fontWeight: 700 }}
             />
             <Tab
               value="images"
-              label={`Images (${images.length})`}
+              label={`${t('docker.tabs.images')} (${images.length})`}
               icon={<Server size={18} />}
               iconPosition="start"
               sx={{ fontWeight: 700 }}
             />
             <Tab
               value="volumes"
-              label={`Volumes (${volumes.length})`}
+              label={`${t('docker.tabs.volumes')} (${volumes.length})`}
               icon={<HardDrive size={18} />}
               iconPosition="start"
               sx={{ fontWeight: 700 }}
@@ -696,7 +724,7 @@ export default function DockerView() {
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems="center">
                 <TextField
                   size="small"
-                  placeholder="Tìm container, image, port..."
+                  placeholder={t('docker.searchPlaceholder')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   sx={{ width: { xs: '100%', sm: 260 } }}
@@ -716,7 +744,7 @@ export default function DockerView() {
                     onClick={() => setStatusFilter('all')}
                     sx={{ borderRadius: 2, textTransform: 'none' }}
                   >
-                    Tất cả ({containers.length})
+                    {t('docker.filter.all')} ({containers.length})
                   </Button>
                   <Button
                     size="small"
@@ -725,7 +753,7 @@ export default function DockerView() {
                     onClick={() => setStatusFilter('running')}
                     sx={{ borderRadius: 2, textTransform: 'none' }}
                   >
-                    Chạy ({runningCount})
+                    {t('docker.filter.running')} ({runningCount})
                   </Button>
                   <Button
                     size="small"
@@ -734,7 +762,7 @@ export default function DockerView() {
                     onClick={() => setStatusFilter('stopped')}
                     sx={{ borderRadius: 2, textTransform: 'none' }}
                   >
-                    Dừng ({stoppedCount})
+                    {t('docker.filter.stopped')} ({stoppedCount})
                   </Button>
                 </Stack>
               </Stack>
@@ -750,18 +778,18 @@ export default function DockerView() {
                   sx={{ height: 36 }}
                 >
                   <ToggleButton value="grouped">
-                    <Tooltip title="Gom nhóm theo Stack">
+                    <Tooltip title={t('docker.viewMode.grouped')}>
                       <Stack direction="row" spacing={0.5} alignItems="center">
                         <Layers size={15} />
-                        <Typography variant="caption" sx={{ ml: 0.5, fontWeight: 600 }}>Theo Stack</Typography>
+                        <Typography variant="caption" sx={{ ml: 0.5, fontWeight: 600 }}>{t('docker.viewMode.grouped')}</Typography>
                       </Stack>
                     </Tooltip>
                   </ToggleButton>
                   <ToggleButton value="flat">
-                    <Tooltip title="Danh sách phẳng">
+                    <Tooltip title={t('docker.viewMode.flat')}>
                       <Stack direction="row" spacing={0.5} alignItems="center">
                         <ListIcon size={15} />
-                        <Typography variant="caption" sx={{ ml: 0.5, fontWeight: 600 }}>Bảng phẳng</Typography>
+                        <Typography variant="caption" sx={{ ml: 0.5, fontWeight: 600 }}>{t('docker.viewMode.flat')}</Typography>
                       </Stack>
                     </Tooltip>
                   </ToggleButton>
@@ -769,16 +797,16 @@ export default function DockerView() {
 
                 {/* Sort Selector */}
                 <FormControl size="small" sx={{ minWidth: 160 }}>
-                  <InputLabel>Sắp xếp theo</InputLabel>
+                  <InputLabel>{t('docker.sort.label')}</InputLabel>
                   <Select
                     value={sortBy}
-                    label="Sắp xếp theo"
+                    label={t('docker.sort.label')}
                     onChange={(e) => setSortBy(e.target.value)}
                   >
-                    <MenuItem value="name">Tên Container</MenuItem>
-                    <MenuItem value="cpu">CPU cao nhất</MenuItem>
-                    <MenuItem value="memory">RAM cao nhất</MenuItem>
-                    <MenuItem value="status">Trạng thái chạy</MenuItem>
+                    <MenuItem value="name">{t('docker.sort.name')}</MenuItem>
+                    <MenuItem value="cpu">{t('docker.sort.cpu')}</MenuItem>
+                    <MenuItem value="memory">{t('docker.sort.memory')}</MenuItem>
+                    <MenuItem value="status">{t('docker.sort.status')}</MenuItem>
                   </Select>
                 </FormControl>
 
@@ -795,10 +823,10 @@ export default function DockerView() {
                 {viewMode === 'grouped' && (
                   <Stack direction="row" spacing={0.5}>
                     <Button size="small" variant="text" onClick={handleExpandAllStacks} sx={{ textTransform: 'none', fontSize: 12 }}>
-                      Mở rộng tất cả
+                      {t('docker.expandAll')}
                     </Button>
                     <Button size="small" variant="text" onClick={handleCollapseAllStacks} sx={{ textTransform: 'none', fontSize: 12 }}>
-                      Thu gọn
+                      {t('docker.collapseAll')}
                     </Button>
                   </Stack>
                 )}
@@ -846,7 +874,7 @@ export default function DockerView() {
                           <Box>
                             <Stack direction="row" spacing={1} alignItems="center">
                               <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
-                                {st.isStandalone ? 'Dịch vụ Độc lập (Standalone)' : st.name}
+                                {st.isStandalone ? t('docker.standalone') : st.name}
                               </Typography>
                               <Chip
                                 label={`${st.runningCount}/${st.totalCount} Running`}
@@ -912,12 +940,12 @@ export default function DockerView() {
                         <Table size="small">
                           <TableHead sx={{ bgcolor: 'background.paper' }}>
                             <TableRow>
-                              <TableCell sx={{ fontWeight: 700, pl: 3 }}>Container</TableCell>
-                              <TableCell sx={{ fontWeight: 700 }}>Trạng thái</TableCell>
-                              <TableCell sx={{ fontWeight: 700 }}>CPU</TableCell>
-                              <TableCell sx={{ fontWeight: 700 }}>Memory</TableCell>
-                              <TableCell sx={{ fontWeight: 700 }}>Ports</TableCell>
-                              <TableCell sx={{ fontWeight: 700, textAlign: 'right', pr: 3 }}>Thao tác</TableCell>
+                              <TableCell sx={{ fontWeight: 700, pl: 3 }}>{t('docker.table.container')}</TableCell>
+                              <TableCell sx={{ fontWeight: 700 }}>{t('docker.table.status')}</TableCell>
+                              <TableCell sx={{ fontWeight: 700 }}>{t('docker.table.cpu')}</TableCell>
+                              <TableCell sx={{ fontWeight: 700 }}>{t('docker.table.memory')}</TableCell>
+                              <TableCell sx={{ fontWeight: 700 }}>{t('docker.table.ports')}</TableCell>
+                              <TableCell sx={{ fontWeight: 700, textAlign: 'right', pr: 3 }}>{t('docker.table.actions')}</TableCell>
                             </TableRow>
                           </TableHead>
                           <TableBody>
@@ -945,12 +973,12 @@ export default function DockerView() {
                 <Table size="medium">
                   <TableHead sx={{ bgcolor: alpha(theme.palette.primary.main, 0.03) }}>
                     <TableRow>
-                      <TableCell sx={{ fontWeight: 700 }}>Tên Container / Stack</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Trạng thái</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>CPU</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Memory</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>Port Mappings</TableCell>
-                      <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>Thao tác</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>{t('docker.table.container')}</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>{t('docker.table.status')}</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>{t('docker.table.cpu')}</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>{t('docker.table.memory')}</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>{t('docker.table.ports')}</TableCell>
+                      <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>{t('docker.table.actions')}</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -1067,7 +1095,7 @@ export default function DockerView() {
                 onClick={handlePruneImages}
                 sx={{ borderRadius: 2 }}
               >
-                Dọn Dẹp Images Rác (Prune)
+                {t('docker.prune.images')}
               </Button>
             </Stack>
 
@@ -1107,7 +1135,7 @@ export default function DockerView() {
                 onClick={handlePruneVolumes}
                 sx={{ borderRadius: 2 }}
               >
-                Dọn Dẹp Volumes Thừa (Prune)
+                {t('docker.prune.volumes')}
               </Button>
             </Stack>
 
@@ -1168,7 +1196,7 @@ export default function DockerView() {
           </Stack>
 
           <Button size="small" variant="outlined" onClick={handleCloseDetailModal}>
-            Đóng
+            {t('docker.modal.close')}
           </Button>
         </DialogTitle>
 
@@ -1179,9 +1207,9 @@ export default function DockerView() {
             textColor="primary"
             indicatorColor="primary"
           >
-            <Tab value="overview" label="Tổng quan & Cấu hình" icon={<Info size={16} />} iconPosition="start" sx={{ fontWeight: 700 }} />
-            <Tab value="logs" label="Live Logs Thời Gian Thực" icon={<FileText size={16} />} iconPosition="start" sx={{ fontWeight: 700 }} />
-            <Tab value="terminal" label="Web Console / Terminal" icon={<Terminal size={16} />} iconPosition="start" sx={{ fontWeight: 700 }} />
+            <Tab value="overview" label={t('docker.modal.overview')} icon={<Info size={16} />} iconPosition="start" sx={{ fontWeight: 700 }} />
+            <Tab value="logs" label={t('docker.modal.logs')} icon={<FileText size={16} />} iconPosition="start" sx={{ fontWeight: 700 }} />
+            <Tab value="terminal" label={t('docker.modal.terminal')} icon={<Terminal size={16} />} iconPosition="start" sx={{ fontWeight: 700 }} />
           </Tabs>
         </Box>
 
@@ -1234,14 +1262,14 @@ export default function DockerView() {
                 <Stack spacing={2.5}>
                   <Box>
                     <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase' }}>
-                      Thông Tin Tiến Trình & Mạng
+                      {t('docker.modal.processAndNet')}
                     </Typography>
                     <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
                       <Grid item xs={12} sm={6}>
-                        <Typography variant="body2"><strong>Trạng thái:</strong> {detailModal.data.state?.status} (PID: {detailModal.data.state?.pid || '—'})</Typography>
+                        <Typography variant="body2"><strong>{t('docker.table.status')}:</strong> {detailModal.data.state?.status} (PID: {detailModal.data.state?.pid || '—'})</Typography>
                       </Grid>
                       <Grid item xs={12} sm={6}>
-                        <Typography variant="body2"><strong>Khởi chạy lúc:</strong> {detailModal.data.state?.startedAt ? new Date(detailModal.data.state.startedAt).toLocaleString() : '—'}</Typography>
+                        <Typography variant="body2"><strong>{t('docker.modal.startedAt')}:</strong> {detailModal.data.state?.startedAt ? new Date(detailModal.data.state.startedAt).toLocaleString() : '—'}</Typography>
                       </Grid>
                       <Grid item xs={12} sm={6}>
                         <Typography variant="body2"><strong>Image:</strong> {detailModal.data.image}</Typography>
@@ -1250,7 +1278,7 @@ export default function DockerView() {
                         <Typography variant="body2"><strong>IP Address:</strong> {detailModal.data.networkSettings?.ipAddress || 'Host Mode'}</Typography>
                       </Grid>
                       <Grid item xs={12} sm={6}>
-                        <Typography variant="body2"><strong>Chính sách khởi động lại:</strong> {detailModal.data.restartPolicy}</Typography>
+                        <Typography variant="body2"><strong>{t('docker.modal.restartPolicy')}:</strong> {detailModal.data.restartPolicy}</Typography>
                       </Grid>
                     </Grid>
                   </Box>
@@ -1260,7 +1288,7 @@ export default function DockerView() {
                   {/* Mounts */}
                   <Box>
                     <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase' }}>
-                      Mounts & Volumes ({detailModal.data.mounts?.length || 0})
+                      {t('docker.modal.mounts')} ({detailModal.data.mounts?.length || 0})
                     </Typography>
                     <Stack spacing={0.75} sx={{ mt: 1 }}>
                       {detailModal.data.mounts?.map((m, idx) => (
@@ -1276,7 +1304,7 @@ export default function DockerView() {
                   {/* Envs */}
                   <Box>
                     <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase' }}>
-                      Biến Môi Trường (Environment Variables)
+                      {t('docker.modal.envVars')}
                     </Typography>
                     <Box sx={{ maxHeight: 200, overflowY: 'auto', mt: 1, p: 1.5, bgcolor: 'action.hover', borderRadius: 1.5 }}>
                       {detailModal.data.env?.map((e, idx) => (
@@ -1304,7 +1332,7 @@ export default function DockerView() {
               <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1.5 }}>
                 <Stack direction="row" spacing={1} alignItems="center">
                   <Chip
-                    label={modalLogs.isStreaming ? 'Đang Stream Trực Tiếp' : 'Đã dừng'}
+                    label={modalLogs.isStreaming ? t('docker.modal.streaming') : t('docker.modal.stoppedStreaming')}
                     size="small"
                     color={modalLogs.isStreaming ? 'success' : 'default'}
                     sx={{ fontWeight: 700 }}
@@ -1323,7 +1351,7 @@ export default function DockerView() {
                     a.click();
                   }}
                 >
-                  Tải File Logs
+                  {t('docker.modal.downloadLogs')}
                 </Button>
               </Stack>
 
@@ -1367,7 +1395,7 @@ export default function DockerView() {
                   mb: 1.5
                 }}
               >
-                {modalTerm.history.join('')}
+                {modalTerm.history}
                 <div ref={termEndRef} />
               </Box>
 
@@ -1376,7 +1404,7 @@ export default function DockerView() {
                   <TextField
                     fullWidth
                     size="small"
-                    placeholder="Nhập lệnh Linux shell (vd: ls -la, ps aux, df -h)..."
+                    placeholder={t('docker.modal.termPlaceholder')}
                     value={modalTerm.input}
                     onChange={(e) => setModalTerm((prev) => ({ ...prev, input: e.target.value }))}
                     sx={{
@@ -1386,7 +1414,7 @@ export default function DockerView() {
                     }}
                   />
                   <Button type="submit" variant="contained" color="primary" sx={{ px: 3 }}>
-                    Gửi
+                    {t('docker.modal.send')}
                   </Button>
                 </Stack>
               </form>
