@@ -1237,9 +1237,29 @@ app.post('/api/v1/hosts/upgrade-all', authenticate, requireSuperAdmin, (req, res
   res.json({ queuedCount: queued.length, queued });
 });
 
-function requireDockerAdmin(req, res, next) {
-  if (req.user?.role !== 'super_admin' && req.user?.role !== 'admin') {
-    return res.status(403).json({ error: 'Docker management permission required' });
+function canAccessDockerHost(user, hostId) {
+  if (isSuperAdmin(user)) return true;
+  if (hostId === 'local') return false;
+  return hasHostAccess(user, hostId);
+}
+
+function canManageDockerHost(user, hostId) {
+  if (isSuperAdmin(user)) return true;
+  if (user?.role !== 'admin') return false;
+  if (hostId === 'local') return false;
+  return hasHostAccess(user, hostId);
+}
+
+function requireDockerHostAccess(req, res, next) {
+  if (!canAccessDockerHost(req.user, req.params.hostId)) {
+    return res.status(403).json({ error: 'Access denied to this Docker host' });
+  }
+  next();
+}
+
+function requireDockerHostManager(req, res, next) {
+  if (!canManageDockerHost(req.user, req.params.hostId)) {
+    return res.status(403).json({ error: 'Docker management permission required for this host' });
   }
   next();
 }
@@ -1248,21 +1268,23 @@ function requireDockerAdmin(req, res, next) {
 // Docker Fleet & Container Management APIs
 // ==========================================
 app.get('/api/v1/docker/hosts', authenticate, async (req, res) => {
-  const isLocalAvail = await dockerManager.isAvailable();
-  const hosts = [
-    {
+  const hosts = [];
+  if (isSuperAdmin(req.user)) {
+    const isLocalAvail = await dockerManager.isAvailable();
+    hosts.push({
       id: 'local',
       name: 'Máy Chủ Trung Tâm (Local Docker)',
       ip: '127.0.0.1',
       isLocal: true,
       available: isLocalAvail,
       online: true
-    }
-  ];
+    });
+  }
 
-  // Include approved LAN agents
+  // Include approved LAN agents that user has access to
   const agents = db.prepare("SELECT id, display_name, hostname, last_seen, capabilities_json FROM agents WHERE status = 'approved'").all();
   for (const a of agents) {
+    if (!canAccessDockerHost(req.user, a.id)) continue;
     const caps = parseJson(a.capabilities_json, []);
     const online = a.last_seen && Date.now() - Date.parse(a.last_seen) <= AGENT_OFFLINE_MS;
     hosts.push({
@@ -1278,7 +1300,7 @@ app.get('/api/v1/docker/hosts', authenticate, async (req, res) => {
   res.json({ hosts });
 });
 
-app.get('/api/v1/docker/:hostId/info', authenticate, async (req, res) => {
+app.get('/api/v1/docker/:hostId/info', authenticate, requireDockerHostAccess, async (req, res) => {
   try {
     if (req.params.hostId === 'local') {
       const info = await dockerManager.getSystemInfo();
@@ -1291,20 +1313,20 @@ app.get('/api/v1/docker/:hostId/info', authenticate, async (req, res) => {
   }
 });
 
-app.get('/api/v1/docker/:hostId/containers', authenticate, async (req, res) => {
+app.get('/api/v1/docker/:hostId/containers', authenticate, requireDockerHostAccess, async (req, res) => {
   try {
     if (req.params.hostId === 'local') {
       const containers = await dockerManager.listContainers({ all: req.query.all !== 'false' });
       return res.json({ containers });
     }
-    const result = await executeAgentCommand(req.params.hostId, 'docker.containers', { all: req.query.all !== 'false' }, 10000, req.user?.username);
+    const result = await executeAgentCommand(req.params.hostId, 'docker.containers', { all: req.query.all !== 'false', withStats: req.query.withStats !== 'false' }, 10000, req.user?.username);
     res.json(result || { containers: [] });
   } catch (err) {
     res.json({ containers: [], error: err.message });
   }
 });
 
-app.get('/api/v1/docker/:hostId/containers/:id', authenticate, async (req, res) => {
+app.get('/api/v1/docker/:hostId/containers/:id', authenticate, requireDockerHostAccess, async (req, res) => {
   try {
     if (req.params.hostId === 'local') {
       const details = await dockerManager.getContainerDetails(req.params.id);
@@ -1317,7 +1339,7 @@ app.get('/api/v1/docker/:hostId/containers/:id', authenticate, async (req, res) 
   }
 });
 
-app.get('/api/v1/docker/:hostId/containers/:id/stats', authenticate, async (req, res) => {
+app.get('/api/v1/docker/:hostId/containers/:id/stats', authenticate, requireDockerHostAccess, async (req, res) => {
   try {
     if (req.params.hostId === 'local') {
       const stats = await dockerManager.getContainerStats(req.params.id);
@@ -1330,7 +1352,7 @@ app.get('/api/v1/docker/:hostId/containers/:id/stats', authenticate, async (req,
   }
 });
 
-app.post('/api/v1/docker/:hostId/containers/:id/action', authenticate, requireDockerAdmin, async (req, res) => {
+app.post('/api/v1/docker/:hostId/containers/:id/action', authenticate, requireDockerHostManager, async (req, res) => {
   try {
     const { action, options } = req.body || {};
     if (!action) return res.status(400).json({ error: 'Action required' });
@@ -1345,7 +1367,7 @@ app.post('/api/v1/docker/:hostId/containers/:id/action', authenticate, requireDo
   }
 });
 
-app.get('/api/v1/docker/:hostId/containers/:id/logs', authenticate, async (req, res) => {
+app.get('/api/v1/docker/:hostId/containers/:id/logs', authenticate, requireDockerHostAccess, async (req, res) => {
   try {
     if (req.params.hostId === 'local') {
       const logs = await dockerManager.getContainerLogs(req.params.id, { tail: req.query.tail || 200 });
@@ -1358,7 +1380,7 @@ app.get('/api/v1/docker/:hostId/containers/:id/logs', authenticate, async (req, 
   }
 });
 
-app.post('/api/v1/docker/:hostId/containers/:id/exec', authenticate, requireDockerAdmin, async (req, res) => {
+app.post('/api/v1/docker/:hostId/containers/:id/exec', authenticate, requireDockerHostManager, async (req, res) => {
   try {
     const cmd = Array.isArray(req.body.cmd) ? req.body.cmd : ['/bin/sh'];
     if (req.params.hostId === 'local') {
@@ -1371,17 +1393,21 @@ app.post('/api/v1/docker/:hostId/containers/:id/exec', authenticate, requireDock
   }
 });
 
-app.get('/api/v1/docker/:hostId/stacks', authenticate, async (req, res) => {
+app.get('/api/v1/docker/:hostId/stacks', authenticate, requireDockerHostAccess, async (req, res) => {
   try {
     if (req.params.hostId === 'local') {
       const stacks = await dockerManager.listStacks();
       return res.json({ stacks });
     }
+    const stackRes = await executeAgentCommand(req.params.hostId, 'docker.stacks', {}, 10000, req.user?.username).catch(() => null);
+    if (stackRes?.stacks?.length) {
+      return res.json({ stacks: stackRes.stacks });
+    }
     const resContainers = await executeAgentCommand(req.params.hostId, 'docker.containers', { all: true }, 10000, req.user?.username);
     const containers = resContainers?.containers || [];
     const stackMap = new Map();
     containers.forEach(c => {
-      const stackName = c.stack || 'Standalone';
+      const stackName = c.composeProject || c.stack || 'Standalone';
       if (!stackMap.has(stackName)) {
         stackMap.set(stackName, { name: stackName, containers: [], containerCount: 0, runningCount: 0 });
       }
@@ -1396,7 +1422,7 @@ app.get('/api/v1/docker/:hostId/stacks', authenticate, async (req, res) => {
   }
 });
 
-app.get('/api/v1/docker/:hostId/images', authenticate, async (req, res) => {
+app.get('/api/v1/docker/:hostId/images', authenticate, requireDockerHostAccess, async (req, res) => {
   try {
     if (req.params.hostId === 'local') {
       const images = await dockerManager.listImages();
@@ -1409,7 +1435,7 @@ app.get('/api/v1/docker/:hostId/images', authenticate, async (req, res) => {
   }
 });
 
-app.post('/api/v1/docker/:hostId/images/prune', authenticate, requireDockerAdmin, async (req, res) => {
+app.post('/api/v1/docker/:hostId/images/prune', authenticate, requireDockerHostManager, async (req, res) => {
   try {
     if (req.params.hostId === 'local') {
       const result = await dockerManager.pruneImages();
@@ -1422,7 +1448,7 @@ app.post('/api/v1/docker/:hostId/images/prune', authenticate, requireDockerAdmin
   }
 });
 
-app.get('/api/v1/docker/:hostId/volumes', authenticate, async (req, res) => {
+app.get('/api/v1/docker/:hostId/volumes', authenticate, requireDockerHostAccess, async (req, res) => {
   try {
     if (req.params.hostId === 'local') {
       const volumes = await dockerManager.listVolumes();
@@ -1435,7 +1461,7 @@ app.get('/api/v1/docker/:hostId/volumes', authenticate, async (req, res) => {
   }
 });
 
-app.post('/api/v1/docker/:hostId/volumes/prune', authenticate, requireDockerAdmin, async (req, res) => {
+app.post('/api/v1/docker/:hostId/volumes/prune', authenticate, requireDockerHostManager, async (req, res) => {
   try {
     if (req.params.hostId === 'local') {
       const result = await dockerManager.pruneVolumes();

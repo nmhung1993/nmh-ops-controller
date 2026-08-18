@@ -1179,13 +1179,20 @@ async function scanSubnet(subnetCidr = '192.168.31.0/24') {
 // ==========================================
 const router = express.Router();
 
+function requireSuperAdmin(req, res, next) {
+  if (req.user?.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Super admin permission required for this network operation' });
+  }
+  next();
+}
+
 // GET all targets
 router.get('/targets', (req, res) => {
   res.json(targets);
 });
 
-// POST new target
-router.post('/targets', (req, res) => {
+// POST new target (Super admin only)
+router.post('/targets', requireSuperAdmin, (req, res) => {
   const { name, host, tag, interval } = req.body;
   if (!host) return res.status(400).json({ error: 'host_required' });
 
@@ -1215,8 +1222,8 @@ router.post('/targets', (req, res) => {
   res.status(201).json(newTarget);
 });
 
-// PUT update target
-router.put('/targets/:id', (req, res) => {
+// PUT update target (Super admin only)
+router.put('/targets/:id', requireSuperAdmin, (req, res) => {
   const target = targets.find(t => t.id === req.params.id);
   if (!target) return res.status(404).json({ error: 'not_found' });
 
@@ -1234,8 +1241,8 @@ router.put('/targets/:id', (req, res) => {
   res.json(target);
 });
 
-// DELETE target
-router.delete('/targets/:id', (req, res) => {
+// DELETE target (Super admin only)
+router.delete('/targets/:id', requireSuperAdmin, (req, res) => {
   const index = targets.findIndex(t => t.id === req.params.id);
   if (index === -1) return res.status(404).json({ error: 'not_found' });
 
@@ -1388,30 +1395,30 @@ router.get('/export', (req, res) => {
   });
 });
 
-// GET / POST Subnet Scanner
-router.get('/scan', (req, res) => {
+// GET / POST Subnet Scanner (Super admin only)
+router.get('/scan', requireSuperAdmin, (req, res) => {
   res.json(scanState);
 });
 
-router.post('/scan', async (req, res) => {
+router.post('/scan', requireSuperAdmin, async (req, res) => {
   const { subnet } = req.body;
   const state = await scanSubnet(subnet || '192.168.31.0/24');
   res.json(state);
 });
 
-router.delete('/scan', (req, res) => {
+router.delete('/scan', requireSuperAdmin, (req, res) => {
   scanState.abort = true;
   scanState.isScanning = false;
   res.json({ message: 'Scan stopped' });
 });
 
-// GET Scan History (Pinned on top, then 20 most recent)
-router.get('/scan/history', (req, res) => {
+// GET Scan History (Super admin only)
+router.get('/scan/history', requireSuperAdmin, (req, res) => {
   res.json(sortScanHistory(scanHistory));
 });
 
-// POST Toggle Pin on a Scan History session
-router.post('/scan/history/:id/pin', (req, res) => {
+// POST Toggle Pin on a Scan History session (Super admin only)
+router.post('/scan/history/:id/pin', requireSuperAdmin, (req, res) => {
   const session = scanHistory.find(s => s.id === req.params.id);
   if (!session) return res.status(404).json({ error: 'Session not found' });
   session.isPinned = !session.isPinned;
@@ -1421,8 +1428,8 @@ router.post('/scan/history/:id/pin', (req, res) => {
   res.json({ success: true, isPinned: session.isPinned, history: scanHistory });
 });
 
-// DELETE a specific Scan History session
-router.delete('/scan/history/:id', (req, res) => {
+// DELETE a specific Scan History session (Super admin only)
+router.delete('/scan/history/:id', requireSuperAdmin, (req, res) => {
   scanHistory = scanHistory.filter(s => s.id !== req.params.id);
   saveJson(SCAN_HISTORY_FILE, scanHistory);
   res.json({ success: true, history: scanHistory });
@@ -1433,8 +1440,8 @@ router.get('/custom-names', (req, res) => {
   res.json(customNames);
 });
 
-// POST Set or Delete Custom Name for IP
-router.post('/custom-names', (req, res) => {
+// POST Set or Delete Custom Name for IP (Super admin only)
+router.post('/custom-names', requireSuperAdmin, (req, res) => {
   const { ip, name } = req.body;
   if (!ip) return res.status(400).json({ error: 'ip_required' });
   if (name && name.trim()) {
@@ -1466,8 +1473,8 @@ router.post('/custom-names', (req, res) => {
   res.json({ success: true, customNames });
 });
 
-// GET Router status (never returns 502, gracefully falls back)
-router.get('/xiaomi/status', async (req, res) => {
+// GET Router status (Super admin only)
+router.get('/xiaomi/status', requireSuperAdmin, async (req, res) => {
   const queryHost = req.query.host || routerInstance.host;
   try {
     const mgr = queryHost === '192.168.31.43' ? gecoosInstance : routerInstance;
@@ -1493,8 +1500,8 @@ router.get('/xiaomi/status', async (req, res) => {
   }
 });
 
-// POST Router config
-router.post('/xiaomi/config', (req, res) => {
+// POST Router config (Super admin only)
+router.post('/xiaomi/config', requireSuperAdmin, (req, res) => {
   const { host, password } = req.body;
   if (host === '192.168.31.43') {
     gecoosInstance = new GecoosManager({ host: '192.168.31.43', password: password !== undefined ? password : '@nmhung1993' });
@@ -1506,8 +1513,8 @@ router.post('/xiaomi/config', (req, res) => {
   res.json({ message: 'Router config updated' });
 });
 
-// POST Restart WiFi on main router or specific node
-router.post('/xiaomi/restart-wifi', async (req, res) => {
+// POST Restart WiFi on main router or specific node (Super admin only)
+router.post('/xiaomi/restart-wifi', requireSuperAdmin, async (req, res) => {
   const { nodeIp } = req.body || {};
   try {
     await routerInstance.restartWifi(nodeIp);
@@ -1517,8 +1524,8 @@ router.post('/xiaomi/restart-wifi', async (req, res) => {
   }
 });
 
-// POST Reboot main router or specific node
-router.post('/xiaomi/reboot', async (req, res) => {
+// POST Reboot main router or specific node (Super admin only)
+router.post('/xiaomi/reboot', requireSuperAdmin, async (req, res) => {
   const { nodeIp } = req.body || {};
   try {
     await routerInstance.reboot(nodeIp);

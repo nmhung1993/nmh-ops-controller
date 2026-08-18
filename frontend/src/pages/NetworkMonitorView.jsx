@@ -71,6 +71,7 @@ import {
   Router as RouterIcon
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 import { apiRequest } from '../utils/api';
 import Label from '../components/common/Label';
 import ConfirmDialog from '../components/common/ConfirmDialog';
@@ -86,6 +87,8 @@ const PING_TIME_RANGES = [
 export default function NetworkMonitorView() {
   const theme = useTheme();
   const { lang, t } = useLanguage();
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === 'super_admin';
 
   const [currentTab, setCurrentTab] = useState(0);
   const [targets, setTargets] = useState([]);
@@ -130,6 +133,12 @@ export default function NetworkMonitorView() {
   const [confirmRebootTarget, setConfirmRebootTarget] = useState(null);
   const [confirmWifiRestartTarget, setConfirmWifiRestartTarget] = useState(null);
   const [actionMessage, setActionMessage] = useState(null);
+
+  useEffect(() => {
+    if (!isSuperAdmin && currentTab !== 0) {
+      setCurrentTab(0);
+    }
+  }, [isSuperAdmin, currentTab]);
 
   // Fetch targets and summary
   const loadTargets = useCallback(async () => {
@@ -588,15 +597,17 @@ export default function NetworkMonitorView() {
             </MenuItem>
           </Menu>
 
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<Plus size={18} />}
-            onClick={() => handleOpenAddTarget()}
-            sx={{ fontWeight: 700, boxShadow: theme.customShadows.primary }}
-          >
-            Thêm Target
-          </Button>
+          {isSuperAdmin && (
+            <Button
+              variant="contained"
+              color="primary"
+              startIcon={<Plus size={18} />}
+              onClick={() => handleOpenAddTarget()}
+              sx={{ fontWeight: 700, boxShadow: theme.customShadows.primary }}
+            >
+              Thêm Target
+            </Button>
+          )}
         </Stack>
       </Stack>
 
@@ -687,8 +698,8 @@ export default function NetworkMonitorView() {
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tabs value={currentTab} onChange={(_, v) => setCurrentTab(v)} variant="scrollable" scrollButtons="auto">
           <Tab icon={<Globe size={18} />} iconPosition="start" label="Giám sát kết nối (Ping Monitor)" sx={{ fontWeight: 700 }} />
-          <Tab icon={<Search size={18} />} iconPosition="start" label="Quét mạng LAN (Subnet Scanner)" sx={{ fontWeight: 700 }} />
-          <Tab icon={<Wifi size={18} />} iconPosition="start" label="Router & Mesh" sx={{ fontWeight: 700 }} />
+          {isSuperAdmin && <Tab icon={<Search size={18} />} iconPosition="start" label="Quét mạng LAN (Subnet Scanner)" sx={{ fontWeight: 700 }} />}
+          {isSuperAdmin && <Tab icon={<Wifi size={18} />} iconPosition="start" label="Router & Mesh" sx={{ fontWeight: 700 }} />}
         </Tabs>
       </Box>
 
@@ -949,25 +960,29 @@ export default function NetworkMonitorView() {
                         </Typography>
 
                         <Stack direction="row" spacing={0.5}>
-                          {/* Pause / Resume Button */}
-                          <IconButton
-                            size="small"
-                            color={target.enabled ? 'warning' : 'success'}
-                            onClick={(e) => handleToggleTargetEnabled(target, e)}
-                            title={target.enabled ? 'Tạm dừng ping' : 'Tiếp tục ping'}
-                          >
-                            {target.enabled ? <Pause size={14} /> : <Play size={14} />}
-                          </IconButton>
+                          {/* Pause / Resume Button (Super Admin) */}
+                          {isSuperAdmin && (
+                            <IconButton
+                              size="small"
+                              color={target.enabled ? 'warning' : 'success'}
+                              onClick={(e) => handleToggleTargetEnabled(target, e)}
+                              title={target.enabled ? 'Tạm dừng ping' : 'Tiếp tục ping'}
+                            >
+                              {target.enabled ? <Pause size={14} /> : <Play size={14} />}
+                            </IconButton>
+                          )}
 
-                          {/* Edit Button */}
-                          <IconButton
-                            size="small"
-                            color="primary"
-                            onClick={(e) => handleOpenEditTarget(target, e)}
-                            title="Sửa target"
-                          >
-                            <Edit2 size={14} />
-                          </IconButton>
+                          {/* Edit Button (Super Admin) */}
+                          {isSuperAdmin && (
+                            <IconButton
+                              size="small"
+                              color="primary"
+                              onClick={(e) => handleOpenEditTarget(target, e)}
+                              title="Sửa target"
+                            >
+                              <Edit2 size={14} />
+                            </IconButton>
+                          )}
 
                           {/* Instant Ping Button */}
                           <IconButton
@@ -978,15 +993,17 @@ export default function NetworkMonitorView() {
                             <RotateCcw size={14} />
                           </IconButton>
 
-                          {/* Delete Button */}
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => setConfirmDeleteId(target.id)}
-                            title="Xóa target"
-                          >
-                            <Trash2 size={14} />
-                          </IconButton>
+                          {/* Delete Button (Super Admin) */}
+                          {isSuperAdmin && (
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => setConfirmDeleteId(target.id)}
+                              title="Xóa target"
+                            >
+                              <Trash2 size={14} />
+                            </IconButton>
+                          )}
                         </Stack>
                       </Stack>
                     </Box>

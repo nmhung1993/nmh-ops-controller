@@ -77,7 +77,10 @@ function formatBytes(bytes, decimals = 1) {
 export default function DockerView() {
   const theme = useTheme();
   const { t } = useLanguage();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const isSuperAdmin = user?.role === 'super_admin';
+  const isAdmin = user?.role === 'admin';
+  const canManage = isSuperAdmin || isAdmin;
 
   const [currentTab, setCurrentTab] = useState('containers');
   const [hosts, setHosts] = useState([{ id: 'local', name: 'Máy Chủ Trung Tâm (Local Docker)', available: true, isLocal: true }]);
@@ -117,8 +120,16 @@ export default function DockerView() {
   const loadHosts = async () => {
     try {
       const res = await apiRequest('/api/v1/docker/hosts');
-      if (res?.hosts?.length) {
+      if (res?.hosts !== undefined) {
         setHosts(res.hosts);
+        if (res.hosts.length > 0) {
+          setSelectedHostId((prev) => {
+            const exists = res.hosts.some((h) => h.id === prev);
+            return exists ? prev : res.hosts[0].id;
+          });
+        } else {
+          setSelectedHostId('');
+        }
       }
     } catch (err) {
       console.error('Failed to load docker hosts:', err);
@@ -127,6 +138,17 @@ export default function DockerView() {
 
   // Load Host Data
   const loadData = async (isSilent = false) => {
+    if (!selectedHostId) {
+      setHostInfo(null);
+      setContainers([]);
+      setStacks([]);
+      setImages([]);
+      setVolumes([]);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
     if (!isSilent) setLoading(true);
     else setRefreshing(true);
 
@@ -435,9 +457,13 @@ export default function DockerView() {
       if (sortBy === 'name') {
         cmp = a.name.localeCompare(b.name);
       } else if (sortBy === 'cpu') {
-        cmp = (a.stats?.cpuPercent || 0) - (b.stats?.cpuPercent || 0);
+        const aCpu = a.stats?.cpuPercent || 0;
+        const bCpu = b.stats?.cpuPercent || 0;
+        cmp = aCpu - bCpu;
       } else if (sortBy === 'memory') {
-        cmp = (a.stats?.memUsageBytes || 0) - (b.stats?.memUsageBytes || 0);
+        const aMem = a.stats?.memUsageBytes || a.stats?.memUsage || 0;
+        const bMem = b.stats?.memUsageBytes || b.stats?.memUsage || 0;
+        cmp = aMem - bMem;
       } else if (sortBy === 'status') {
         const stateOrder = { running: 3, paused: 2, exited: 1, dead: 0 };
         cmp = (stateOrder[a.state] || 0) - (stateOrder[b.state] || 0);
@@ -450,11 +476,14 @@ export default function DockerView() {
   const groupedStacks = useMemo(() => {
     const map = new Map();
     for (const c of sortedAndFilteredContainers) {
-      const pName = c.composeProject || '_standalone';
+      const rawPName = c.composeProject || c.stack || c.labels?.['com.docker.compose.project'] || c.labels?.['io.portainer.stack.name'] || '_standalone';
+      const isStandalone = !rawPName || rawPName === '_standalone' || rawPName.toLowerCase() === 'standalone';
+      const pName = isStandalone ? '_standalone' : rawPName;
+
       if (!map.has(pName)) {
         map.set(pName, {
           name: pName,
-          isStandalone: pName === '_standalone',
+          isStandalone,
           containers: [],
           runningCount: 0,
           totalCount: 0,
@@ -467,11 +496,14 @@ export default function DockerView() {
       st.containers.push(c);
       st.totalCount += 1;
       if (c.state === 'running') {
+        const cpu = c.stats?.cpuPercent || 0;
+        const memUsage = c.stats?.memUsageBytes || c.stats?.memUsage || 0;
+        const memLimit = c.stats?.memLimitBytes || c.stats?.memLimit || 0;
         st.runningCount += 1;
-        st.totalCpuPercent += (c.stats?.cpuPercent || 0);
-        st.totalMemUsageBytes += (c.stats?.memUsageBytes || 0);
-        if ((c.stats?.memLimitBytes || 0) > st.totalMemLimitBytes) {
-          st.totalMemLimitBytes = c.stats.memLimitBytes;
+        st.totalCpuPercent += cpu;
+        st.totalMemUsageBytes += memUsage;
+        if (memLimit > st.totalMemLimitBytes) {
+          st.totalMemLimitBytes = memLimit;
         }
       }
     }

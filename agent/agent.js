@@ -606,22 +606,103 @@ async function executeCommand(command) {
     } else if (commandType === 'docker.containers') {
       const all = data.all !== false;
       const rawContainers = await dockerRequest(`/containers/json?all=${all ? 1 : 0}`);
-      const containers = (Array.isArray(rawContainers) ? rawContainers : []).map(c => ({
-        id: c.Id,
-        shortId: c.Id ? c.Id.slice(0, 12) : '',
-        name: (c.Names?.[0] || '').replace(/^\//, ''),
-        names: c.Names || [],
-        image: c.Image,
-        imageId: c.ImageID,
-        command: c.Command,
-        created: c.Created,
-        state: c.State,
-        status: c.Status,
-        ports: c.Ports || [],
-        labels: c.Labels || {},
-        stack: c.Labels?.['com.docker.compose.project'] || c.Labels?.['io.portainer.stack.name'] || 'Standalone'
+      const list = Array.isArray(rawContainers) ? rawContainers : [];
+      const containers = await Promise.all(list.map(async c => {
+        const composeProject = c.Labels?.['com.docker.compose.project'] || c.Labels?.['io.portainer.stack.name'] || null;
+        const composeService = c.Labels?.['com.docker.compose.service'] || null;
+        const stack = composeProject || 'Standalone';
+
+        let stats = {
+          cpuPercent: 0,
+          memUsageBytes: 0,
+          memLimitBytes: 0,
+          memPercent: 0,
+          netRx: 0,
+          netTx: 0
+        };
+
+        if (c.State === 'running') {
+          try {
+            const rawStats = await dockerRequest(`/containers/${encodeURIComponent(c.Id)}/stats?stream=false`, 'GET', null, 2500);
+            let cpuPercent = 0;
+            let memPercent = 0;
+            let memUsage = 0;
+            let memLimit = 0;
+            if (rawStats?.cpu_stats && rawStats?.precpu_stats) {
+              const cpuDelta = (rawStats.cpu_stats.cpu_usage?.total_usage || 0) - (rawStats.precpu_stats.cpu_usage?.total_usage || 0);
+              const sysDelta = (rawStats.cpu_stats.system_cpu_usage || 0) - (rawStats.precpu_stats.system_cpu_usage || 0);
+              const cpus = rawStats.cpu_stats.online_cpus || os.cpus().length || 1;
+              if (sysDelta > 0 && cpuDelta > 0) cpuPercent = Math.round(((cpuDelta / sysDelta) * cpus * 100) * 10) / 10;
+            }
+            if (rawStats?.memory_stats) {
+              const cache = rawStats.memory_stats.stats?.cache || 0;
+              memUsage = Math.max(0, (rawStats.memory_stats.usage || 0) - cache);
+              memLimit = rawStats.memory_stats.limit || 1;
+              memPercent = Math.round((memUsage / memLimit) * 1000) / 10;
+            }
+            stats = {
+              cpuPercent,
+              memUsageBytes: memUsage,
+              memLimitBytes: memLimit,
+              memPercent,
+              netRx: rawStats?.networks?.eth0?.rx_bytes || 0,
+              netTx: rawStats?.networks?.eth0?.tx_bytes || 0
+            };
+          } catch {}
+        }
+
+        return {
+          id: c.Id,
+          shortId: c.Id ? c.Id.slice(0, 12) : '',
+          name: (c.Names?.[0] || '').replace(/^\//, ''),
+          names: c.Names || [],
+          image: c.Image,
+          imageId: c.ImageID,
+          command: c.Command,
+          created: c.Created,
+          state: c.State,
+          status: c.Status,
+          ports: c.Ports || [],
+          labels: c.Labels || {},
+          composeProject,
+          composeService,
+          stack,
+          stats
+        };
       }));
       result = { containers };
+    } else if (commandType === 'docker.stacks') {
+      const rawContainers = await dockerRequest('/containers/json?all=1');
+      const list = Array.isArray(rawContainers) ? rawContainers : [];
+      const stackMap = new Map();
+      list.forEach(c => {
+        const stackName = c.Labels?.['com.docker.compose.project'] || c.Labels?.['io.portainer.stack.name'] || 'Standalone';
+        if (!stackMap.has(stackName)) {
+          stackMap.set(stackName, {
+            name: stackName,
+            isStandalone: stackName === 'Standalone',
+            containers: [],
+            containerCount: 0,
+            runningCount: 0,
+            services: new Set()
+          });
+        }
+        const s = stackMap.get(stackName);
+        s.containers.push({
+          id: c.Id,
+          name: (c.Names?.[0] || '').replace(/^\//, ''),
+          state: c.State,
+          image: c.Image
+        });
+        s.containerCount += 1;
+        if (c.State === 'running') s.runningCount += 1;
+        if (c.Labels?.['com.docker.compose.service']) s.services.add(c.Labels['com.docker.compose.service']);
+      });
+      const stacks = Array.from(stackMap.values()).map(s => ({
+        ...s,
+        services: Array.from(s.services)
+      }));
+      result = { stacks };
     } else if (commandType === 'docker.container.details') {
       const cid = encodeURIComponent(data.containerId);
       result = await dockerRequest(`/containers/${cid}/json`);
