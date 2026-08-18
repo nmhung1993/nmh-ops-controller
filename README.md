@@ -101,7 +101,7 @@ Synology nên chạy Central Server bằng **Container Manager**; Agent Synology
 .\synology-server\export-server-data.ps1 -Destination .\windows-controller-server-data.zip
 ```
 
-2. Copy toàn bộ repository (hoặc tối thiểu `Dockerfile`, `package*.json`, `server`, `public`, `synology-server`) lên NAS, ví dụ `/volume1/docker/windows-controller`.
+2. Copy **toàn bộ repository** lên NAS, ví dụ `/volume1/docker/windows-controller`. Docker image tự build React từ `frontend/` bằng `vite.config.js`, nên không chỉ copy riêng `public/`.
 3. Giải nén archive vào `/volume1/docker/windows-controller/data` **trước lần chạy đầu tiên**. Giữ cả `windows-controller.db`, `windows-controller.db-wal`, `windows-controller.db-shm` nếu chúng tồn tại.
 4. SSH vào NAS và build/start container:
 
@@ -420,7 +420,7 @@ npm.cmd install
 npm.cmd run dev
 ```
 
-Mở `http://localhost:3003`. Dev launcher tạm dừng service `WindowsControllerServer`, phục vụ trực tiếp `server/` và `public/` trong repository, nhưng vẫn dùng database tại `C:\ProgramData\WindowsController\server\data`. Vì vậy thay đổi CSS/HTML chỉ cần refresh trình duyệt, không cần chạy lại `install-server.ps1`, và Agent vẫn giữ nguyên danh tính/token đã được duyệt.
+Mở `http://localhost:3003`. Lệnh `npm.cmd run dev` build React/MUI từ `frontend/` vào `public/`, sau đó dev launcher tạm dừng service `WindowsControllerServer` và phục vụ `server/` cùng bundle mới, nhưng vẫn dùng database tại `C:\ProgramData\WindowsController\server\data`. Sau mỗi thay đổi ở `frontend/`, dừng launcher và chạy lại `npm.cmd run dev`; không cần chạy lại `install-server.ps1`, và Agent vẫn giữ nguyên danh tính/token đã được duyệt.
 
 Nhấn `Ctrl+C` để thoát dev mode; launcher sẽ tự khởi động lại Central Server service. Nếu không có service đã cài và muốn dùng database trong source, chạy `npm.cmd run dev:standalone`.
 
