@@ -6,21 +6,22 @@ const http = require('http');
 const dns = require('dns');
 const querystring = require('querystring');
 const express = require('express');
+const { MikroTikManager } = require('./mikrotik-manager');
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../data');
 const TARGETS_FILE = path.join(DATA_DIR, 'network-targets.json');
 const LOGS_FILE = path.join(DATA_DIR, 'network-logs.json');
 const ROUTER_CONFIG_FILE = path.join(DATA_DIR, 'xiaomi-config.json');
+const MIKROTIK_CONFIG_FILE = path.join(DATA_DIR, 'mikrotik-config.json');
 const SCAN_HISTORY_FILE = path.join(DATA_DIR, 'network-scan-history.json');
 const HISTORY_FILE = path.join(DATA_DIR, 'network-history.json');
 const CUSTOM_NAMES_FILE = path.join(DATA_DIR, 'network-custom-names.json');
 
-// Default targets with Gecoos Router (192.168.31.43) and Xiaomi Mesh Node 2 (192.168.31.120)
+// Default targets in 192.168.1.0/24 with MikroTik Gateway (192.168.1.1)
 const DEFAULT_TARGETS = [
-  { id: 't_gateway', name: 'Xiaomi Router CR8806 (Gateway)', host: '192.168.31.1', tag: 'Router', interval: 3000, enabled: true },
-  { id: 't_gecoos', name: 'Gecoos Router (AP Gateway)', host: '192.168.31.43', tag: 'Router', interval: 3000, enabled: true },
-  { id: 't_mesh_120', name: 'Xiaomi Mesh Node 2', host: '192.168.31.120', tag: 'Mesh', interval: 3000, enabled: true },
-  { id: 't_mesh_196', name: 'Xiaomi Mesh Node 3', host: '192.168.31.196', tag: 'Mesh', interval: 3000, enabled: true },
+  { id: 't_gateway', name: 'MikroTik RouterOS (Gateway)', host: '192.168.1.1', tag: 'Router', interval: 3000, enabled: true },
+  { id: 't_xiaomi_ap', name: 'Xiaomi Router (Wi-Fi AP)', host: '192.168.1.2', tag: 'Router', interval: 3000, enabled: true },
+  { id: 't_gecoos', name: 'Gecoos AP (Enterprise)', host: '192.168.1.43', tag: 'Router', interval: 3000, enabled: true },
   { id: 't_server', name: 'Local Server (Host)', host: '127.0.0.1', tag: 'Server', interval: 3000, enabled: true },
   { id: 't_google', name: 'Google Public DNS', host: '8.8.8.8', tag: 'Cloud', interval: 3000, enabled: true },
   { id: 't_cloudflare', name: 'Cloudflare DNS', host: '1.1.1.1', tag: 'Cloud', interval: 3000, enabled: true }
@@ -79,23 +80,16 @@ scanHistory = pruneScanHistory(loadJson(SCAN_HISTORY_FILE, []));
 networkHistory = loadJson(HISTORY_FILE, []);
 customNames = loadJson(CUSTOM_NAMES_FILE, {});
 
-// Ensure Gecoos target exists in targets list
-if (!targets.some(t => t.host === '192.168.31.43' || t.id === 't_gecoos')) {
-  targets.splice(1, 0, {
-    id: 't_gecoos',
-    name: 'Gecoos Router (AP Gateway)',
-    host: '192.168.31.43',
+// Ensure MikroTik target exists in targets list
+if (!targets.some(t => t.host === '192.168.1.1' || t.id === 't_gateway')) {
+  targets.unshift({
+    id: 't_gateway',
+    name: 'MikroTik RouterOS (Gateway)',
+    host: '192.168.1.1',
     tag: 'Router',
     interval: 3000,
     enabled: true
   });
-  saveJson(TARGETS_FILE, targets);
-}
-
-// Update node 2 from 119 to 120 if old entry exists
-const oldNode2 = targets.find(t => t.host === '192.168.31.119' || t.name.includes('Node 2'));
-if (oldNode2 && oldNode2.host === '192.168.31.119') {
-  oldNode2.host = '192.168.31.120';
   saveJson(TARGETS_FILE, targets);
 }
 
@@ -963,14 +957,25 @@ class GecoosManager {
   }
 }
 
-// Router instance
-let savedRouterConfig = loadJson(ROUTER_CONFIG_FILE, { host: '192.168.31.1', password: '@nmhung1993' });
-let routerInstance = new RouterManager(savedRouterConfig);
-let gecoosInstance = new GecoosManager({ host: '192.168.31.43', password: '@nmhung1993' });
+// Router instances (MikroTik Core Gateway, Xiaomi AP, Gecoos AP)
+let savedMikroTikConfig = loadJson(MIKROTIK_CONFIG_FILE, {
+  host: '192.168.1.1',
+  port: 8728,
+  username: 'admin',
+  password: '',
+  useHttps: false,
+  pppoeInterface: 'pppoe-out1'
+});
+let mikrotikInstance = new MikroTikManager(savedMikroTikConfig);
 
-// Periodically run auto-discovery sync
+let savedRouterConfig = loadJson(ROUTER_CONFIG_FILE, { host: '192.168.1.2', password: '@nmhung1993' });
+let routerInstance = new RouterManager(savedRouterConfig);
+let gecoosInstance = new GecoosManager({ host: '192.168.1.43', password: '@nmhung1993' });
+
+// Periodically run auto-discovery sync across routers
 setInterval(async () => {
   try {
+    await mikrotikInstance.getAuthoritativeDeviceMap();
     await routerInstance.getAuthoritativeDeviceMap();
     await gecoosInstance.getAuthoritativeStationMap();
   } catch (e) {}
@@ -979,6 +984,7 @@ setInterval(async () => {
 // Preload router devices immediately on startup
 setTimeout(async () => {
   try {
+    await mikrotikInstance.getAuthoritativeDeviceMap();
     await routerInstance.getAuthoritativeDeviceMap();
     await gecoosInstance.getAuthoritativeStationMap();
   } catch (e) {}
@@ -1078,7 +1084,7 @@ function resolveNetbiosName(ip) {
   });
 }
 
-async function scanSubnet(subnetCidr = '192.168.31.0/24') {
+async function scanSubnet(subnetCidr = '192.168.1.0/24') {
   if (scanState.isScanning) return scanState;
 
   const baseIp = subnetCidr.split('/')[0].split('.').slice(0, 3).join('.');
@@ -1087,7 +1093,21 @@ async function scanSubnet(subnetCidr = '192.168.31.0/24') {
   (async () => {
     let routerDeviceMap = new Map();
     try {
-      routerDeviceMap = await routerInstance.getAuthoritativeDeviceMap();
+      const mtMap = await mikrotikInstance.getAuthoritativeDeviceMap();
+      if (mtMap) {
+        for (const [ip, info] of mtMap.entries()) {
+          routerDeviceMap.set(ip, info);
+        }
+      }
+    } catch (e) {}
+
+    try {
+      const xiaomiMap = await routerInstance.getAuthoritativeDeviceMap();
+      if (xiaomiMap) {
+        for (const [ip, info] of xiaomiMap.entries()) {
+          if (!routerDeviceMap.has(ip)) routerDeviceMap.set(ip, info);
+        }
+      }
     } catch (e) {}
 
     try {
@@ -1402,7 +1422,7 @@ router.get('/scan', requireSuperAdmin, (req, res) => {
 
 router.post('/scan', requireSuperAdmin, async (req, res) => {
   const { subnet } = req.body;
-  const state = await scanSubnet(subnet || '192.168.31.0/24');
+  const state = await scanSubnet(subnet || '192.168.1.0/24');
   res.json(state);
 });
 
@@ -1473,11 +1493,87 @@ router.post('/custom-names', requireSuperAdmin, (req, res) => {
   res.json({ success: true, customNames });
 });
 
-// GET Router status (Super admin only)
+// ==========================================
+// MikroTik RouterOS Endpoints (Super admin only)
+// ==========================================
+router.get('/mikrotik/status', requireSuperAdmin, async (req, res) => {
+  try {
+    const status = await mikrotikInstance.fetchStatus();
+    res.json(status);
+  } catch (err) {
+    res.json({
+      host: mikrotikInstance.host,
+      online: false,
+      routerName: 'MikroTik RouterOS (Gateway)',
+      hardware: 'MikroTik',
+      version: 'RouterOS',
+      uptime: 0,
+      uptimeFormatted: 'Ngoại tuyến',
+      wan: { ip: '--', gateway: '--', dns: '--', pppoeStatus: 'offline' },
+      cpu: 0,
+      memory: 0,
+      bandwidth: { rxMbps: 0, txMbps: 0, rxBytes: 0, txBytes: 0 },
+      dhcpLeases: [],
+      clientsCount: 0,
+      error: err.message
+    });
+  }
+});
+
+router.get('/mikrotik/config', requireSuperAdmin, (req, res) => {
+  res.json({
+    host: savedMikroTikConfig.host || '192.168.1.1',
+    port: savedMikroTikConfig.port || 8728,
+    username: savedMikroTikConfig.username || 'admin',
+    password: savedMikroTikConfig.password ? '******' : '',
+    hasPassword: Boolean(savedMikroTikConfig.password),
+    useHttps: Boolean(savedMikroTikConfig.useHttps),
+    pppoeInterface: savedMikroTikConfig.pppoeInterface || 'pppoe-out1'
+  });
+});
+
+router.post('/mikrotik/config', requireSuperAdmin, (req, res) => {
+  const { host, port, username, password, useHttps, pppoeInterface } = req.body;
+  const parsedPort = port ? Number(port) : (useHttps ? 8729 : 8728);
+  const newPassword = password !== undefined && password !== '******' ? password : savedMikroTikConfig.password;
+
+  savedMikroTikConfig = {
+    host: host ? host.trim() : '192.168.1.1',
+    port: parsedPort,
+    username: username ? username.trim() : 'admin',
+    password: newPassword,
+    useHttps: Boolean(useHttps),
+    pppoeInterface: pppoeInterface ? pppoeInterface.trim() : 'pppoe-out1'
+  };
+  saveJson(MIKROTIK_CONFIG_FILE, savedMikroTikConfig);
+  mikrotikInstance = new MikroTikManager(savedMikroTikConfig);
+  res.json({ message: 'MikroTik config updated successfully', config: { ...savedMikroTikConfig, password: newPassword ? '******' : '' } });
+});
+
+router.post('/mikrotik/reconnect-pppoe', requireSuperAdmin, async (req, res) => {
+  const { interfaceName } = req.body || {};
+  try {
+    const result = await mikrotikInstance.reconnectPppoe(interfaceName);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/mikrotik/reboot', requireSuperAdmin, async (req, res) => {
+  try {
+    const result = await mikrotikInstance.reboot();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET Router status (Xiaomi / Gecoos) (Super admin only)
 router.get('/xiaomi/status', requireSuperAdmin, async (req, res) => {
   const queryHost = req.query.host || routerInstance.host;
   try {
-    const mgr = queryHost === '192.168.31.43' ? gecoosInstance : routerInstance;
+    const mgr = queryHost.includes('.43') ? gecoosInstance : routerInstance;
     const status = await mgr.fetchStatus();
     res.json(status);
   } catch (err) {
@@ -1500,14 +1596,14 @@ router.get('/xiaomi/status', requireSuperAdmin, async (req, res) => {
   }
 });
 
-// POST Router config (Super admin only)
+// POST Router config (Xiaomi / Gecoos) (Super admin only)
 router.post('/xiaomi/config', requireSuperAdmin, (req, res) => {
   const { host, password } = req.body;
-  if (host === '192.168.31.43') {
-    gecoosInstance = new GecoosManager({ host: '192.168.31.43', password: password !== undefined ? password : '@nmhung1993' });
+  if (host && host.includes('.43')) {
+    gecoosInstance = new GecoosManager({ host: host || '192.168.1.43', password: password !== undefined ? password : '@nmhung1993' });
     return res.json({ message: 'Gecoos config updated' });
   }
-  savedRouterConfig = { host: host || '192.168.31.1', password: password !== undefined ? password : '@nmhung1993' };
+  savedRouterConfig = { host: host || '192.168.1.2', password: password !== undefined ? password : '@nmhung1993' };
   saveJson(ROUTER_CONFIG_FILE, savedRouterConfig);
   routerInstance = new RouterManager(savedRouterConfig);
   res.json({ message: 'Router config updated' });

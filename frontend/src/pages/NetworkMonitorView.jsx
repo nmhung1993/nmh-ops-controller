@@ -35,6 +35,8 @@ import {
   Select,
   FormControl,
   InputLabel,
+  FormControlLabel,
+  Checkbox,
   useTheme
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
@@ -68,6 +70,12 @@ import {
   TrendingUp,
   AlertOctagon,
   Pin,
+  Shield,
+  Cpu,
+  HardDrive,
+  Gauge,
+  ArrowDown,
+  ArrowUp,
   Router as RouterIcon
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
@@ -106,18 +114,34 @@ export default function NetworkMonitorView() {
   const [exportAnchorEl, setExportAnchorEl] = useState(null);
 
   // Scanner state
-  const [scanSubnet, setScanSubnet] = useState('192.168.31.0/24');
+  const [scanSubnet, setScanSubnet] = useState('192.168.1.0/24');
   const [scanState, setScanState] = useState({ isScanning: false, current: 0, total: 254, results: [] });
   const [scanHistoryList, setScanHistoryList] = useState([]);
   const [customNames, setCustomNames] = useState({});
   const [editNameDialog, setEditNameDialog] = useState({ open: false, ip: '', currentName: '', newName: '' });
 
-  // Router state (Xiaomi / Gecoos)
-  const [selectedRouterHost, setSelectedRouterHost] = useState('192.168.31.1');
+  // Router Type Selector ('mikrotik' | 'xiaomi' | 'gecoos')
+  const [selectedRouterType, setSelectedRouterType] = useState('mikrotik');
+
+  // MikroTik state
+  const [mikrotikStatus, setMikrotikStatus] = useState(null);
+  const [loadingMikrotik, setLoadingMikrotik] = useState(false);
+  const [mikrotikConfigOpen, setMikrotikConfigOpen] = useState(false);
+  const [mikrotikHost, setMikrotikHost] = useState('192.168.1.1');
+  const [mikrotikPort, setMikrotikPort] = useState(80);
+  const [mikrotikUsername, setMikrotikUsername] = useState('admin');
+  const [mikrotikPassword, setMikrotikPassword] = useState('');
+  const [mikrotikUseHttps, setMikrotikUseHttps] = useState(false);
+  const [mikrotikPppoeInterface, setMikrotikPppoeInterface] = useState('pppoe-out1');
+  const [confirmReconnectPppoeOpen, setConfirmReconnectPppoeOpen] = useState(false);
+  const [confirmMikrotikRebootOpen, setConfirmMikrotikRebootOpen] = useState(false);
+
+  // Router state (Xiaomi / Gecoos AP)
+  const [selectedRouterHost, setSelectedRouterHost] = useState('192.168.1.2');
   const [routerStatus, setRouterStatus] = useState(null);
   const [loadingRouter, setLoadingRouter] = useState(false);
   const [routerConfigOpen, setRouterConfigOpen] = useState(false);
-  const [routerHost, setRouterHost] = useState('192.168.31.1');
+  const [routerHost, setRouterHost] = useState('192.168.1.2');
   const [routerPassword, setRouterPassword] = useState('@nmhung1993');
 
   // Target Modal Dialog
@@ -245,16 +269,29 @@ export default function NetworkMonitorView() {
     }
   };
 
+  // Fetch MikroTik status
+  const loadMikrotikStatus = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoadingMikrotik(true);
+    try {
+      const data = await apiRequest('/api/v1/network/mikrotik/status');
+      setMikrotikStatus(data);
+    } catch (err) {
+      console.error('Failed to load MikroTik status:', err);
+    } finally {
+      if (!isSilent) setLoadingMikrotik(false);
+    }
+  }, []);
+
   // Fetch router status (supports Xiaomi and Gecoos)
-  const loadRouterStatus = useCallback(async () => {
-    setLoadingRouter(true);
+  const loadRouterStatus = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoadingRouter(true);
     try {
       const data = await apiRequest(`/api/v1/network/xiaomi/status?host=${selectedRouterHost}`);
       setRouterStatus(data);
     } catch (err) {
-      setRouterStatus(null);
+      console.error('Failed to load router status:', err);
     } finally {
-      setLoadingRouter(false);
+      if (!isSilent) setLoadingRouter(false);
     }
   }, [selectedRouterHost]);
 
@@ -289,10 +326,23 @@ export default function NetworkMonitorView() {
   }, [currentTab, scanState.isScanning, loadScanState]);
 
   useEffect(() => {
-    if (currentTab === 2 || !routerStatus) {
-      loadRouterStatus();
+    if (currentTab === 2) {
+      if (selectedRouterType === 'mikrotik') {
+        loadMikrotikStatus(false);
+        const interval = setInterval(() => loadMikrotikStatus(true), 3000);
+        return () => clearInterval(interval);
+      } else {
+        loadRouterStatus(false);
+        const interval = setInterval(() => loadRouterStatus(true), 5000);
+        return () => clearInterval(interval);
+      }
     }
-  }, [currentTab, selectedRouterHost, loadRouterStatus]);
+  }, [currentTab, selectedRouterType, selectedRouterHost, loadMikrotikStatus, loadRouterStatus]);
+
+  // Preload MikroTik status once on mount
+  useEffect(() => {
+    loadMikrotikStatus(true);
+  }, [loadMikrotikStatus]);
 
   // Ping target immediately
   const handlePingNow = async (id, e) => {
@@ -466,14 +516,79 @@ export default function NetworkMonitorView() {
     }
   };
 
+  // Reconnect PPPoE Action
+  const handleReconnectPppoe = async () => {
+    try {
+      const res = await apiRequest('/api/v1/network/mikrotik/reconnect-pppoe', {
+        method: 'POST',
+        body: JSON.stringify({ interfaceName: mikrotikPppoeInterface })
+      });
+      setActionMessage(res.message || 'Đã gửi lệnh làm mới phiên PPPoE thành công!');
+      setConfirmReconnectPppoeOpen(false);
+      setTimeout(loadMikrotikStatus, 2000);
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  // Reboot MikroTik Action
+  const handleRebootMikrotik = async () => {
+    try {
+      const res = await apiRequest('/api/v1/network/mikrotik/reboot', { method: 'POST' });
+      setActionMessage(res.message || 'Đã gửi lệnh khởi động lại MikroTik RouterOS');
+      setConfirmMikrotikRebootOpen(false);
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  // Open & Load MikroTik Config
+  const handleOpenMikrotikConfig = async () => {
+    try {
+      const cfg = await apiRequest('/api/v1/network/mikrotik/config');
+      if (cfg) {
+        if (cfg.host) setMikrotikHost(cfg.host);
+        if (cfg.port) setMikrotikPort(cfg.port);
+        if (cfg.username) setMikrotikUsername(cfg.username);
+        if (cfg.password !== undefined) setMikrotikPassword(cfg.password);
+        if (cfg.useHttps !== undefined) setMikrotikUseHttps(Boolean(cfg.useHttps));
+        if (cfg.pppoeInterface) setMikrotikPppoeInterface(cfg.pppoeInterface);
+      }
+    } catch {}
+    setMikrotikConfigOpen(true);
+  };
+
+  // Save MikroTik Config
+  const handleSaveMikrotikConfig = async (e) => {
+    e.preventDefault();
+    try {
+      await apiRequest('/api/v1/network/mikrotik/config', {
+        method: 'POST',
+        body: JSON.stringify({
+          host: mikrotikHost,
+          port: Number(mikrotikPort) || (mikrotikUseHttps ? 8729 : 8728),
+          username: mikrotikUsername,
+          password: mikrotikPassword,
+          useHttps: mikrotikUseHttps,
+          pppoeInterface: mikrotikPppoeInterface
+        })
+      });
+      setMikrotikConfigOpen(false);
+      setActionMessage('Đã cập nhật cấu hình kết nối MikroTik RouterOS!');
+      loadMikrotikStatus();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
   // Filtered targets
   const tagsList = ['all', ...new Set(targets.map((t) => t.tag).filter(Boolean))];
   const filteredTargets = targets.filter((t) => tagFilter === 'all' || t.tag === tagFilter);
 
   // WAN IP & Gateway & DNS info
-  const wanIp = routerStatus?.wan?.ip || '116.109.15.114';
-  const gatewayStr = routerStatus?.wan?.gateway || '192.168.1.1';
-  const dnsStr = routerStatus?.wan?.dns || '8.8.8.8, 8.8.4.4';
+  const wanIp = mikrotikStatus?.wan?.ip !== '--' ? (mikrotikStatus?.wan?.ip || routerStatus?.wan?.ip || '116.109.15.114') : (routerStatus?.wan?.ip || '116.109.15.114');
+  const gatewayStr = mikrotikStatus?.wan?.gateway || routerStatus?.wan?.gateway || '192.168.1.1';
+  const dnsStr = mikrotikStatus?.wan?.dns || routerStatus?.wan?.dns || '8.8.8.8, 1.1.1.1';
 
   // Chart preparation
   const chartTimestamps = useMemo(() => {
@@ -1272,282 +1387,546 @@ export default function NetworkMonitorView() {
       </Box>
 
       {/* ==================================================== */}
-      {/* TAB 3: ROUTER & MESH MANAGEMENT (XIAOMI & GECOOS) */}
+      {/* TAB 3: ROUTER & MESH MANAGEMENT (MIKROTIK / XIAOMI / GECOOS) */}
       {/* ==================================================== */}
       <Box sx={{ display: currentTab === 2 ? 'block' : 'none' }}>
         <Box>
           {/* Router Selector Switcher */}
-          <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 3 }}>
+          <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 3, flexWrap: 'wrap', gap: 1 }}>
             <Button
-              variant={selectedRouterHost === '192.168.31.1' ? 'contained' : 'outlined'}
+              variant={selectedRouterType === 'mikrotik' ? 'contained' : 'outlined'}
               color="primary"
-              startIcon={<Wifi size={16} />}
-              onClick={() => setSelectedRouterHost('192.168.31.1')}
+              startIcon={<Shield size={16} />}
+              onClick={() => setSelectedRouterType('mikrotik')}
               sx={{ fontWeight: 700, borderRadius: 2 }}
             >
-              Router Gateway (192.168.31.1)
+              🛡️ MikroTik RouterOS (PPPoE Core Gateway)
             </Button>
             <Button
-              variant={selectedRouterHost === '192.168.31.43' ? 'contained' : 'outlined'}
+              variant={selectedRouterType === 'xiaomi' ? 'contained' : 'outlined'}
               color="primary"
-              startIcon={<RouterIcon size={16} />}
-              onClick={() => setSelectedRouterHost('192.168.31.43')}
+              startIcon={<Wifi size={16} />}
+              onClick={() => {
+                setSelectedRouterType('xiaomi');
+                setSelectedRouterHost('192.168.1.2');
+              }}
               sx={{ fontWeight: 700, borderRadius: 2 }}
             >
-              Gecoos Router (192.168.31.43)
+              Xiaomi Mesh (Wi-Fi AP)
+            </Button>
+            <Button
+              variant={selectedRouterType === 'gecoos' ? 'contained' : 'outlined'}
+              color="primary"
+              startIcon={<RouterIcon size={16} />}
+              onClick={() => {
+                setSelectedRouterType('gecoos');
+                setSelectedRouterHost('192.168.1.43');
+              }}
+              sx={{ fontWeight: 700, borderRadius: 2 }}
+            >
+              Gecoos AP (Enterprise)
             </Button>
           </Stack>
 
-          {loadingRouter ? (
-            <LinearProgress sx={{ my: 4, borderRadius: 2 }} />
-          ) : !routerStatus ? (
-            <Card sx={{ p: 4, textAlign: 'center' }}>
-              <Wifi size={48} color={theme.palette.text.disabled} />
-              <Typography variant="h6" sx={{ mt: 2, fontWeight: 700 }}>
-                Không thể kết nối Router ({selectedRouterHost})
-              </Typography>
-              <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3 }}>
-                Kiểm tra lại kết nối mạng và mật khẩu quản trị (@nmhung1993).
-              </Typography>
-              <Button variant="contained" startIcon={<Settings size={16} />} onClick={() => setRouterConfigOpen(true)}>
-                Cấu hình kết nối Router
-              </Button>
-            </Card>
-          ) : (
-            <Stack spacing={3}>
-              {/* Router Identity Banner */}
-              <Card sx={{ p: 3, background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.08)} 0%, ${theme.palette.background.paper} 100%)` }}>
-                <Stack direction={{ xs: 'column', md: 'row' }} alignItems="center" justifyContent="space-between" spacing={2.5}>
-                  <Stack direction="row" spacing={2} alignItems="center">
-                    <Box sx={{ width: 56, height: 56, borderRadius: 2.5, bgcolor: 'primary.main', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Wifi size={30} />
-                    </Box>
-                    <Box>
-                      <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: 1 }}>
-                        ROUTER GATEWAY & MESH CONTROLLER
-                      </Typography>
-                      <Typography variant="h4" sx={{ fontWeight: 800 }}>
-                        {routerStatus.routerName}
-                      </Typography>
-                      <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 600 }}>
-                        Host: {routerStatus.host} • ROM: {routerStatus.version} • WAN IP: {routerStatus.wan?.ip} • {routerStatus.uptimeFormatted}
-                      </Typography>
-                    </Box>
-                  </Stack>
-
-                  <Stack direction="row" spacing={1.5}>
-                    <Button
-                      variant="outlined"
-                      color="warning"
-                      startIcon={<RotateCcw size={16} />}
-                      onClick={() => setConfirmWifiRestartTarget({ ip: routerStatus.host, name: routerStatus.routerName })}
-                    >
-                      Khởi động lại Wi-Fi
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      color="error"
-                      startIcon={<Power size={16} />}
-                      onClick={() => setConfirmRebootTarget({ ip: routerStatus.host, name: routerStatus.routerName })}
-                    >
-                      Reboot Router
-                    </Button>
-                    <Button variant="contained" color="inherit" startIcon={<Settings size={16} />} onClick={() => setRouterConfigOpen(true)}>
-                      Cấu hình
-                    </Button>
-                  </Stack>
-                </Stack>
-              </Card>
-
-              {/* Wi-Fi & Load Metric Cards */}
-              <Grid container spacing={2.5}>
-                {/* 2.4G & 5G Clients */}
-                <Grid item xs={12} sm={6} md={3}>
-                  <Card sx={{ p: 2.5 }}>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
-                      TỔNG THIẾT BỊ WI-FI
-                    </Typography>
-                    <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5, color: 'primary.main' }}>
-                      {routerStatus.wifi?.count || routerStatus.clients?.length || 0}
-                    </Typography>
-                    <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
-                      📶 2.4GHz: {routerStatus.wifi?.wifi24Count || 0} • 5GHz: {routerStatus.wifi?.wifi50Count || 0}
-                    </Typography>
-                  </Card>
-                </Grid>
-
-                {/* Router CPU Load */}
-                <Grid item xs={12} sm={6} md={3}>
-                  <Card sx={{ p: 2.5 }}>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
-                      TẢI CPU ROUTER
-                    </Typography>
-                    <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5 }}>
-                      {routerStatus.cpu}%
-                    </Typography>
-                    <LinearProgress variant="determinate" value={routerStatus.cpu} sx={{ height: 6, borderRadius: 3, mt: 1 }} />
-                  </Card>
-                </Grid>
-
-                {/* Router Memory */}
-                <Grid item xs={12} sm={6} md={3}>
-                  <Card sx={{ p: 2.5 }}>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
-                      RAM ROUTER
-                    </Typography>
-                    <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5 }}>
-                      {routerStatus.memory}%
-                    </Typography>
-                    <LinearProgress variant="determinate" value={routerStatus.memory} sx={{ height: 6, borderRadius: 3, mt: 1 }} />
-                  </Card>
-                </Grid>
-
-                {/* Mesh Nodes Count */}
-                <Grid item xs={12} sm={6} md={3}>
-                  <Card sx={{ p: 2.5 }}>
-                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
-                      MESH NODES PHỤ
-                    </Typography>
-                    <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5 }}>
-                      {routerStatus.meshNodes?.length || 0}
-                    </Typography>
-                    <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
-                      Tự động đồng bộ IP
-                    </Typography>
-                  </Card>
-                </Grid>
-              </Grid>
-
-              {/* Secondary Mesh Nodes Management Section (if any) */}
-              {routerStatus.meshNodes && routerStatus.meshNodes.length > 0 && (
-                <Box>
-                  <Typography variant="h6" sx={{ fontWeight: 800, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Layers size={20} color={theme.palette.primary.main} /> Quản lý các Node Mesh phụ ({routerStatus.meshNodes.length})
-                  </Typography>
-
-                  <Grid container spacing={2.5}>
-                    {routerStatus.meshNodes.map((node) => (
-                      <Grid item xs={12} md={6} key={node.id}>
-                        <Card sx={{ p: 2.5, border: `1px solid ${theme.palette.divider}` }}>
-                          <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 2 }}>
-                            <Box>
-                              <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
-                                {node.name}
-                              </Typography>
-                              <Typography variant="body2" sx={{ color: 'text.secondary', fontFamily: 'monospace', fontWeight: 600 }}>
-                                IP: {node.ip || 'Chưa nhận IP'} • {node.hardware} (v{node.version})
-                              </Typography>
-                              <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 700, mt: 0.5, display: 'block' }}>
-                                Kết nối: {node.backhaulLabel}
-                              </Typography>
-                            </Box>
-
-                            <Label variant="soft" color={node.online ? 'success' : 'error'}>
-                              {node.online ? 'Trực tuyến' : 'Ngoại tuyến'}
-                            </Label>
-                          </Stack>
-
-                          <Stack direction="row" spacing={2} sx={{ p: 1.5, borderRadius: 2, bgcolor: alpha(theme.palette.grey[500], 0.06), mb: 2 }}>
-                            <Box sx={{ flex: 1 }}>
-                              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                                TẢI CPU
-                              </Typography>
-                              <Typography variant="h6" sx={{ fontWeight: 800 }}>
-                                {node.cpu}%
-                              </Typography>
-                            </Box>
-                            <Divider orientation="vertical" flexItem />
-                            <Box sx={{ flex: 1 }}>
-                              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                                RAM
-                              </Typography>
-                              <Typography variant="h6" sx={{ fontWeight: 800 }}>
-                                {node.memory}%
-                              </Typography>
-                            </Box>
-                            <Divider orientation="vertical" flexItem />
-                            <Box sx={{ flex: 1 }}>
-                              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                                THIẾT BỊ WI-FI
-                              </Typography>
-                              <Typography variant="h6" sx={{ fontWeight: 800, color: 'primary.main' }}>
-                                {node.clientCount}
-                              </Typography>
-                            </Box>
-                          </Stack>
-
-                          {/* Node Actions */}
-                          <Stack direction="row" spacing={1.5}>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              color="warning"
-                              startIcon={<RotateCcw size={14} />}
-                              onClick={() => setConfirmWifiRestartTarget({ ip: node.ip, name: node.name })}
-                            >
-                              Restart Wi-Fi
-                            </Button>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              color="error"
-                              startIcon={<Power size={14} />}
-                              onClick={() => setConfirmRebootTarget({ ip: node.ip, name: node.name })}
-                            >
-                              Reboot Node
-                            </Button>
-                          </Stack>
-                        </Card>
-                      </Grid>
-                    ))}
-                  </Grid>
-                </Box>
-              )}
-
-              {/* Connected Wi-Fi Devices Table */}
-              <Card sx={{ p: 3 }}>
-                <Typography variant="h6" sx={{ fontWeight: 800, mb: 2 }}>
-                  Danh sách thiết bị kết nối Wi-Fi ({routerStatus.clients?.length || 0})
+          {/* MIKROTIK VIEW */}
+          {selectedRouterType === 'mikrotik' && (
+            loadingMikrotik && !mikrotikStatus ? (
+              <LinearProgress sx={{ my: 4, borderRadius: 2 }} />
+            ) : !mikrotikStatus ? (
+              <Card sx={{ p: 4, textAlign: 'center' }}>
+                <Shield size={48} color={theme.palette.text.disabled} />
+                <Typography variant="h6" sx={{ mt: 2, fontWeight: 700 }}>
+                  Không thể kết nối MikroTik RouterOS ({mikrotikHost})
                 </Typography>
-                <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell sx={{ fontWeight: 700 }}>Tên thiết bị</TableCell>
-                        <TableCell sx={{ fontWeight: 700 }}>Địa chỉ IP</TableCell>
-                        <TableCell sx={{ fontWeight: 700 }}>Băng tần</TableCell>
-                        <TableCell sx={{ fontWeight: 700 }}>MAC Address</TableCell>
-                        <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>Thao tác</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {(routerStatus.clients || []).map((client, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell sx={{ fontWeight: 700 }}>{client.name}</TableCell>
-                          <TableCell sx={{ fontFamily: 'monospace' }}>{client.ip}</TableCell>
-                          <TableCell>
-                            <Label variant="soft" color={client.band === 'wifi50' ? 'primary' : 'warning'}>
-                              {client.band === 'wifi50' ? '5 GHz' : '2.4 GHz'}
-                            </Label>
-                          </TableCell>
-                          <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{client.mac}</TableCell>
-                          <TableCell sx={{ textAlign: 'right' }}>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              startIcon={<Plus size={14} />}
-                              onClick={() => handleOpenAddTarget(client.ip, client.name)}
-                            >
-                              Theo dõi
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
+                <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3 }}>
+                  Vui lòng kiểm tra lại địa chỉ IP, cổng REST API (80/443) và thông tin đăng nhập trong phần Cấu hình.
+                </Typography>
+                <Button variant="contained" startIcon={<Settings size={16} />} onClick={handleOpenMikrotikConfig}>
+                  Cấu hình kết nối MikroTik
+                </Button>
               </Card>
-            </Stack>
+            ) : (
+              <Stack spacing={3}>
+                {/* MikroTik Banner */}
+                <Card sx={{ p: 3, background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.1)} 0%, ${theme.palette.background.paper} 100%)` }}>
+                  <Stack direction={{ xs: 'column', md: 'row' }} alignItems="center" justifyContent="space-between" spacing={2.5}>
+                    <Stack direction="row" spacing={2} alignItems="center">
+                      <Box sx={{ width: 56, height: 56, borderRadius: 2.5, bgcolor: 'primary.main', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Shield size={32} />
+                      </Box>
+                      <Box>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: 1 }}>
+                            MIKROTIK CORE ROUTER & PPPOE GATEWAY
+                          </Typography>
+                          <Label variant="soft" color={mikrotikStatus.online ? 'success' : 'error'}>
+                            {mikrotikStatus.online ? 'Online' : 'Offline'}
+                          </Label>
+                          {mikrotikStatus.isApiConnected && (
+                            <Label variant="soft" color="info">API Connected</Label>
+                          )}
+                        </Stack>
+                        <Typography variant="h4" sx={{ fontWeight: 800 }}>
+                          {mikrotikStatus.routerName}
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                          Host: {mikrotikStatus.host} • Model: {mikrotikStatus.hardware} • OS: {mikrotikStatus.version} • Uptime: {mikrotikStatus.uptimeFormatted}
+                        </Typography>
+                      </Box>
+                    </Stack>
+
+                    <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap', gap: 1 }}>
+                      <Button
+                        variant="outlined"
+                        color="warning"
+                        startIcon={<RefreshCw size={16} />}
+                        onClick={() => setConfirmReconnectPppoeOpen(true)}
+                        sx={{ fontWeight: 700 }}
+                      >
+                        Làm mới IP PPPoE
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        color="error"
+                        startIcon={<Power size={16} />}
+                        onClick={() => setConfirmMikrotikRebootOpen(true)}
+                        sx={{ fontWeight: 700 }}
+                      >
+                        Reboot RouterOS
+                      </Button>
+                      <Button
+                        variant="contained"
+                        color="inherit"
+                        startIcon={<Settings size={16} />}
+                        onClick={handleOpenMikrotikConfig}
+                        sx={{ fontWeight: 700 }}
+                      >
+                        Cấu hình API
+                      </Button>
+                    </Stack>
+                  </Stack>
+                </Card>
+
+                {/* MikroTik Telemetry & Bandwidth Cards */}
+                <Grid container spacing={2.5}>
+                  {/* PPPoE WAN Status Card */}
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card sx={{ p: 2.5, height: '100%' }}>
+                      <Stack direction="row" justifyContent="space-between" alignItems="center">
+                        <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                          PPPOE PUBLIC WAN
+                        </Typography>
+                        <Label variant="soft" color={mikrotikStatus.wan?.pppoeStatus === 'online' ? 'success' : 'warning'}>
+                          {mikrotikStatus.wan?.pppoeStatus === 'online' ? 'Connected' : 'Offline'}
+                        </Label>
+                      </Stack>
+                      <Typography variant="h5" sx={{ fontWeight: 800, my: 0.5, color: 'primary.main', fontFamily: 'monospace' }}>
+                        {mikrotikStatus.wan?.ip || '--'}
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
+                        User: {mikrotikStatus.wan?.pppoeUser || '--'} • {mikrotikStatus.wan?.interface}
+                      </Typography>
+                    </Card>
+                  </Grid>
+
+                  {/* Realtime Bandwidth Tx/Rx */}
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card sx={{ p: 2.5, height: '100%' }}>
+                      <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                        BĂNG THÔNG TỨC THỜI (PPPOE)
+                      </Typography>
+                      <Stack direction="row" spacing={2} sx={{ my: 0.5 }}>
+                        <Box>
+                          <Typography variant="caption" sx={{ color: 'success.main', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <ArrowDown size={14} /> Download
+                          </Typography>
+                          <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                            {mikrotikStatus.bandwidth?.rxMbps || 0} <span style={{ fontSize: '0.75rem', fontWeight: 500 }}>Mbps</span>
+                          </Typography>
+                        </Box>
+                        <Divider orientation="vertical" flexItem />
+                        <Box>
+                          <Typography variant="caption" sx={{ color: 'info.main', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <ArrowUp size={14} /> Upload
+                          </Typography>
+                          <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                            {mikrotikStatus.bandwidth?.txMbps || 0} <span style={{ fontSize: '0.75rem', fontWeight: 500 }}>Mbps</span>
+                          </Typography>
+                        </Box>
+                      </Stack>
+                      <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
+                        Cập nhật thời gian thực
+                      </Typography>
+                    </Card>
+                  </Grid>
+
+                  {/* CPU Load Card */}
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card sx={{ p: 2.5, height: '100%' }}>
+                      <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                        TẢI CPU MIKROTIK
+                      </Typography>
+                      <Typography variant="h4" sx={{ fontWeight: 800, my: 0.5 }}>
+                        {mikrotikStatus.cpu}%
+                      </Typography>
+                      <LinearProgress
+                        variant="determinate"
+                        value={Math.min(100, mikrotikStatus.cpu || 0)}
+                        color={mikrotikStatus.cpu > 80 ? 'error' : mikrotikStatus.cpu > 50 ? 'warning' : 'primary'}
+                        sx={{ height: 6, borderRadius: 3, mt: 1 }}
+                      />
+                      <Typography variant="caption" sx={{ color: 'text.secondary', mt: 0.5, display: 'block' }}>
+                        {mikrotikStatus.cpuCount ? `${mikrotikStatus.cpuCount} Cores` : 'Core Processor'}
+                      </Typography>
+                    </Card>
+                  </Grid>
+
+                  {/* Memory / RAM Card */}
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card sx={{ p: 2.5, height: '100%' }}>
+                      <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                        BỘ NHỚ RAM
+                      </Typography>
+                      <Typography variant="h4" sx={{ fontWeight: 800, my: 0.5 }}>
+                        {mikrotikStatus.memory}%
+                      </Typography>
+                      <LinearProgress
+                        variant="determinate"
+                        value={Math.min(100, mikrotikStatus.memory || 0)}
+                        color={mikrotikStatus.memory > 80 ? 'error' : 'primary'}
+                        sx={{ height: 6, borderRadius: 3, mt: 1 }}
+                      />
+                      <Typography variant="caption" sx={{ color: 'text.secondary', mt: 0.5, display: 'block' }}>
+                        Trống: {mikrotikStatus.memoryFreeMb || '--'} MB / Tổng: {mikrotikStatus.memoryTotalMb || '--'} MB
+                      </Typography>
+                    </Card>
+                  </Grid>
+                </Grid>
+
+                {/* DHCP Leases Table */}
+                <Card sx={{ p: 3 }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+                    <Box>
+                      <Typography variant="h6" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Server size={20} color={theme.palette.primary.main} /> Danh sách cấp phát DHCP Leases ({mikrotikStatus.dhcpLeases?.length || 0})
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                        Các thiết bị đang nhận địa chỉ IP động hoặc tĩnh từ DHCP Server của MikroTik
+                      </Typography>
+                    </Box>
+                    <Button size="small" variant="outlined" startIcon={<RefreshCw size={14} />} onClick={loadMikrotikStatus}>
+                      Làm mới
+                    </Button>
+                  </Stack>
+
+                  <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ fontWeight: 700 }}>Địa chỉ IP</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>Tên máy / Hostname</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>MAC Address</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>Loại Lease</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>Thời hạn Lease</TableCell>
+                          <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>Thao tác</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {(!mikrotikStatus.dhcpLeases || mikrotikStatus.dhcpLeases.length === 0) ? (
+                          <TableRow>
+                            <TableCell colSpan={6} sx={{ textAlign: 'center', py: 3, color: 'text.secondary' }}>
+                              {mikrotikStatus.isApiConnected ? 'Không có thiết bị DHCP lease nào' : 'Chưa kết nối REST API để đọc bảng DHCP Leases (Nhấn Cấu hình API để kết nối)'}
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          mikrotikStatus.dhcpLeases.map((lease, idx) => (
+                            <TableRow key={idx} hover>
+                              <TableCell sx={{ fontFamily: 'monospace', fontWeight: 700 }}>{lease.ip}</TableCell>
+                              <TableCell sx={{ fontWeight: 600 }}>
+                                {lease.hostname || lease.comment || 'Thiết bị LAN'}
+                                {lease.comment && lease.hostname !== lease.comment && (
+                                  <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
+                                    {lease.comment}
+                                  </Typography>
+                                )}
+                              </TableCell>
+                              <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{lease.mac}</TableCell>
+                              <TableCell>
+                                <Label variant="soft" color={lease.dynamic ? 'info' : 'success'}>
+                                  {lease.dynamic ? 'Dynamic' : 'Static'}
+                                </Label>
+                              </TableCell>
+                              <TableCell sx={{ fontSize: '0.8rem', color: 'text.secondary' }}>{lease.expiresAfter || '--'}</TableCell>
+                              <TableCell sx={{ textAlign: 'right' }}>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  startIcon={<Plus size={14} />}
+                                  onClick={() => handleOpenAddTarget(lease.ip, lease.hostname || `LAN Device (${lease.ip})`)}
+                                >
+                                  Theo dõi
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Card>
+              </Stack>
+            )
+          )}
+
+          {/* XIAOMI & GECOOS AP VIEW */}
+          {selectedRouterType !== 'mikrotik' && (
+            loadingRouter ? (
+              <LinearProgress sx={{ my: 4, borderRadius: 2 }} />
+            ) : !routerStatus ? (
+              <Card sx={{ p: 4, textAlign: 'center' }}>
+                <Wifi size={48} color={theme.palette.text.disabled} />
+                <Typography variant="h6" sx={{ mt: 2, fontWeight: 700 }}>
+                  Không thể kết nối AP ({selectedRouterHost})
+                </Typography>
+                <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3 }}>
+                  Kiểm tra lại kết nối mạng và mật khẩu quản trị (@nmhung1993).
+                </Typography>
+                <Button variant="contained" startIcon={<Settings size={16} />} onClick={() => setRouterConfigOpen(true)}>
+                  Cấu hình kết nối Router AP
+                </Button>
+              </Card>
+            ) : (
+              <Stack spacing={3}>
+                {/* Router Identity Banner */}
+                <Card sx={{ p: 3, background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.08)} 0%, ${theme.palette.background.paper} 100%)` }}>
+                  <Stack direction={{ xs: 'column', md: 'row' }} alignItems="center" justifyContent="space-between" spacing={2.5}>
+                    <Stack direction="row" spacing={2} alignItems="center">
+                      <Box sx={{ width: 56, height: 56, borderRadius: 2.5, bgcolor: 'primary.main', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Wifi size={30} />
+                      </Box>
+                      <Box>
+                        <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: 1 }}>
+                          {selectedRouterType === 'gecoos' ? 'GECOOS ENTERPRISE ACCESS POINT' : 'XIAOMI WI-FI AP & MESH CONTROLLER'}
+                        </Typography>
+                        <Typography variant="h4" sx={{ fontWeight: 800 }}>
+                          {routerStatus.routerName}
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                          Host: {routerStatus.host} • ROM: {routerStatus.version} • {routerStatus.uptimeFormatted}
+                        </Typography>
+                      </Box>
+                    </Stack>
+
+                    <Stack direction="row" spacing={1.5}>
+                      <Button
+                        variant="outlined"
+                        color="warning"
+                        startIcon={<RotateCcw size={16} />}
+                        onClick={() => setConfirmWifiRestartTarget({ ip: routerStatus.host, name: routerStatus.routerName })}
+                      >
+                        Khởi động lại Wi-Fi
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        color="error"
+                        startIcon={<Power size={16} />}
+                        onClick={() => setConfirmRebootTarget({ ip: routerStatus.host, name: routerStatus.routerName })}
+                      >
+                        Reboot AP
+                      </Button>
+                      <Button variant="contained" color="inherit" startIcon={<Settings size={16} />} onClick={() => setRouterConfigOpen(true)}>
+                        Cấu hình
+                      </Button>
+                    </Stack>
+                  </Stack>
+                </Card>
+
+                {/* Wi-Fi & Load Metric Cards */}
+                <Grid container spacing={2.5}>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card sx={{ p: 2.5 }}>
+                      <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                        TỔNG THIẾT BỊ WI-FI
+                      </Typography>
+                      <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5, color: 'primary.main' }}>
+                        {routerStatus.wifi?.count || routerStatus.clients?.length || 0}
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
+                        📶 2.4GHz: {routerStatus.wifi?.wifi24Count || 0} • 5GHz: {routerStatus.wifi?.wifi50Count || 0}
+                      </Typography>
+                    </Card>
+                  </Grid>
+
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card sx={{ p: 2.5 }}>
+                      <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                        TẢI CPU AP
+                      </Typography>
+                      <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5 }}>
+                        {routerStatus.cpu}%
+                      </Typography>
+                      <LinearProgress variant="determinate" value={routerStatus.cpu} sx={{ height: 6, borderRadius: 3, mt: 1 }} />
+                    </Card>
+                  </Grid>
+
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card sx={{ p: 2.5 }}>
+                      <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                        RAM AP
+                      </Typography>
+                      <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5 }}>
+                        {routerStatus.memory}%
+                      </Typography>
+                      <LinearProgress variant="determinate" value={routerStatus.memory} sx={{ height: 6, borderRadius: 3, mt: 1 }} />
+                    </Card>
+                  </Grid>
+
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Card sx={{ p: 2.5 }}>
+                      <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                        MESH NODES PHỤ
+                      </Typography>
+                      <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5 }}>
+                        {routerStatus.meshNodes?.length || 0}
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
+                        Tự động đồng bộ IP
+                      </Typography>
+                    </Card>
+                  </Grid>
+                </Grid>
+
+                {/* Secondary Mesh Nodes Management Section (if any) */}
+                {routerStatus.meshNodes && routerStatus.meshNodes.length > 0 && (
+                  <Box>
+                    <Typography variant="h6" sx={{ fontWeight: 800, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Layers size={20} color={theme.palette.primary.main} /> Quản lý các Node Mesh phụ ({routerStatus.meshNodes.length})
+                    </Typography>
+
+                    <Grid container spacing={2.5}>
+                      {routerStatus.meshNodes.map((node) => (
+                        <Grid item xs={12} md={6} key={node.id}>
+                          <Card sx={{ p: 2.5, border: `1px solid ${theme.palette.divider}` }}>
+                            <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 2 }}>
+                              <Box>
+                                <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
+                                  {node.name}
+                                </Typography>
+                                <Typography variant="body2" sx={{ color: 'text.secondary', fontFamily: 'monospace', fontWeight: 600 }}>
+                                  IP: {node.ip || 'Chưa nhận IP'} • {node.hardware} (v{node.version})
+                                </Typography>
+                                <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 700, mt: 0.5, display: 'block' }}>
+                                  Kết nối: {node.backhaulLabel}
+                                </Typography>
+                              </Box>
+
+                              <Label variant="soft" color={node.online ? 'success' : 'error'}>
+                                {node.online ? 'Trực tuyến' : 'Ngoại tuyến'}
+                              </Label>
+                            </Stack>
+
+                            <Stack direction="row" spacing={2} sx={{ p: 1.5, borderRadius: 2, bgcolor: alpha(theme.palette.grey[500], 0.06), mb: 2 }}>
+                              <Box sx={{ flex: 1 }}>
+                                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                  TẢI CPU
+                                </Typography>
+                                <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                                  {node.cpu}%
+                                </Typography>
+                              </Box>
+                              <Divider orientation="vertical" flexItem />
+                              <Box sx={{ flex: 1 }}>
+                                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                  RAM
+                                </Typography>
+                                <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                                  {node.memory}%
+                                </Typography>
+                              </Box>
+                              <Divider orientation="vertical" flexItem />
+                              <Box sx={{ flex: 1 }}>
+                                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                  THIẾT BỊ WI-FI
+                                </Typography>
+                                <Typography variant="h6" sx={{ fontWeight: 800, color: 'primary.main' }}>
+                                  {node.clientCount}
+                                </Typography>
+                              </Box>
+                            </Stack>
+
+                            {/* Node Actions */}
+                            <Stack direction="row" spacing={1.5}>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                color="warning"
+                                startIcon={<RotateCcw size={14} />}
+                                onClick={() => setConfirmWifiRestartTarget({ ip: node.ip, name: node.name })}
+                              >
+                                Restart Wi-Fi
+                              </Button>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                color="error"
+                                startIcon={<Power size={14} />}
+                                onClick={() => setConfirmRebootTarget({ ip: node.ip, name: node.name })}
+                              >
+                                Reboot Node
+                              </Button>
+                            </Stack>
+                          </Card>
+                        </Grid>
+                      ))}
+                    </Grid>
+                  </Box>
+                )}
+
+                {/* Connected Wi-Fi Devices Table */}
+                <Card sx={{ p: 3 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 800, mb: 2 }}>
+                    Danh sách thiết bị kết nối Wi-Fi ({routerStatus.clients?.length || 0})
+                  </Typography>
+                  <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ fontWeight: 700 }}>Tên thiết bị</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>Địa chỉ IP</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>Băng tần</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>MAC Address</TableCell>
+                          <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>Thao tác</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {(routerStatus.clients || []).map((client, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell sx={{ fontWeight: 700 }}>{client.name}</TableCell>
+                            <TableCell sx={{ fontFamily: 'monospace' }}>{client.ip}</TableCell>
+                            <TableCell>
+                              <Label variant="soft" color={client.band === 'wifi50' ? 'primary' : 'warning'}>
+                                {client.band === 'wifi50' ? '5 GHz' : '2.4 GHz'}
+                              </Label>
+                            </TableCell>
+                            <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{client.mac}</TableCell>
+                            <TableCell sx={{ textAlign: 'right' }}>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                startIcon={<Plus size={14} />}
+                                onClick={() => handleOpenAddTarget(client.ip, client.name)}
+                              >
+                                Theo dõi
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Card>
+              </Stack>
+            )
           )}
         </Box>
       </Box>
@@ -1603,14 +1982,14 @@ export default function NetworkMonitorView() {
         </form>
       </Dialog>
 
-      {/* Router Config Dialog */}
+      {/* Router Config Dialog (Xiaomi / Gecoos) */}
       <Dialog open={routerConfigOpen} onClose={() => setRouterConfigOpen(false)} maxWidth="xs" fullWidth>
         <form onSubmit={handleSaveRouterConfig}>
-          <DialogTitle sx={{ fontWeight: 800 }}>Cấu hình Router Quản trị</DialogTitle>
+          <DialogTitle sx={{ fontWeight: 800 }}>Cấu hình Router AP ({selectedRouterType.toUpperCase()})</DialogTitle>
           <DialogContent>
             <Stack spacing={2.5} sx={{ mt: 1 }}>
               <TextField
-                label="Địa chỉ IP Router"
+                label="Địa chỉ IP AP"
                 value={routerHost}
                 onChange={(e) => setRouterHost(e.target.value)}
                 required
@@ -1635,6 +2014,126 @@ export default function NetworkMonitorView() {
         </form>
       </Dialog>
 
+      {/* MikroTik Config Dialog */}
+      <Dialog open={mikrotikConfigOpen} onClose={() => setMikrotikConfigOpen(false)} maxWidth="xs" fullWidth>
+        <form onSubmit={handleSaveMikrotikConfig}>
+          <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Shield size={22} color={theme.palette.primary.main} /> Cấu hình MikroTik RouterOS API
+          </DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <Alert severity="info" sx={{ py: 0.5, fontSize: '0.78rem' }}>
+                Hỗ trợ trực tiếp cổng <strong>RouterOS API (8728 / 8729)</strong> mặc định không cần mở Web WWW, hoặc cổng REST API (8080 / 8443 / 80 / 443).
+              </Alert>
+
+              <TextField
+                label="Địa chỉ IP MikroTik"
+                value={mikrotikHost}
+                onChange={(e) => setMikrotikHost(e.target.value)}
+                placeholder="192.168.1.1"
+                required
+                fullWidth
+              />
+
+              <Box>
+                <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, mb: 1, display: 'block' }}>
+                  CHỌN NHANH CỔNG DỊCH VỤ (PORT PRESETS)
+                </Typography>
+                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+                  <Button
+                    size="small"
+                    variant={Number(mikrotikPort) === 8728 && !mikrotikUseHttps ? 'contained' : 'outlined'}
+                    onClick={() => { setMikrotikPort(8728); setMikrotikUseHttps(false); }}
+                    sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.75rem' }}
+                  >
+                    ⚡ API (8728)
+                  </Button>
+                  <Button
+                    size="small"
+                    variant={Number(mikrotikPort) === 8729 && mikrotikUseHttps ? 'contained' : 'outlined'}
+                    onClick={() => { setMikrotikPort(8729); setMikrotikUseHttps(true); }}
+                    sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.75rem' }}
+                  >
+                    🔒 API-SSL (8729)
+                  </Button>
+                  <Button
+                    size="small"
+                    variant={Number(mikrotikPort) === 8080 && !mikrotikUseHttps ? 'contained' : 'outlined'}
+                    onClick={() => { setMikrotikPort(8080); setMikrotikUseHttps(false); }}
+                    sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.75rem' }}
+                  >
+                    🌐 WWW (8080)
+                  </Button>
+                  <Button
+                    size="small"
+                    variant={Number(mikrotikPort) === 8443 && mikrotikUseHttps ? 'contained' : 'outlined'}
+                    onClick={() => { setMikrotikPort(8443); setMikrotikUseHttps(true); }}
+                    sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.75rem' }}
+                  >
+                    🔐 WWW-SSL (8443)
+                  </Button>
+                </Stack>
+              </Box>
+
+              <TextField
+                label="Cổng dịch vụ (Port)"
+                type="number"
+                value={mikrotikPort}
+                onChange={(e) => setMikrotikPort(e.target.value)}
+                placeholder="8728 hoặc 8729"
+                required
+                fullWidth
+              />
+              <TextField
+                label="Tên đăng nhập (Username)"
+                value={mikrotikUsername}
+                onChange={(e) => setMikrotikUsername(e.target.value)}
+                placeholder="admin"
+                required
+                fullWidth
+              />
+              <TextField
+                label="Mật khẩu (Password)"
+                type="password"
+                value={mikrotikPassword}
+                onChange={(e) => setMikrotikPassword(e.target.value)}
+                placeholder="Để trống nếu không đặt"
+                fullWidth
+              />
+              <TextField
+                label="Tên Interface PPPoE Client"
+                value={mikrotikPppoeInterface}
+                onChange={(e) => setMikrotikPppoeInterface(e.target.value)}
+                placeholder="pppoe-out1"
+                helperText="Tên cổng quay số PPPoE trên MikroTik (Mặc định: pppoe-out1)"
+                fullWidth
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={mikrotikUseHttps}
+                    onChange={(e) => {
+                      setMikrotikUseHttps(e.target.checked);
+                      if (e.target.checked && Number(mikrotikPort) === 8728) setMikrotikPort(8729);
+                      if (!e.target.checked && Number(mikrotikPort) === 8729) setMikrotikPort(8728);
+                      if (e.target.checked && Number(mikrotikPort) === 8080) setMikrotikPort(8443);
+                      if (!e.target.checked && Number(mikrotikPort) === 8443) setMikrotikPort(8080);
+                    }}
+                  />
+                }
+                label="Sử dụng kết nối bảo mật SSL / TLS"
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions sx={{ p: 2.5 }}>
+            <Button onClick={() => setMikrotikConfigOpen(false)}>Hủy</Button>
+            <Button type="submit" variant="contained" color="primary" sx={{ fontWeight: 700 }}>
+              Lưu & Kết nối
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
+
       {/* Delete Target Confirm Dialog */}
       <ConfirmDialog
         open={Boolean(confirmDeleteId)}
@@ -1644,7 +2143,25 @@ export default function NetworkMonitorView() {
         onClose={() => setConfirmDeleteId(null)}
       />
 
-      {/* Reboot Confirm Dialog */}
+      {/* Reconnect PPPoE Confirm Dialog */}
+      <ConfirmDialog
+        open={confirmReconnectPppoeOpen}
+        title="Làm mới IP PPPoE (Re-dial WAN)?"
+        message="Thao tác này sẽ ngắt và quay lại phiên PPPoE trên MikroTik để nhận IP Public mới từ nhà mạng ISP. Toàn bộ mạng Internet sẽ gián đoạn trong 3-5 giây."
+        onConfirm={handleReconnectPppoe}
+        onClose={() => setConfirmReconnectPppoeOpen(false)}
+      />
+
+      {/* MikroTik Reboot Confirm Dialog */}
+      <ConfirmDialog
+        open={confirmMikrotikRebootOpen}
+        title="Khởi động lại MikroTik RouterOS?"
+        message="Bạn có chắc chắn muốn Reboot Router MikroTik? Toàn bộ kết nối mạng nội bộ và Internet sẽ tạm ngắt trong 1 phút."
+        onConfirm={handleRebootMikrotik}
+        onClose={() => setConfirmMikrotikRebootOpen(false)}
+      />
+
+      {/* Reboot Confirm Dialog (Xiaomi / Gecoos) */}
       <ConfirmDialog
         open={Boolean(confirmRebootTarget)}
         title={`Khởi động lại ${confirmRebootTarget?.name || 'Router'}?`}
