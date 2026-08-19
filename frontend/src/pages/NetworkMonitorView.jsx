@@ -37,6 +37,8 @@ import {
   InputLabel,
   FormControlLabel,
   Checkbox,
+  Switch,
+  Chip,
   useTheme
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
@@ -78,6 +80,9 @@ import {
   ArrowUp,
   Eye,
   EyeOff,
+  Sliders,
+  SlidersHorizontal,
+  ArrowUpDown,
   Router as RouterIcon
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
@@ -140,6 +145,17 @@ export default function NetworkMonitorView() {
   const [confirmMikrotikRebootOpen, setConfirmMikrotikRebootOpen] = useState(false);
   const [showPppoeUser, setShowPppoeUser] = useState(false);
   const [leaseSearch, setLeaseSearch] = useState('');
+
+  // MikroTik Sub-tabs & Features
+  const [mikrotikSubTab, setMikrotikSubTab] = useState('leases'); // 'leases' | 'queues' | 'nat'
+  const [mikrotikQueues, setMikrotikQueues] = useState([]);
+  const [loadingQueues, setLoadingQueues] = useState(false);
+  const [queueDialogOpen, setQueueDialogOpen] = useState(false);
+  const [queueForm, setQueueForm] = useState({ id: '', name: '', target: '', uploadLimit: '10M', downloadLimit: '20M', comment: '' });
+  const [mikrotikNatRules, setMikrotikNatRules] = useState([]);
+  const [loadingNat, setLoadingNat] = useState(false);
+  const [wolLoadingMac, setWolLoadingMac] = useState(null);
+  const [confirmDeleteQueueId, setConfirmDeleteQueueId] = useState(null);
 
   // Router state (Xiaomi / Gecoos AP)
   const [selectedRouterHost, setSelectedRouterHost] = useState('192.168.1.2');
@@ -287,6 +303,118 @@ export default function NetworkMonitorView() {
     }
   }, []);
 
+  // Fetch MikroTik Simple Queues
+  const loadMikrotikQueues = useCallback(async () => {
+    setLoadingQueues(true);
+    try {
+      const res = await apiRequest('/api/v1/network/mikrotik/queues');
+      setMikrotikQueues(Array.isArray(res?.queues) ? res.queues : []);
+    } catch (err) {
+      console.error('Failed to load MikroTik queues:', err);
+    } finally {
+      setLoadingQueues(false);
+    }
+  }, []);
+
+  // Fetch MikroTik NAT Rules
+  const loadMikrotikNat = useCallback(async () => {
+    setLoadingNat(true);
+    try {
+      const res = await apiRequest('/api/v1/network/mikrotik/nat');
+      setMikrotikNatRules(Array.isArray(res?.rules) ? res.rules : []);
+    } catch (err) {
+      console.error('Failed to load MikroTik NAT rules:', err);
+    } finally {
+      setLoadingNat(false);
+    }
+  }, []);
+
+  const handleOpenQueueLimit = (targetIp, hostname = '') => {
+    const existingQueue = mikrotikQueues.find(q => q.target === targetIp || q.target === `${targetIp}/32`);
+    const cleanName = (hostname || targetIp).replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+    if (existingQueue) {
+      const parts = (existingQueue.maxLimit || '10M/20M').split('/');
+      setQueueForm({
+        id: existingQueue.id,
+        name: existingQueue.name,
+        target: targetIp,
+        uploadLimit: parts[0] || '10M',
+        downloadLimit: parts[1] || '20M',
+        comment: existingQueue.comment || `Giới hạn tốc độ ${hostname || targetIp}`
+      });
+    } else {
+      setQueueForm({
+        id: '',
+        name: `limit_${cleanName}`,
+        target: targetIp,
+        uploadLimit: '10M',
+        downloadLimit: '20M',
+        comment: `Giới hạn tốc độ ${hostname || targetIp}`
+      });
+    }
+    setQueueDialogOpen(true);
+  };
+
+  const handleSaveQueue = async (e) => {
+    if (e) e.preventDefault();
+    try {
+      const maxLimit = `${queueForm.uploadLimit || '10M'}/${queueForm.downloadLimit || '20M'}`;
+      const res = await apiRequest('/api/v1/network/mikrotik/queues', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: queueForm.name.trim(),
+          target: queueForm.target.trim(),
+          maxLimit,
+          comment: queueForm.comment.trim()
+        })
+      });
+      setActionMessage({ type: 'success', text: res.message || 'Đã áp dụng giới hạn băng thông thành công!' });
+      setQueueDialogOpen(false);
+      loadMikrotikQueues();
+    } catch (err) {
+      setActionMessage({ type: 'error', text: err.message || 'Lỗi khi đặt giới hạn băng thông' });
+    }
+  };
+
+  const handleDeleteQueue = async (id) => {
+    try {
+      const res = await apiRequest(`/api/v1/network/mikrotik/queues/${id}`, { method: 'DELETE' });
+      setActionMessage({ type: 'success', text: res.message || 'Đã xóa quy tắc giới hạn băng thông!' });
+      setConfirmDeleteQueueId(null);
+      loadMikrotikQueues();
+    } catch (err) {
+      setActionMessage({ type: 'error', text: err.message || 'Lỗi khi xóa quy tắc' });
+    }
+  };
+
+  const handleToggleNat = async (id, currentDisabled) => {
+    try {
+      const res = await apiRequest('/api/v1/network/mikrotik/nat/toggle', {
+        method: 'POST',
+        body: JSON.stringify({ id, disabled: !currentDisabled })
+      });
+      setActionMessage({ type: 'success', text: res.message || 'Đã cập nhật quy tắc NAT!' });
+      loadMikrotikNat();
+    } catch (err) {
+      setActionMessage({ type: 'error', text: err.message || 'Lỗi khi cập nhật NAT' });
+    }
+  };
+
+  const handleWakeOnLan = async (mac, hostname) => {
+    setWolLoadingMac(mac);
+    try {
+      const res = await apiRequest('/api/v1/network/mikrotik/wol', {
+        method: 'POST',
+        body: JSON.stringify({ mac, interfaceName: 'bridge' })
+      });
+      setActionMessage({ type: 'success', text: res.message || `Đã gửi gói tin đánh thức WoL tới ${hostname || mac}!` });
+    } catch (err) {
+      setActionMessage({ type: 'error', text: err.message || 'Lỗi khi gửi gói tin WoL' });
+    } finally {
+      setWolLoadingMac(null);
+    }
+  };
+
   // Fetch router status (supports Xiaomi and Gecoos)
   const loadRouterStatus = useCallback(async (isSilent = false) => {
     if (!isSilent) setLoadingRouter(true);
@@ -334,7 +462,12 @@ export default function NetworkMonitorView() {
     if (currentTab === 2) {
       if (selectedRouterType === 'mikrotik') {
         loadMikrotikStatus(false);
-        const interval = setInterval(() => loadMikrotikStatus(true), 3000);
+        if (mikrotikSubTab === 'queues') loadMikrotikQueues();
+        if (mikrotikSubTab === 'nat') loadMikrotikNat();
+        const interval = setInterval(() => {
+          loadMikrotikStatus(true);
+          if (mikrotikSubTab === 'queues') loadMikrotikQueues();
+        }, 3500);
         return () => clearInterval(interval);
       } else {
         loadRouterStatus(false);
@@ -342,7 +475,7 @@ export default function NetworkMonitorView() {
         return () => clearInterval(interval);
       }
     }
-  }, [currentTab, selectedRouterType, selectedRouterHost, loadMikrotikStatus, loadRouterStatus]);
+  }, [currentTab, selectedRouterType, selectedRouterHost, mikrotikSubTab, loadMikrotikStatus, loadRouterStatus]);
 
   // Preload MikroTik status once on mount
   useEffect(() => {
@@ -1624,100 +1757,363 @@ export default function NetworkMonitorView() {
                   </Grid>
                 </Grid>
 
-                {/* DHCP Leases Table */}
-                <Card sx={{ p: 3 }}>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2} sx={{ mb: 2 }}>
-                    <Box>
-                      <Typography variant="h6" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Server size={20} color={theme.palette.primary.main} /> Danh sách cấp phát DHCP Leases ({mikrotikStatus.dhcpLeases?.length || 0})
-                      </Typography>
-                      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                        Các thiết bị đang nhận địa chỉ IP động hoặc tĩnh từ DHCP Server của MikroTik
-                      </Typography>
-                    </Box>
-                    <Stack direction="row" spacing={1.5} alignItems="center">
-                      <TextField
-                        size="small"
-                        placeholder="Tìm IP, MAC, Hostname..."
-                        value={leaseSearch}
-                        onChange={(e) => setLeaseSearch(e.target.value)}
-                        InputProps={{
-                          startAdornment: <Search size={16} style={{ marginRight: 6, opacity: 0.6 }} />
-                        }}
-                        sx={{ width: { xs: '100%', sm: 220 } }}
-                      />
-                      <Button size="small" variant="outlined" startIcon={<RefreshCw size={14} />} onClick={() => loadMikrotikStatus(false)}>
+                {/* Sub-tab Navigation for MikroTik */}
+                <Stack direction="row" spacing={1} sx={{ borderBottom: `1px solid ${theme.palette.divider}`, pb: 1 }}>
+                  <Button
+                    variant={mikrotikSubTab === 'leases' ? 'contained' : 'outlined'}
+                    color={mikrotikSubTab === 'leases' ? 'primary' : 'inherit'}
+                    startIcon={<Server size={16} />}
+                    onClick={() => setMikrotikSubTab('leases')}
+                    sx={{ fontWeight: 700, borderRadius: 2 }}
+                  >
+                    DHCP Leases ({mikrotikStatus.dhcpLeases?.length || 0})
+                  </Button>
+                  <Button
+                    variant={mikrotikSubTab === 'queues' ? 'contained' : 'outlined'}
+                    color={mikrotikSubTab === 'queues' ? 'primary' : 'inherit'}
+                    startIcon={<Sliders size={16} />}
+                    onClick={() => {
+                      setMikrotikSubTab('queues');
+                      loadMikrotikQueues();
+                    }}
+                    sx={{ fontWeight: 700, borderRadius: 2 }}
+                  >
+                    Giới hạn Băng thông ({mikrotikQueues.length})
+                  </Button>
+                  <Button
+                    variant={mikrotikSubTab === 'nat' ? 'contained' : 'outlined'}
+                    color={mikrotikSubTab === 'nat' ? 'primary' : 'inherit'}
+                    startIcon={<Shield size={16} />}
+                    onClick={() => {
+                      setMikrotikSubTab('nat');
+                      loadMikrotikNat();
+                    }}
+                    sx={{ fontWeight: 700, borderRadius: 2 }}
+                  >
+                    Port Forwarding & NAT ({mikrotikNatRules.length})
+                  </Button>
+                </Stack>
+
+                {/* 1. DHCP Leases Table */}
+                {mikrotikSubTab === 'leases' && (
+                  <Card sx={{ p: 3 }}>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2} sx={{ mb: 2 }}>
+                      <Box>
+                        <Typography variant="h6" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Server size={20} color={theme.palette.primary.main} /> Danh sách cấp phát DHCP Leases ({mikrotikStatus.dhcpLeases?.length || 0})
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                          Các thiết bị đang nhận địa chỉ IP động hoặc tĩnh từ DHCP Server của MikroTik
+                        </Typography>
+                      </Box>
+                      <Stack direction="row" spacing={1.5} alignItems="center">
+                        <TextField
+                          size="small"
+                          placeholder="Tìm IP, MAC, Hostname..."
+                          value={leaseSearch}
+                          onChange={(e) => setLeaseSearch(e.target.value)}
+                          InputProps={{
+                            startAdornment: <Search size={16} style={{ marginRight: 6, opacity: 0.6 }} />
+                          }}
+                          sx={{ width: { xs: '100%', sm: 220 } }}
+                        />
+                        <Button size="small" variant="outlined" startIcon={<RefreshCw size={14} />} onClick={() => loadMikrotikStatus(false)}>
+                          Làm mới
+                        </Button>
+                      </Stack>
+                    </Stack>
+
+                    <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell sx={{ fontWeight: 700 }}>Địa chỉ IP</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>Tên máy / Hostname</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>MAC Address</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>Loại Lease</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>Thời hạn Lease</TableCell>
+                            <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>Thao tác</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {(!mikrotikStatus.dhcpLeases || mikrotikStatus.dhcpLeases.length === 0) ? (
+                            <TableRow>
+                              <TableCell colSpan={6} sx={{ textAlign: 'center', py: 3, color: 'text.secondary' }}>
+                                {mikrotikStatus.isApiConnected ? 'Không có thiết bị DHCP lease nào' : 'Chưa kết nối REST API để đọc bảng DHCP Leases (Nhấn Cấu hình API để kết nối)'}
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            mikrotikStatus.dhcpLeases
+                              .filter(l => {
+                                const q = (leaseSearch || '').trim().toLowerCase();
+                                if (!q) return true;
+                                return (
+                                  (l.ip && l.ip.toLowerCase().includes(q)) ||
+                                  (l.hostname && l.hostname.toLowerCase().includes(q)) ||
+                                  (l.mac && l.mac.toLowerCase().includes(q)) ||
+                                  (l.comment && l.comment.toLowerCase().includes(q))
+                                );
+                              })
+                              .map((lease, idx) => (
+                              <TableRow key={lease.id || idx} hover>
+                                <TableCell sx={{ fontFamily: 'monospace', fontWeight: 700 }}>{lease.ip}</TableCell>
+                                <TableCell sx={{ fontWeight: 600 }}>
+                                  {lease.hostname || lease.comment || 'Thiết bị LAN'}
+                                  {lease.comment && lease.hostname !== lease.comment && (
+                                    <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
+                                      {lease.comment}
+                                    </Typography>
+                                  )}
+                                </TableCell>
+                                <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{lease.mac}</TableCell>
+                                <TableCell>
+                                  <Label variant="soft" color={lease.dynamic ? 'info' : 'success'}>
+                                    {lease.dynamic ? 'Dynamic' : 'Static'}
+                                  </Label>
+                                </TableCell>
+                                <TableCell sx={{ fontSize: '0.8rem', color: 'text.secondary' }}>{lease.expiresAfter || '--'}</TableCell>
+                                <TableCell sx={{ textAlign: 'right' }}>
+                                  <Stack direction="row" spacing={1} justifyContent="flex-end">
+                                    {lease.mac && lease.mac.length >= 11 && (
+                                      <Tooltip title="Đánh thức thiết bị qua Wake-on-LAN">
+                                        <Button
+                                          size="small"
+                                          variant="outlined"
+                                          color="warning"
+                                          disabled={wolLoadingMac === lease.mac}
+                                          startIcon={<Zap size={14} />}
+                                          onClick={() => handleWakeOnLan(lease.mac, lease.hostname || lease.ip)}
+                                          sx={{ minWidth: 0, px: 1 }}
+                                        >
+                                          {wolLoadingMac === lease.mac ? 'Đang gửi...' : 'WoL'}
+                                        </Button>
+                                      </Tooltip>
+                                    )}
+                                    <Tooltip title="Giới hạn tốc độ mạng (Rate Limit) cho IP này">
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        color="info"
+                                        startIcon={<Sliders size={14} />}
+                                        onClick={() => handleOpenQueueLimit(lease.ip, lease.hostname || lease.ip)}
+                                        sx={{ minWidth: 0, px: 1 }}
+                                      >
+                                        Giới hạn
+                                      </Button>
+                                    </Tooltip>
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      startIcon={<Plus size={14} />}
+                                      onClick={() => handleOpenAddTarget(lease.ip, lease.hostname || `LAN Device (${lease.ip})`)}
+                                      sx={{ minWidth: 0, px: 1 }}
+                                    >
+                                      Theo dõi
+                                    </Button>
+                                  </Stack>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </Card>
+                )}
+
+                {/* 2. Simple Queues (Bandwidth & Rate Limit) View */}
+                {mikrotikSubTab === 'queues' && (
+                  <Card sx={{ p: 3 }}>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2} sx={{ mb: 2 }}>
+                      <Box>
+                        <Typography variant="h6" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Sliders size={20} color={theme.palette.primary.main} /> Quản lý Băng thông & Giới hạn Tốc độ (Simple Queues)
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                          Thiết lập mức trần Upload/Download theo từng IP thiết bị hoặc dải mạng để tránh nghẽn mạng
+                        </Typography>
+                      </Box>
+                      <Stack direction="row" spacing={1.5}>
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          startIcon={<Plus size={16} />}
+                          onClick={() => {
+                            setQueueForm({ id: '', name: '', target: '', uploadLimit: '10M', downloadLimit: '20M', comment: '' });
+                            setQueueDialogOpen(true);
+                          }}
+                          sx={{ fontWeight: 700 }}
+                        >
+                          Thêm giới hạn
+                        </Button>
+                        <Button size="small" variant="outlined" startIcon={<RefreshCw size={14} />} onClick={loadMikrotikQueues}>
+                          Làm mới
+                        </Button>
+                      </Stack>
+                    </Stack>
+
+                    {loadingQueues ? (
+                      <LinearProgress sx={{ my: 3, borderRadius: 1.5 }} />
+                    ) : (
+                      <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell sx={{ fontWeight: 700 }}>Tên quy tắc</TableCell>
+                              <TableCell sx={{ fontWeight: 700 }}>IP Mục tiêu (Target)</TableCell>
+                              <TableCell sx={{ fontWeight: 700 }}>Mức trần (Upload / Download)</TableCell>
+                              <TableCell sx={{ fontWeight: 700 }}>Tốc độ thực tế (Tx / Rx)</TableCell>
+                              <TableCell sx={{ fontWeight: 700 }}>Ghi chú</TableCell>
+                              <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>Thao tác</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {mikrotikQueues.length === 0 ? (
+                              <TableRow>
+                                <TableCell colSpan={6} sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>
+                                  Chưa có quy tắc giới hạn băng thông nào. Nhấn "Thêm giới hạn" hoặc chọn từ bảng DHCP Leases để tạo quy tắc.
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              mikrotikQueues.map((q) => (
+                                <TableRow key={q.id} hover>
+                                  <TableCell sx={{ fontWeight: 700, fontFamily: 'monospace' }}>{q.name}</TableCell>
+                                  <TableCell sx={{ fontWeight: 700, color: 'primary.main', fontFamily: 'monospace' }}>{q.target}</TableCell>
+                                  <TableCell>
+                                    <Chip
+                                      size="small"
+                                      label={`⬆️ ${q.uploadLimitMbps ? q.uploadLimitMbps + ' Mbps' : 'Unlimited'} / ⬇️ ${q.downloadLimitMbps ? q.downloadLimitMbps + ' Mbps' : 'Unlimited'}`}
+                                      color="info"
+                                      variant="outlined"
+                                      sx={{ fontWeight: 700 }}
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '0.8rem' }}>
+                                      ⬆️ {q.uploadRateMbps || 0} Mbps • ⬇️ {q.downloadRateMbps || 0} Mbps
+                                    </Typography>
+                                  </TableCell>
+                                  <TableCell sx={{ color: 'text.secondary', fontSize: '0.8rem' }}>{q.comment || '--'}</TableCell>
+                                  <TableCell sx={{ textAlign: 'right' }}>
+                                    <Stack direction="row" spacing={1} justifyContent="flex-end">
+                                      <IconButton
+                                        size="small"
+                                        color="primary"
+                                        onClick={() => {
+                                          const parts = (q.maxLimit || '10M/20M').split('/');
+                                          setQueueForm({
+                                            id: q.id,
+                                            name: q.name,
+                                            target: q.target ? q.target.replace('/32', '') : '',
+                                            uploadLimit: parts[0] || '10M',
+                                            downloadLimit: parts[1] || '20M',
+                                            comment: q.comment || ''
+                                          });
+                                          setQueueDialogOpen(true);
+                                        }}
+                                      >
+                                        <Edit2 size={15} />
+                                      </IconButton>
+                                      <IconButton
+                                        size="small"
+                                        color="error"
+                                        onClick={() => setConfirmDeleteQueueId(q.id)}
+                                      >
+                                        <Trash2 size={15} />
+                                      </IconButton>
+                                    </Stack>
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                            )}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    )}
+                  </Card>
+                )}
+
+                {/* 3. Port Forwarding & NAT Rules View */}
+                {mikrotikSubTab === 'nat' && (
+                  <Card sx={{ p: 3 }}>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2} sx={{ mb: 2 }}>
+                      <Box>
+                        <Typography variant="h6" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Shield size={20} color={theme.palette.primary.main} /> Bảng Quy Tắc Chuyển Tiếp Cổng (Port Forwarding & NAT)
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                          Các quy tắc NAT / Firewall trên RouterOS điều phối lưu lượng mạng ra vào
+                        </Typography>
+                      </Box>
+                      <Button size="small" variant="outlined" startIcon={<RefreshCw size={14} />} onClick={loadMikrotikNat}>
                         Làm mới
                       </Button>
                     </Stack>
-                  </Stack>
 
-                  <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow>
-                          <TableCell sx={{ fontWeight: 700 }}>Địa chỉ IP</TableCell>
-                          <TableCell sx={{ fontWeight: 700 }}>Tên máy / Hostname</TableCell>
-                          <TableCell sx={{ fontWeight: 700 }}>MAC Address</TableCell>
-                          <TableCell sx={{ fontWeight: 700 }}>Loại Lease</TableCell>
-                          <TableCell sx={{ fontWeight: 700 }}>Thời hạn Lease</TableCell>
-                          <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>Thao tác</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {(!mikrotikStatus.dhcpLeases || mikrotikStatus.dhcpLeases.length === 0) ? (
-                          <TableRow>
-                            <TableCell colSpan={6} sx={{ textAlign: 'center', py: 3, color: 'text.secondary' }}>
-                              {mikrotikStatus.isApiConnected ? 'Không có thiết bị DHCP lease nào' : 'Chưa kết nối REST API để đọc bảng DHCP Leases (Nhấn Cấu hình API để kết nối)'}
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          mikrotikStatus.dhcpLeases
-                            .filter(l => {
-                              const q = (leaseSearch || '').trim().toLowerCase();
-                              if (!q) return true;
-                              return (
-                                (l.ip && l.ip.toLowerCase().includes(q)) ||
-                                (l.hostname && l.hostname.toLowerCase().includes(q)) ||
-                                (l.mac && l.mac.toLowerCase().includes(q)) ||
-                                (l.comment && l.comment.toLowerCase().includes(q))
-                              );
-                            })
-                            .map((lease, idx) => (
-                            <TableRow key={lease.id || idx} hover>
-                              <TableCell sx={{ fontFamily: 'monospace', fontWeight: 700 }}>{lease.ip}</TableCell>
-                              <TableCell sx={{ fontWeight: 600 }}>
-                                {lease.hostname || lease.comment || 'Thiết bị LAN'}
-                                {lease.comment && lease.hostname !== lease.comment && (
-                                  <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
-                                    {lease.comment}
-                                  </Typography>
-                                )}
-                              </TableCell>
-                              <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{lease.mac}</TableCell>
-                              <TableCell>
-                                <Label variant="soft" color={lease.dynamic ? 'info' : 'success'}>
-                                  {lease.dynamic ? 'Dynamic' : 'Static'}
-                                </Label>
-                              </TableCell>
-                              <TableCell sx={{ fontSize: '0.8rem', color: 'text.secondary' }}>{lease.expiresAfter || '--'}</TableCell>
-                              <TableCell sx={{ textAlign: 'right' }}>
-                                <Button
-                                  size="small"
-                                  variant="outlined"
-                                  startIcon={<Plus size={14} />}
-                                  onClick={() => handleOpenAddTarget(lease.ip, lease.hostname || `LAN Device (${lease.ip})`)}
-                                >
-                                  Theo dõi
-                                </Button>
-                              </TableCell>
+                    {loadingNat ? (
+                      <LinearProgress sx={{ my: 3, borderRadius: 1.5 }} />
+                    ) : (
+                      <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell sx={{ fontWeight: 700 }}>Chain / Action</TableCell>
+                              <TableCell sx={{ fontWeight: 700 }}>Giao thức & Cổng đến</TableCell>
+                              <TableCell sx={{ fontWeight: 700 }}>Chuyển tiếp đến (To IP:Port)</TableCell>
+                              <TableCell sx={{ fontWeight: 700 }}>Ghi chú / Comment</TableCell>
+                              <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>Trạng thái</TableCell>
                             </TableRow>
-                          ))
-                        )}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </Card>
+                          </TableHead>
+                          <TableBody>
+                            {mikrotikNatRules.length === 0 ? (
+                              <TableRow>
+                                <TableCell colSpan={5} sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>
+                                  Không tìm thấy quy tắc NAT nào trên RouterOS.
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              mikrotikNatRules.map((rule) => (
+                                <TableRow key={rule.id} hover sx={{ opacity: rule.disabled ? 0.6 : 1 }}>
+                                  <TableCell>
+                                    <Stack direction="row" spacing={1} alignItems="center">
+                                      <Label variant="soft" color={rule.chain === 'dstnat' ? 'warning' : 'primary'}>
+                                        {rule.chain}
+                                      </Label>
+                                      <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                                        {rule.action}
+                                      </Typography>
+                                    </Stack>
+                                  </TableCell>
+                                  <TableCell sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                                    {rule.protocol !== 'all' ? `${rule.protocol.toUpperCase()} : ${rule.dstPort || 'Any'}` : 'All Traffic'}
+                                  </TableCell>
+                                  <TableCell sx={{ fontFamily: 'monospace', fontWeight: 700, color: 'primary.main' }}>
+                                    {rule.toAddresses ? `${rule.toAddresses}${rule.toPorts ? ':' + rule.toPorts : ''}` : '--'}
+                                  </TableCell>
+                                  <TableCell sx={{ color: 'text.secondary', fontSize: '0.8rem' }}>{rule.comment || '--'}</TableCell>
+                                  <TableCell sx={{ textAlign: 'right' }}>
+                                    <FormControlLabel
+                                      control={
+                                        <Switch
+                                          checked={!rule.disabled}
+                                          onChange={() => handleToggleNat(rule.id, rule.disabled)}
+                                          color="success"
+                                          size="small"
+                                        />
+                                      }
+                                      label={!rule.disabled ? 'Bật' : 'Tắt'}
+                                      sx={{ m: 0 }}
+                                    />
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                            )}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    )}
+                  </Card>
+                )}
               </Stack>
             )
           )}
@@ -2212,6 +2608,108 @@ export default function NetworkMonitorView() {
         message={`Thao tác này sẽ khởi động lại thiết bị tại địa chỉ ${confirmRebootTarget?.ip}. Kết nối mạng LAN/Wi-Fi qua node này sẽ tạm thời gián đoạn trong 1-2 phút.`}
         onConfirm={handleReboot}
         onClose={() => setConfirmRebootTarget(null)}
+      />
+
+      {/* MikroTik Simple Queue Limit Dialog */}
+      <Dialog open={queueDialogOpen} onClose={() => setQueueDialogOpen(false)} maxWidth="sm" fullWidth>
+        <form onSubmit={handleSaveQueue}>
+          <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Sliders size={20} color={theme.palette.primary.main} /> {queueForm.id ? 'Sửa Giới Hạn Băng Thông' : 'Thêm Giới Hạn Băng Thông (Simple Queue)'}
+          </DialogTitle>
+          <DialogContent>
+            <Stack spacing={2.5} sx={{ mt: 1 }}>
+              <TextField
+                label="Tên quy tắc (Name)"
+                value={queueForm.name}
+                onChange={(e) => setQueueForm(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="VD: limit_camera, limit_guest"
+                required
+                fullWidth
+              />
+              <TextField
+                label="Địa chỉ IP Mục tiêu (Target IP hoặc Subnet)"
+                value={queueForm.target}
+                onChange={(e) => setQueueForm(prev => ({ ...prev, target: e.target.value }))}
+                placeholder="VD: 192.168.1.50 hoặc 192.168.1.0/24"
+                helperText="IP của thiết bị cần bóp băng thông hoặc cả dải mạng"
+                required
+                fullWidth
+              />
+
+              <Box>
+                <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', display: 'block', mb: 1 }}>
+                  CHỌN MỨC GIỚI HẠN NHANH (PRESET)
+                </Typography>
+                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+                  {[
+                    { label: '2M / 5M (Tiết kiệm)', up: '2M', down: '5M' },
+                    { label: '5M / 10M (Cơ bản)', up: '5M', down: '10M' },
+                    { label: '10M / 20M (Chuẩn)', up: '10M', down: '20M' },
+                    { label: '20M / 50M (Cao)', up: '20M', down: '50M' },
+                    { label: '50M / 100M (Rất cao)', up: '50M', down: '100M' },
+                    { label: '0 / 0 (Không giới hạn)', up: '0', down: '0' }
+                  ].map((p, idx) => (
+                    <Button
+                      key={idx}
+                      size="small"
+                      variant={queueForm.uploadLimit === p.up && queueForm.downloadLimit === p.down ? 'contained' : 'outlined'}
+                      onClick={() => setQueueForm(prev => ({ ...prev, uploadLimit: p.up, downloadLimit: p.down }))}
+                      sx={{ fontSize: '0.75rem', fontWeight: 700 }}
+                    >
+                      {p.label}
+                    </Button>
+                  ))}
+                </Stack>
+              </Box>
+
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <TextField
+                    label="Giới hạn Upload tối đa"
+                    value={queueForm.uploadLimit}
+                    onChange={(e) => setQueueForm(prev => ({ ...prev, uploadLimit: e.target.value }))}
+                    placeholder="VD: 10M hoặc 512k"
+                    helperText="VD: 5M, 10M, 50M (0 là không giới hạn)"
+                    fullWidth
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField
+                    label="Giới hạn Download tối đa"
+                    value={queueForm.downloadLimit}
+                    onChange={(e) => setQueueForm(prev => ({ ...prev, downloadLimit: e.target.value }))}
+                    placeholder="VD: 20M hoặc 2M"
+                    helperText="VD: 10M, 20M, 100M (0 là không giới hạn)"
+                    fullWidth
+                  />
+                </Grid>
+              </Grid>
+
+              <TextField
+                label="Ghi chú / Comment"
+                value={queueForm.comment}
+                onChange={(e) => setQueueForm(prev => ({ ...prev, comment: e.target.value }))}
+                placeholder="VD: Bóp băng thông máy khách"
+                fullWidth
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions sx={{ p: 2.5 }}>
+            <Button onClick={() => setQueueDialogOpen(false)}>Hủy</Button>
+            <Button type="submit" variant="contained" color="primary" sx={{ fontWeight: 700 }}>
+              {queueForm.id ? 'Cập nhật giới hạn' : 'Áp dụng giới hạn'}
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
+
+      {/* Delete Queue Confirm Dialog */}
+      <ConfirmDialog
+        open={Boolean(confirmDeleteQueueId)}
+        title="Xóa quy tắc Giới hạn Băng thông?"
+        message="Bạn có chắc muốn gỡ bỏ mức giới hạn tốc độ này trên MikroTik? Thiết bị sẽ trở về tốc độ mạng tối đa không giới hạn."
+        onConfirm={() => handleDeleteQueue(confirmDeleteQueueId)}
+        onClose={() => setConfirmDeleteQueueId(null)}
       />
 
       {/* Edit Custom IP Name Dialog */}

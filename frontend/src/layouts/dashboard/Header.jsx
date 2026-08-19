@@ -13,6 +13,8 @@ import {
   Avatar,
   Divider,
   Tooltip,
+  Button,
+  Chip,
   useTheme
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
@@ -26,7 +28,8 @@ import {
   KeyRound,
   CheckCircle2,
   AlertCircle,
-  Clock
+  Clock,
+  Search
 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useThemeMode } from '../../context/ThemeContext';
@@ -39,7 +42,7 @@ export const HEADER_DESKTOP = 72;
 export const NAV_WIDTH = 280;
 export const NAV_COLLAPSED_WIDTH = 88;
 
-export default function Header({ onOpenNav, currentPage, onOpenPasswordDialog, isCollapsed }) {
+export default function Header({ onOpenNav, currentPage, onOpenPasswordDialog, onOpenCommandPalette, isCollapsed }) {
   const theme = useTheme();
   const { lang, setLang, t } = useLanguage();
   const { themeMode, toggleTheme } = useThemeMode();
@@ -123,6 +126,46 @@ export default function Header({ onOpenNav, currentPage, onOpenPasswordDialog, i
 
         {/* Right Side: Host Selector & Actions */}
         <Stack direction="row" alignItems="center" spacing={{ xs: 0.5, sm: 1.5 }} sx={{ minWidth: 0 }}>
+          {/* Quick Command Palette Button */}
+          <Tooltip title="Tìm nhanh máy trạm, điều hướng, kịch bản (Ctrl + K)">
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={onOpenCommandPalette}
+              startIcon={<Search size={14} />}
+              endIcon={
+                <Chip
+                  label="Ctrl K"
+                  size="small"
+                  sx={{ height: 18, fontSize: '0.65rem', fontWeight: 800, bgcolor: alpha(theme.palette.divider, 0.6) }}
+                />
+              }
+              sx={{
+                display: { xs: 'none', md: 'inline-flex' },
+                borderRadius: 2,
+                textTransform: 'none',
+                color: 'text.secondary',
+                borderColor: alpha(theme.palette.divider, 0.8),
+                py: 0.5,
+                px: 1.2
+              }}
+            >
+              Tìm nhanh...
+            </Button>
+          </Tooltip>
+          <IconButton
+            onClick={onOpenCommandPalette}
+            sx={{
+              display: { xs: 'inline-flex', md: 'none' },
+              width: 38,
+              height: 38,
+              color: 'text.secondary',
+              bgcolor: alpha(theme.palette.grey[500], 0.08)
+            }}
+          >
+            <Search size={18} />
+          </IconButton>
+
           {/* Socket Live Status */}
           <Label
             variant="soft"

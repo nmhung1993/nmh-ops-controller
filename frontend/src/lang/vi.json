@@ -43,6 +43,7 @@
   "nav.network": "Mạng nội bộ",
   "nav.processes": "Tiến trình",
   "nav.watchdog": "Giám sát tự động",
+  "nav.scripts": "Kho kịch bản",
   "nav.activity": "Nhật ký hoạt động",
   "nav.admin": "Quản trị",
   "socket.connecting": "Đang kết nối",

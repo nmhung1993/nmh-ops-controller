@@ -20,6 +20,9 @@ const {
 const { networkRouter } = require('./network-monitor');
 const { alertEngine } = require('./alert-engine');
 const { dockerManager } = require('./docker-manager');
+const { calculateHealthScore } = require('./health-score');
+const { scriptsManager } = require('./scripts-manager');
+const { logAuditEvent, queryAuditLogs, exportAuditLogsToCsv } = require('./audit-logger');
 
 const PORT = Number(process.env.PORT || 3003);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -174,6 +177,13 @@ function authenticate(req, res, next) {
 
 function requireSuperAdmin(req, res, next) {
   if (req.user?.role !== 'super_admin') return res.status(403).json({ error: 'Super admin only' });
+  next();
+}
+
+function requireAdmin(req, res, next) {
+  if (req.user?.role !== 'super_admin' && req.user?.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin role required' });
+  }
   next();
 }
 
@@ -1474,6 +1484,132 @@ app.post('/api/v1/docker/:hostId/volumes/prune', authenticate, requireDockerHost
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ==========================================
+// Health Score Endpoint
+// ==========================================
+app.get('/api/v1/health-score', authenticate, async (req, res) => {
+  try {
+    let targets = [];
+    try {
+      const targetsFile = path.join(DATA_DIR, 'network-targets.json');
+      if (fs.existsSync(targetsFile)) targets = JSON.parse(fs.readFileSync(targetsFile, 'utf8'));
+    } catch { }
+
+    let mikrotikStatus = null;
+    try {
+      const mtConfigFile = path.join(DATA_DIR, 'mikrotik-config.json');
+      if (fs.existsSync(mtConfigFile)) {
+        const mtConf = JSON.parse(fs.readFileSync(mtConfigFile, 'utf8'));
+        const { MikroTikManager } = require('./mikrotik-manager');
+        const mtMgr = new MikroTikManager(mtConf);
+        mikrotikStatus = await mtMgr.fetchStatus().catch(() => null);
+      }
+    } catch { }
+
+    const health = calculateHealthScore(db, mikrotikStatus, targets);
+    res.json(health);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==========================================
+// Script Hub Endpoints
+// ==========================================
+app.get('/api/v1/scripts', authenticate, (req, res) => {
+  res.json({ scripts: scriptsManager.listScripts() });
+});
+
+app.post('/api/v1/scripts', authenticate, requireAdmin, (req, res) => {
+  try {
+    const script = scriptsManager.addScript(req.body || {});
+    res.status(201).json({ success: true, script });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.put('/api/v1/scripts/:id', authenticate, requireAdmin, (req, res) => {
+  try {
+    const script = scriptsManager.updateScript(req.params.id, req.body || {});
+    res.json({ success: true, script });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/v1/scripts/:id', authenticate, requireAdmin, (req, res) => {
+  try {
+    const result = scriptsManager.deleteScript(req.params.id);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/v1/scripts/:id/run', authenticate, requireAdmin, async (req, res) => {
+  const { agentId, customCommand } = req.body || {};
+  if (!agentId) return res.status(400).json({ error: 'agentId is required' });
+
+  const script = scriptsManager.getScript(req.params.id);
+  const commandToRun = customCommand || script?.scriptContent;
+
+  if (!commandToRun) {
+    return res.status(404).json({ error: 'Script not found or empty' });
+  }
+
+  // Check host access permission
+  if (!canManageHost(req.user, agentId)) {
+    return res.status(403).json({ error: 'Unauthorized for this host' });
+  }
+
+  try {
+    const startTime = Date.now();
+    const result = await executeAgentCommand(agentId, 'system.execute', { command: commandToRun }, 45000, req.user?.username);
+    const durationMs = Date.now() - startTime;
+
+    res.json({
+      success: true,
+      agentId,
+      scriptId: req.params.id,
+      scriptName: script?.name || 'Custom Script',
+      durationMs,
+      output: result?.stdout || result?.output || 'Thực thi thành công (Không có đầu ra)'
+    });
+    logAuditEvent(db, {
+      agentId,
+      type: 'audit.script.run',
+      user: req.user.username,
+      action: `Chạy kịch bản: ${script?.name || req.params.id}`,
+      details: { scriptId: req.params.id, durationMs, scriptName: script?.name }
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      agentId,
+      scriptId: req.params.id,
+      error: err.message
+    });
+  }
+});
+
+// ==========================================
+// Audit Logs Endpoint
+// ==========================================
+app.get('/api/v1/audit-logs', authenticate, (req, res) => {
+  const { agentId, severity, category, search, limit, from, to, format } = req.query || {};
+  const logs = queryAuditLogs(db, { agentId, severity, category, search, limit, from, to });
+
+  if (format === 'csv') {
+    const csv = exportAuditLogsToCsv(logs);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="audit-logs-${Date.now()}.csv"`);
+    return res.send(csv);
+  }
+
+  res.json({ logs });
 });
 
 app.get('*', (req, res) => res.sendFile(path.join(staticPath, 'index.html')));

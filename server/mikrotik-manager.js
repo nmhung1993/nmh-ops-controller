@@ -777,6 +777,238 @@ class MikroTikManager {
       return { success: true, message: 'Đã gửi lệnh khởi động lại MikroTik RouterOS' };
     }
   }
+
+  // ==========================================
+  // Simple Queues (Bandwidth & Rate Limiting)
+  // ==========================================
+  async fetchQueues() {
+    try {
+      if (this.isSocketPort()) {
+        const client = new RouterOSSocketClient({
+          host: this.host,
+          port: this.port,
+          username: this.username,
+          password: this.password,
+          useSsl: this.useHttps
+        });
+        const res = await client.connectAndQuery(['/queue/simple/print']);
+        const list = Array.isArray(res[0]) ? res[0] : [];
+        return list.map(q => {
+          const maxLimitParts = (q['max-limit'] || '0/0').split('/');
+          const uploadLimitBps = parseInt(maxLimitParts[0] || '0', 10);
+          const downloadLimitBps = parseInt(maxLimitParts[1] || '0', 10);
+
+          const rateParts = (q.rate || '0/0').split('/');
+          const uploadRateBps = parseInt(rateParts[0] || '0', 10);
+          const downloadRateBps = parseInt(rateParts[1] || '0', 10);
+
+          return {
+            id: q['.id'] || q.id,
+            name: q.name,
+            target: q.target,
+            maxLimit: q['max-limit'] || '0/0',
+            uploadLimitMbps: uploadLimitBps > 0 ? parseFloat((uploadLimitBps / 1000000).toFixed(2)) : null,
+            downloadLimitMbps: downloadLimitBps > 0 ? parseFloat((downloadLimitBps / 1000000).toFixed(2)) : null,
+            uploadRateMbps: parseFloat(((uploadRateBps * 8) / 1000000).toFixed(2)),
+            downloadRateMbps: parseFloat(((downloadRateBps * 8) / 1000000).toFixed(2)),
+            bytes: q.bytes || '0/0',
+            packets: q.packets || '0/0',
+            disabled: q.disabled === 'true' || q.disabled === true,
+            comment: q.comment || ''
+          };
+        });
+      } else {
+        const res = await this.httpRestRequest('/queue/simple');
+        const list = Array.isArray(res) ? res : [];
+        return list.map(q => ({
+          id: q['.id'] || q.id,
+          name: q.name,
+          target: q.target,
+          maxLimit: q['max-limit'] || '0/0',
+          disabled: q.disabled === 'true' || q.disabled === true,
+          comment: q.comment || ''
+        }));
+      }
+    } catch (err) {
+      console.error('fetchQueues error:', err.message);
+      return [];
+    }
+  }
+
+  async setQueueLimit({ name, target, maxLimit, comment }) {
+    if (!name || !target || !maxLimit) {
+      throw new Error('Name, target IP và maxLimit (ví dụ 10M/20M) là bắt buộc.');
+    }
+    const targetNormalized = target.includes('/') ? target : `${target}/32`;
+
+    if (this.isSocketPort()) {
+      const client = new RouterOSSocketClient({
+        host: this.host,
+        port: this.port,
+        username: this.username,
+        password: this.password,
+        useSsl: this.useHttps
+      });
+
+      // Check if queue already exists
+      const currentQueues = await this.fetchQueues();
+      const existing = currentQueues.find(q => q.name === name || q.target === targetNormalized);
+
+      if (existing) {
+        await client.connectAndQuery([
+          [
+            '/queue/simple/set',
+            `*numbers=${existing.id}`,
+            `=max-limit=${maxLimit}`,
+            `=comment=${comment || ''}`
+          ]
+        ]);
+        return { success: true, message: `Đã cập nhật giới hạn băng thông (${maxLimit}) cho ${targetNormalized}` };
+      } else {
+        await client.connectAndQuery([
+          [
+            '/queue/simple/add',
+            `=name=${name}`,
+            `=target=${targetNormalized}`,
+            `=max-limit=${maxLimit}`,
+            `=comment=${comment || ''}`
+          ]
+        ]);
+        return { success: true, message: `Đã tạo giới hạn băng thông (${maxLimit}) cho ${targetNormalized}` };
+      }
+    } else {
+      await this.httpRestRequest('/queue/simple', 'PUT', {
+        name,
+        target: targetNormalized,
+        'max-limit': maxLimit,
+        comment: comment || ''
+      });
+      return { success: true, message: `Đã áp dụng giới hạn băng thông (${maxLimit})` };
+    }
+  }
+
+  async removeQueue(id) {
+    if (!id) throw new Error('Queue ID is required');
+    if (this.isSocketPort()) {
+      const client = new RouterOSSocketClient({
+        host: this.host,
+        port: this.port,
+        username: this.username,
+        password: this.password,
+        useSsl: this.useHttps
+      });
+      await client.connectAndQuery([
+        ['/queue/simple/remove', `*numbers=${id}`]
+      ]);
+      return { success: true, message: 'Đã xóa giới hạn băng thông' };
+    } else {
+      await this.httpRestRequest(`/queue/simple/${id}`, 'DELETE');
+      return { success: true, message: 'Đã xóa giới hạn băng thông' };
+    }
+  }
+
+  // ==========================================
+  // Wake-on-LAN (WoL via RouterOS)
+  // ==========================================
+  async wakeOnLan(macAddress, interfaceName = 'bridge') {
+    if (!macAddress) throw new Error('MAC Address is required');
+    const cleanMac = macAddress.toUpperCase().replace(/-/g, ':');
+
+    if (this.isSocketPort()) {
+      const client = new RouterOSSocketClient({
+        host: this.host,
+        port: this.port,
+        username: this.username,
+        password: this.password,
+        useSsl: this.useHttps
+      });
+      await client.connectAndQuery([
+        ['/tool/wol', `=mac=${cleanMac}`, `=interface=${interfaceName}`]
+      ]);
+      return { success: true, message: `Đã gửi gói tin Magic Packet đánh thức thiết bị (${cleanMac}) qua interface ${interfaceName}!` };
+    } else {
+      await this.httpRestRequest('/tool/wol', 'POST', {
+        mac: cleanMac,
+        interface: interfaceName
+      });
+      return { success: true, message: `Đã gửi gói tin Magic Packet đánh thức thiết bị (${cleanMac})!` };
+    }
+  }
+
+  // ==========================================
+  // Port Forwarding / NAT Rules Manager
+  // ==========================================
+  async fetchNatRules() {
+    try {
+      if (this.isSocketPort()) {
+        const client = new RouterOSSocketClient({
+          host: this.host,
+          port: this.port,
+          username: this.username,
+          password: this.password,
+          useSsl: this.useHttps
+        });
+        const res = await client.connectAndQuery(['/ip/firewall/nat/print']);
+        const list = Array.isArray(res[0]) ? res[0] : [];
+        return list.map(n => ({
+          id: n['.id'] || n.id,
+          chain: n.chain,
+          action: n.action,
+          protocol: n.protocol || 'all',
+          dstPort: n['dst-port'] || '',
+          toAddresses: n['to-addresses'] || '',
+          toPorts: n['to-ports'] || '',
+          inInterface: n['in-interface'] || '',
+          outInterface: n['out-interface'] || '',
+          comment: n.comment || '',
+          disabled: n.disabled === 'true' || n.disabled === true,
+          bytes: n.bytes || '0',
+          packets: n.packets || '0'
+        }));
+      } else {
+        const res = await this.httpRestRequest('/ip/firewall/nat');
+        const list = Array.isArray(res) ? res : [];
+        return list.map(n => ({
+          id: n['.id'] || n.id,
+          chain: n.chain,
+          action: n.action,
+          protocol: n.protocol || 'all',
+          dstPort: n['dst-port'] || '',
+          toAddresses: n['to-addresses'] || '',
+          toPorts: n['to-ports'] || '',
+          comment: n.comment || '',
+          disabled: n.disabled === 'true' || n.disabled === true
+        }));
+      }
+    } catch (err) {
+      console.error('fetchNatRules error:', err.message);
+      return [];
+    }
+  }
+
+  async toggleNatRule(id, disabled) {
+    if (!id) throw new Error('NAT Rule ID is required');
+    const disableVal = disabled ? 'yes' : 'no';
+
+    if (this.isSocketPort()) {
+      const client = new RouterOSSocketClient({
+        host: this.host,
+        port: this.port,
+        username: this.username,
+        password: this.password,
+        useSsl: this.useHttps
+      });
+      await client.connectAndQuery([
+        ['/ip/firewall/nat/set', `*numbers=${id}`, `=disabled=${disableVal}`]
+      ]);
+      return { success: true, message: `Đã ${disabled ? 'vô hiệu hóa' : 'kích hoạt'} quy tắc NAT` };
+    } else {
+      await this.httpRestRequest(`/ip/firewall/nat/${id}`, 'PATCH', {
+        disabled: disabled ? 'true' : 'false'
+      });
+      return { success: true, message: `Đã ${disabled ? 'vô hiệu hóa' : 'kích hoạt'} quy tắc NAT` };
+    }
+  }
 }
 
 module.exports = {

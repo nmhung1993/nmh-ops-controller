@@ -24,6 +24,7 @@ import {
   Radio,
   Globe,
   Boxes,
+  Terminal,
   ChevronLeft,
   ChevronRight,
   PanelLeftClose,
@@ -41,6 +42,7 @@ export const NAV_ITEMS = [
   { id: 'dashboard', path: '#dashboard', labelKey: 'nav.dashboard', icon: LayoutDashboard },
   { id: 'processes', path: '#processes', labelKey: 'nav.processes', icon: Activity },
   { id: 'watchdog', path: '#watchdog', labelKey: 'nav.watchdog', icon: ShieldCheck },
+  { id: 'scripts', path: '#scripts', labelKey: 'nav.scripts', icon: Terminal },
   { id: 'activity', path: '#activity', labelKey: 'nav.activity', icon: History },
   { id: 'admin', path: '#admin', labelKey: 'nav.admin', icon: Settings, superAdminOnly: true }
 ];

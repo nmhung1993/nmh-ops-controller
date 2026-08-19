@@ -290,8 +290,8 @@ $xmlRoot = [Security.SecurityElement]::Escape($InstallRoot)
 @"
 <service>
   <id>WindowsControllerAgent</id>
-  <name>NMH Opss Controller Agent</name>
-  <description>NMH Opsts Windows telemetry and executes approved controller commands.</description>
+  <name>NMH Ops Controller Agent</name>
+  <description>Collects Windows telemetry and executes approved controller commands.</description>
   <executable>$xmlNode</executable>
   <arguments>&quot;$xmlAgent&quot; --config &quot;$xmlConfig&quot;</arguments>
   <workingdirectory>$xmlRoot</workingdirectory>

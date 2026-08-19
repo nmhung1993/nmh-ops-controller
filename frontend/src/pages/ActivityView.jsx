@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Card,
@@ -16,6 +16,14 @@ import {
   DialogActions,
   Button,
   Divider,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Chip,
+  Tooltip,
+  LinearProgress,
   useTheme
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
@@ -29,7 +37,17 @@ import {
   Eye,
   Camera,
   Server,
-  User
+  User,
+  Search,
+  Download,
+  Filter,
+  RefreshCw,
+  FileSpreadsheet,
+  FileCode,
+  ShieldCheck,
+  Zap,
+  Boxes,
+  Globe
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useWebSocket } from '../context/WebSocketContext';
@@ -40,9 +58,14 @@ import Label from '../components/common/Label';
 export default function ActivityView() {
   const theme = useTheme();
   const { lang, t } = useLanguage();
-  const { selectedHost, selectedHostId, lastEvent } = useWebSocket();
+  const { hosts, selectedHostId, setSelectedHostId, lastEvent } = useWebSocket();
 
-  const [events, setEvents] = useState([]);
+  const [activeTab, setActiveTab] = useState('audit'); // 'audit' | 'commands'
+  const [targetAgentId, setTargetAgentId] = useState(selectedHostId || 'all');
+  const [severityFilter, setSeverityFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [auditLogs, setAuditLogs] = useState([]);
   const [commands, setCommands] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -50,266 +73,409 @@ export default function ActivityView() {
   const [selectedPayload, setSelectedPayload] = useState(null);
   const [selectedScreenshotId, setSelectedScreenshotId] = useState(null);
 
-  const fetchActivity = async () => {
-    if (!selectedHostId) return;
-    setLoading(true);
-    try {
-      const [eventRes, cmdRes] = await Promise.all([
-        apiRequest(`/api/v1/hosts/${selectedHostId}/events`),
-        apiRequest(`/api/v1/hosts/${selectedHostId}/commands`)
-      ]);
-      setEvents(eventRes || []);
-      setCommands(cmdRes || []);
-    } catch (err) {
-      console.error('Failed to fetch activity:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Sync selected host
   useEffect(() => {
-    if (selectedHostId) {
-      fetchActivity();
+    if (selectedHostId && targetAgentId !== selectedHostId && targetAgentId !== 'all') {
+      setTargetAgentId(selectedHostId);
     }
   }, [selectedHostId]);
 
-  // Insert live event if it belongs to selected host
-  useEffect(() => {
-    if (lastEvent && lastEvent.agentId === selectedHostId) {
-      setEvents((prev) => [lastEvent, ...prev]);
-    }
-  }, [lastEvent, selectedHostId]);
+  const loadAuditLogs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (targetAgentId && targetAgentId !== 'all') params.set('agentId', targetAgentId);
+      if (severityFilter && severityFilter !== 'all') params.set('severity', severityFilter);
+      if (categoryFilter && categoryFilter !== 'all') params.set('category', categoryFilter);
+      if (searchQuery.trim()) params.set('search', searchQuery.trim());
+      params.set('limit', '250');
 
-  if (!selectedHost) {
-    return (
-      <Card sx={{ p: 6, textAlign: 'center' }}>
-        <Server size={48} color={theme.palette.text.disabled} />
-        <Typography variant="h6" sx={{ mt: 2, fontWeight: 700 }}>
-          {t('host.none')}
-        </Typography>
-      </Card>
-    );
-  }
+      const res = await apiRequest(`/api/v1/audit-logs?${params.toString()}`);
+      setAuditLogs(Array.isArray(res?.logs) ? res.logs : []);
+
+      // If specific host is selected, also load commands
+      if (targetAgentId && targetAgentId !== 'all') {
+        const cmdRes = await apiRequest(`/api/v1/hosts/${targetAgentId}/commands`);
+        setCommands(Array.isArray(cmdRes) ? cmdRes : []);
+      } else {
+        setCommands([]);
+      }
+    } catch (err) {
+      console.error('Failed to load audit logs:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [targetAgentId, severityFilter, categoryFilter, searchQuery]);
+
+  useEffect(() => {
+    loadAuditLogs();
+  }, [loadAuditLogs]);
+
+  // Insert live event
+  useEffect(() => {
+    if (lastEvent) {
+      setAuditLogs(prev => [
+        {
+          id: `live-${Date.now()}`,
+          messageId: lastEvent.messageId,
+          agentId: lastEvent.agentId || 'system',
+          hostName: hosts?.find(h => h.id === lastEvent.agentId)?.hostname || 'Hệ thống',
+          type: lastEvent.type || lastEvent.eventType,
+          severity: lastEvent.severity || 'info',
+          payload: lastEvent.payload || lastEvent,
+          occurredAt: lastEvent.occurredAt || new Date().toISOString()
+        },
+        ...prev
+      ]);
+    }
+  }, [lastEvent, hosts]);
+
+  // Export CSV Handler
+  const handleExportCsv = () => {
+    const params = new URLSearchParams();
+    if (targetAgentId && targetAgentId !== 'all') params.set('agentId', targetAgentId);
+    if (severityFilter && severityFilter !== 'all') params.set('severity', severityFilter);
+    if (categoryFilter && categoryFilter !== 'all') params.set('category', categoryFilter);
+    if (searchQuery.trim()) params.set('search', searchQuery.trim());
+    params.set('format', 'csv');
+
+    const token = localStorage.getItem('wc_token') || '';
+    const url = `/api/v1/audit-logs?${params.toString()}`;
+
+    fetch(url, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(res => res.blob())
+      .then(blob => {
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = `audit-trail-${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      });
+  };
+
+  // Export JSON Handler
+  const handleExportJson = () => {
+    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(auditLogs, null, 2));
+    const a = document.createElement('a');
+    a.href = dataStr;
+    a.download = `audit-trail-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
 
   const getSeverityColor = (severity) => {
     switch (severity) {
+      case 'critical':
       case 'error':
         return 'error';
       case 'warning':
         return 'warning';
-      default:
+      case 'info':
         return 'info';
+      default:
+        return 'default';
     }
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'succeeded':
-        return 'success';
-      case 'failed':
-      case 'expired':
-        return 'error';
-      case 'sent':
-      case 'acknowledged':
-        return 'info';
-      default:
-        return 'warning';
-    }
+  const getCategoryIcon = (type) => {
+    if (type.includes('script')) return <Zap size={14} />;
+    if (type.includes('docker')) return <Boxes size={14} />;
+    if (type.includes('watchdog')) return <ShieldCheck size={14} />;
+    if (type.includes('network') || type.includes('mikrotik')) return <Globe size={14} />;
+    if (type.includes('auth') || type.includes('user')) return <User size={14} />;
+    return <Activity size={14} />;
   };
 
   return (
-    <Box>
-      {/* Top Header */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" sx={{ fontWeight: 800, mb: 0.5 }}>
-          {t('activity.title')}
-        </Typography>
-        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-          {t('activity.description')}
-        </Typography>
-      </Box>
+    <Box sx={{ p: { xs: 2, md: 3 } }}>
+      {/* Header Banner */}
+      <Card
+        sx={{
+          p: 3,
+          mb: 3,
+          background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.08)} 0%, ${theme.palette.background.paper} 100%)`,
+          borderRadius: 2.5
+        }}
+      >
+        <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2}>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Box
+              sx={{
+                width: 52,
+                height: 52,
+                borderRadius: 2,
+                bgcolor: 'primary.main',
+                color: 'white',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <Activity size={28} />
+            </Box>
+            <Box>
+              <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: 1.2 }}>
+                SECURITY & AUDIT TRAIL
+              </Typography>
+              <Typography variant="h4" sx={{ fontWeight: 800 }}>
+                Nhật Ký Hoạt Động & Kiểm Toán Toàn Diện
+              </Typography>
+              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                Theo dõi tập trung mọi sự kiện hệ thống, đăng nhập, thực thi kịch bản và biến động hạ tầng mạng.
+              </Typography>
+            </Box>
+          </Stack>
 
-      {/* Two Column Grid for Events & Commands */}
-      <Grid container spacing={3}>
-        {/* Left: System Events */}
-        <Grid item xs={12} lg={6}>
-          <Card sx={{ height: 1, display: 'flex', flexDirection: 'column' }}>
-            <CardHeader
-              title={t('activity.events')}
-              titleTypographyProps={{ typography: 'h6', fontWeight: 700 }}
-              action={
-                <Label variant="soft" color="primary">
-                  {events.length}
-                </Label>
-              }
+          <Stack direction="row" spacing={1} sx={{ alignSelf: { xs: 'flex-start', sm: 'center' } }}>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<FileSpreadsheet size={16} />}
+              onClick={handleExportCsv}
+              sx={{ fontWeight: 700, borderRadius: 2 }}
+            >
+              Xuất CSV
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<FileCode size={16} />}
+              onClick={handleExportJson}
+              sx={{ fontWeight: 700, borderRadius: 2 }}
+            >
+              Xuất JSON
+            </Button>
+            <IconButton onClick={loadAuditLogs} size="small">
+              <RefreshCw size={18} />
+            </IconButton>
+          </Stack>
+        </Stack>
+      </Card>
+
+      {/* Toolbar & Filters */}
+      <Card sx={{ p: 2.5, mb: 3, borderRadius: 2 }}>
+        <Grid container spacing={2} alignItems="center">
+          {/* Target Host Filter */}
+          <Grid item xs={12} sm={6} md={3.5}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Phạm vi máy trạm</InputLabel>
+              <Select
+                value={targetAgentId}
+                label="Phạm vi máy trạm"
+                onChange={(e) => setTargetAgentId(e.target.value)}
+              >
+                <MenuItem value="all">Toàn bộ máy trạm (Toàn hệ thống)</MenuItem>
+                <MenuItem value="system">Trung tâm Điều khiển (Server)</MenuItem>
+                {(hosts || []).map((h) => (
+                  <MenuItem key={h.id} value={h.id}>
+                    {h.hostname || h.id} ({h.ip_address || 'N/A'})
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+
+          {/* Search Query */}
+          <Grid item xs={12} sm={6} md={3.5}>
+            <TextField
+              size="small"
+              fullWidth
+              placeholder="Tìm kiếm tác vụ, người thực hiện, chi tiết..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              InputProps={{
+                startAdornment: <Search size={16} style={{ marginRight: 8, opacity: 0.6 }} />
+              }}
             />
-            <CardContent sx={{ flexGrow: 1, p: 0 }}>
-              {events.length === 0 ? (
-                <Box sx={{ p: 6, textAlign: 'center', color: 'text.secondary' }}>
-                  <Activity size={36} style={{ opacity: 0.4, marginBottom: 8 }} />
-                  <Typography variant="body2">{t('activity.noEvents')}</Typography>
-                </Box>
-              ) : (
-                <Stack divider={<Divider />} sx={{ maxHeight: 600, overflowY: 'auto' }}>
-                  {events.map((ev, idx) => {
-                    const eventText = t(`event.${ev.type}`) !== `event.${ev.type}` ? t(`event.${ev.type}`) : (ev.type || 'System Event');
-                    const screenshotId = ev.payload?.screenshotId;
+          </Grid>
 
-                    return (
-                      <Box key={idx} sx={{ p: 2.5, '&:hover': { bgcolor: alpha(theme.palette.grey[500], 0.04) } }}>
-                        <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={2}>
-                          <Stack direction="row" spacing={1.5} alignItems="flex-start">
-                            <Box sx={{ mt: 0.5 }}>
-                              <Label variant="filled" color={getSeverityColor(ev.severity)} sx={{ width: 8, height: 8, p: 0, minWidth: 8, borderRadius: '50%' }} />
-                            </Box>
-                            <Box>
-                              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                                {eventText}
-                              </Typography>
-                              {ev.payload?.processName && (
-                                <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', fontWeight: 600 }}>
-                                  Tiến trình: <b>{ev.payload.processName}</b>
-                                </Typography>
-                              )}
-                              <Typography variant="caption" sx={{ color: 'text.disabled', display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
-                                <Clock size={12} /> {formatDateTime(ev.occurredAt, lang)}
-                              </Typography>
-                            </Box>
-                          </Stack>
+          {/* Category Filter */}
+          <Grid item xs={6} md={2.5}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Danh mục sự kiện</InputLabel>
+              <Select
+                value={categoryFilter}
+                label="Danh mục sự kiện"
+                onChange={(e) => setCategoryFilter(e.target.value)}
+              >
+                <MenuItem value="all">Tất cả danh mục</MenuItem>
+                <MenuItem value="scripts">Kịch bản (Script Hub)</MenuItem>
+                <MenuItem value="auth">Đăng nhập & Người dùng</MenuItem>
+                <MenuItem value="watchdog">Watchdog & Tự phục hồi</MenuItem>
+                <MenuItem value="network">Mạng & MikroTik RouterOS</MenuItem>
+                <MenuItem value="docker">Docker Containers</MenuItem>
+                <MenuItem value="process">Tiến trình (Process)</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
 
-                          <Stack direction="row" spacing={0.5}>
-                            {screenshotId && (
-                              <IconButton
-                                size="small"
-                                color="info"
-                                onClick={() => setSelectedScreenshotId(screenshotId)}
-                                sx={{ bgcolor: alpha(theme.palette.info.main, 0.1) }}
-                              >
-                                <Camera size={16} />
-                              </IconButton>
-                            )}
-                            <IconButton size="small" onClick={() => setSelectedPayload(ev.payload || {})}>
-                              <Eye size={16} />
-                            </IconButton>
-                          </Stack>
-                        </Stack>
-                      </Box>
-                    );
-                  })}
-                </Stack>
-              )}
-            </CardContent>
-          </Card>
+          {/* Severity Filter */}
+          <Grid item xs={6} md={2.5}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Mức độ</InputLabel>
+              <Select
+                value={severityFilter}
+                label="Mức độ"
+                onChange={(e) => setSeverityFilter(e.target.value)}
+              >
+                <MenuItem value="all">Tất cả mức độ</MenuItem>
+                <MenuItem value="info">Thông tin (Info)</MenuItem>
+                <MenuItem value="warning">Cảnh báo (Warning)</MenuItem>
+                <MenuItem value="error">Lỗi / Nghiêm trọng (Error)</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
         </Grid>
+      </Card>
 
-        {/* Right: Command Audit */}
-        <Grid item xs={12} lg={6}>
-          <Card sx={{ height: 1, display: 'flex', flexDirection: 'column' }}>
-            <CardHeader
-              title={t('activity.commands')}
-              titleTypographyProps={{ typography: 'h6', fontWeight: 700 }}
-              action={
-                <Label variant="soft" color="info">
-                  {commands.length}
-                </Label>
-              }
-            />
-            <CardContent sx={{ flexGrow: 1, p: 0 }}>
-              {commands.length === 0 ? (
-                <Box sx={{ p: 6, textAlign: 'center', color: 'text.secondary' }}>
-                  <Terminal size={36} style={{ opacity: 0.4, marginBottom: 8 }} />
-                  <Typography variant="body2">{t('activity.noCommands')}</Typography>
-                </Box>
-              ) : (
-                <Stack divider={<Divider />} sx={{ maxHeight: 600, overflowY: 'auto' }}>
-                  {commands.map((cmd) => {
-                    const cmdLabel = t(`command.type.${cmd.type}`) !== `command.type.${cmd.type}` ? t(`command.type.${cmd.type}`) : cmd.type;
-                    const statusLabel = t(`status.${cmd.status}`) !== `status.${cmd.status}` ? t(`status.${cmd.status}`) : cmd.status;
+      {/* Main Audit List */}
+      <Card sx={{ borderRadius: 2.5, overflow: 'hidden' }}>
+        <CardHeader
+          title={
+            <Stack direction="row" spacing={1.5} alignItems="center">
+              <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                Nhật Ký Sự Kiện ({auditLogs.length})
+              </Typography>
+            </Stack>
+          }
+        />
+        <Divider />
 
-                    return (
-                      <Box key={cmd.id} sx={{ p: 2.5, '&:hover': { bgcolor: alpha(theme.palette.grey[500], 0.04) } }}>
-                        <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={2}>
-                          <Box>
-                            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
-                              <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                                {cmdLabel}
-                              </Typography>
-                              <Label variant="soft" color={getStatusColor(cmd.status)}>
-                                {statusLabel}
-                              </Label>
-                            </Stack>
-                            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                              <User size={12} /> {t('activity.requestedBy', { user: cmd.requestedBy || 'Admin' })}
-                            </Typography>
-                            <Typography variant="caption" sx={{ color: 'text.disabled', display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
-                              <Clock size={12} /> {formatDateTime(cmd.requestedAt, lang)}
-                            </Typography>
-                          </Box>
+        {loading ? (
+          <LinearProgress />
+        ) : auditLogs.length === 0 ? (
+          <Box sx={{ p: 6, textAlign: 'center', color: 'text.secondary' }}>
+            <Activity size={40} style={{ opacity: 0.4, marginBottom: 12 }} />
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              Không có sự kiện nào phù hợp với bộ lọc
+            </Typography>
+            <Typography variant="body2">
+              Thử làm mới hoặc thay đổi từ khóa tìm kiếm.
+            </Typography>
+          </Box>
+        ) : (
+          <Stack divider={<Divider />}>
+            {auditLogs.map((log) => {
+              const user = log.payload?.user || 'System';
+              const actionTitle = log.payload?.action || log.payload?.message || log.type;
+              const screenshotId = log.payload?.screenshotId;
 
-                          {cmd.result && (
-                            <IconButton size="small" onClick={() => setSelectedPayload(cmd.result)}>
-                              <Eye size={16} />
-                            </IconButton>
-                          )}
-                        </Stack>
+              return (
+                <Box
+                  key={log.id}
+                  sx={{
+                    p: 2.5,
+                    transition: 'all 0.15s',
+                    '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.03) }
+                  }}
+                >
+                  <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'flex-start', sm: 'center' }} justifyContent="space-between" spacing={2}>
+                    <Stack direction="row" spacing={2} alignItems="center">
+                      <Box
+                        sx={{
+                          width: 38,
+                          height: 38,
+                          borderRadius: 2,
+                          bgcolor: alpha(
+                            log.severity === 'error' ? theme.palette.error.main : log.severity === 'warning' ? theme.palette.warning.main : theme.palette.primary.main,
+                            0.12
+                          ),
+                          color: log.severity === 'error' ? 'error.main' : log.severity === 'warning' ? 'warning.main' : 'primary.main',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0
+                        }}
+                      >
+                        {getCategoryIcon(log.type)}
                       </Box>
-                    );
-                  })}
-                </Stack>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
 
-      {/* JSON Payload Inspector Dialog */}
+                      <Box>
+                        <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.3 }}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
+                            {actionTitle}
+                          </Typography>
+                          <Label variant="soft" color={getSeverityColor(log.severity)} sx={{ fontSize: '0.7rem' }}>
+                            {log.severity.toUpperCase()}
+                          </Label>
+                          <Label variant="soft" color="default" sx={{ fontSize: '0.7rem' }}>
+                            {log.type}
+                          </Label>
+                        </Stack>
+
+                        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Server size={12} /> {log.hostName} • <User size={12} /> {user} • <Clock size={12} /> {formatDateTime(log.occurredAt)}
+                        </Typography>
+                      </Box>
+                    </Stack>
+
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      {screenshotId && (
+                        <Tooltip title="Xem ảnh chụp màn hình">
+                          <IconButton size="small" color="primary" onClick={() => setSelectedScreenshotId(screenshotId)}>
+                            <Camera size={16} />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                      <Tooltip title="Xem chi tiết Payload JSON">
+                        <IconButton size="small" onClick={() => setSelectedPayload(log.payload)}>
+                          <Eye size={16} />
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
+                  </Stack>
+                </Box>
+              );
+            })}
+          </Stack>
+        )}
+      </Card>
+
+      {/* Payload Modal */}
       <Dialog open={Boolean(selectedPayload)} onClose={() => setSelectedPayload(null)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ typography: 'h6' }}>Chi tiết dữ liệu (Payload)</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800 }}>Chi Tiết Dữ Liệu Sự Kiện (Payload)</DialogTitle>
         <DialogContent>
           <Box
-            component="pre"
             sx={{
               p: 2,
               borderRadius: 2,
-              bgcolor: alpha(theme.palette.grey[500], 0.08),
-              fontFamily: 'monospace',
-              fontSize: '0.8125rem',
-              overflowX: 'auto'
+              bgcolor: '#0f172a',
+              color: '#38bdf8',
+              fontFamily: 'Consolas, monospace',
+              fontSize: '0.8rem',
+              maxHeight: 400,
+              overflowY: 'auto',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-all'
             }}
           >
             {JSON.stringify(selectedPayload, null, 2)}
           </Box>
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2.5 }}>
-          <Button onClick={() => setSelectedPayload(null)} variant="contained">
-            Đóng
-          </Button>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setSelectedPayload(null)}>Đóng</Button>
         </DialogActions>
       </Dialog>
 
-      {/* Screenshot Viewer Dialog */}
+      {/* Screenshot Modal */}
       <Dialog open={Boolean(selectedScreenshotId)} onClose={() => setSelectedScreenshotId(null)} maxWidth="md" fullWidth>
-        <DialogTitle sx={{ typography: 'h6' }}>Ảnh chụp cửa sổ ứng dụng</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800 }}>Ảnh Chụp Cửa Sổ Watchdog</DialogTitle>
         <DialogContent sx={{ textAlign: 'center', p: 2 }}>
           {selectedScreenshotId && (
-            <Box
-              component="img"
+            <img
               src={`/api/v1/screenshots/${selectedScreenshotId}`}
               alt="Screenshot"
-              sx={{
-                maxWidth: '100%',
-                maxHeight: '70vh',
-                borderRadius: 2,
-                boxShadow: theme.customShadows.z16,
-                border: `1px solid ${theme.palette.divider}`
-              }}
+              style={{ maxWidth: '100%', maxHeight: '70vh', borderRadius: 8, objectFit: 'contain' }}
             />
           )}
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2.5 }}>
-          <Button onClick={() => setSelectedScreenshotId(null)} variant="contained">
-            Đóng
-          </Button>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setSelectedScreenshotId(null)}>Đóng</Button>
         </DialogActions>
       </Dialog>
     </Box>

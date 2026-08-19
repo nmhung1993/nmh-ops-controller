@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Box, styled } from '@mui/material';
 import Header, { HEADER_DESKTOP, HEADER_MOBILE } from './Header';
 import NavSidebar, { NAV_WIDTH, NAV_COLLAPSED_WIDTH } from './NavSidebar';
+import CommandPalette from '../../components/common/CommandPalette';
 
 const Main = styled('main', {
   shouldForwardProp: (prop) => prop !== 'isCollapsed'
@@ -38,6 +39,7 @@ const Main = styled('main', {
 
 export default function DashboardLayout({ children, currentPage, onNavigate, onOpenPasswordDialog }) {
   const [openNav, setOpenNav] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(() => {
     return localStorage.getItem('wc_sidebar_collapsed') === 'true';
   });
@@ -50,12 +52,25 @@ export default function DashboardLayout({ children, currentPage, onNavigate, onO
     });
   };
 
+  // Register Global Ctrl+K / Cmd+K shortcut
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh', overflow: 'hidden', bgcolor: 'background.default' }}>
       <Header
         onOpenNav={() => setOpenNav(true)}
         currentPage={currentPage}
         onOpenPasswordDialog={onOpenPasswordDialog}
+        onOpenCommandPalette={() => setCommandPaletteOpen(true)}
         isCollapsed={isCollapsed}
       />
       <NavSidebar
@@ -67,6 +82,13 @@ export default function DashboardLayout({ children, currentPage, onNavigate, onO
         onToggleCollapse={handleToggleCollapse}
       />
       <Main isCollapsed={isCollapsed}>{children}</Main>
+
+      {/* Global Command Palette */}
+      <CommandPalette
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        onNavigate={onNavigate}
+      />
     </Box>
   );
 }

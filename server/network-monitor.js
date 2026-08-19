@@ -7,6 +7,7 @@ const dns = require('dns');
 const querystring = require('querystring');
 const express = require('express');
 const { MikroTikManager } = require('./mikrotik-manager');
+const { alertEngine } = require('./alert-engine');
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../data');
 const TARGETS_FILE = path.join(DATA_DIR, 'network-targets.json');
@@ -1496,9 +1497,32 @@ router.post('/custom-names', requireSuperAdmin, (req, res) => {
 // ==========================================
 // MikroTik RouterOS Endpoints (Super admin only)
 // ==========================================
+let lastObservedWanIp = null;
+
 router.get('/mikrotik/status', requireSuperAdmin, async (req, res) => {
   try {
     const status = await mikrotikInstance.fetchStatus();
+
+    // Check if PPPoE Public WAN IP changed
+    const currentWanIp = status?.wan?.ip;
+    if (currentWanIp && currentWanIp !== '--' && currentWanIp !== '0.0.0.0' && !currentWanIp.startsWith('192.168.')) {
+      if (lastObservedWanIp && lastObservedWanIp !== currentWanIp) {
+        console.log(`[MikroTik] PPPoE Public IP changed: ${lastObservedWanIp} -> ${currentWanIp}`);
+        alertEngine.dispatchAlert({
+          hostName: 'MikroTik Gateway (PPPoE)',
+          title: 'Thay Đổi Địa Chỉ IP Public WAN',
+          message: `Địa chỉ IP WAN PPPoE đã đổi từ ${lastObservedWanIp} sang ${currentWanIp}.`,
+          severity: 'info',
+          details: [
+            { name: 'IP Cũ', value: lastObservedWanIp },
+            { name: 'IP Mới', value: currentWanIp },
+            { name: 'Interface', value: status.wan.interface || 'pppoe-out1' }
+          ]
+        }).catch(err => console.error('[MikroTik Alert] Failed to dispatch WAN IP change alert:', err.message));
+      }
+      lastObservedWanIp = currentWanIp;
+    }
+
     res.json(status);
   } catch (err) {
     res.json({
@@ -1563,6 +1587,69 @@ router.post('/mikrotik/reconnect-pppoe', requireSuperAdmin, async (req, res) => 
 router.post('/mikrotik/reboot', requireSuperAdmin, async (req, res) => {
   try {
     const result = await mikrotikInstance.reboot();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET Simple Queues (Super admin only)
+router.get('/mikrotik/queues', requireSuperAdmin, async (req, res) => {
+  try {
+    const queues = await mikrotikInstance.fetchQueues();
+    res.json({ success: true, queues });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST Add/Update Simple Queue (Super admin only)
+router.post('/mikrotik/queues', requireSuperAdmin, async (req, res) => {
+  const { name, target, maxLimit, comment } = req.body || {};
+  try {
+    const result = await mikrotikInstance.setQueueLimit({ name, target, maxLimit, comment });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE Simple Queue (Super admin only)
+router.delete('/mikrotik/queues/:id', requireSuperAdmin, async (req, res) => {
+  try {
+    const result = await mikrotikInstance.removeQueue(req.params.id);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET NAT Rules (Super admin only)
+router.get('/mikrotik/nat', requireSuperAdmin, async (req, res) => {
+  try {
+    const rules = await mikrotikInstance.fetchNatRules();
+    res.json({ success: true, rules });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST Toggle NAT Rule (Super admin only)
+router.post('/mikrotik/nat/toggle', requireSuperAdmin, async (req, res) => {
+  const { id, disabled } = req.body || {};
+  try {
+    const result = await mikrotikInstance.toggleNatRule(id, Boolean(disabled));
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST Wake-on-LAN (Super admin only)
+router.post('/mikrotik/wol', requireSuperAdmin, async (req, res) => {
+  const { mac, interfaceName } = req.body || {};
+  try {
+    const result = await mikrotikInstance.wakeOnLan(mac, interfaceName || 'bridge');
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });

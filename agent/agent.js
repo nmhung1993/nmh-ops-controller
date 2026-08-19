@@ -233,7 +233,7 @@ async function connect() {
 
   socket.on('open', () => {
     if (attemptId !== connectionAttemptId) {
-      try { socket.terminate(); } catch { }
+      try { socket.terminate(); } catch {}
       return;
     }
     connecting = false;

@@ -5,13 +5,13 @@ const path = require('path');
 const os = require('os');
 const http = require('http');
 const crypto = require('crypto');
-const { execFile, spawn } = require('child_process');
+const { execFile, spawn, exec } = require('child_process');
 const WebSocket = require('ws');
 
 const VERSION = '2.1.5';
 const CONFIG_FILE = argument('--config') || process.env.WC_AGENT_CONFIG || '/volume1/@appdata/windows-controller-agent/config.json';
 const CONNECTION_ATTEMPT_TIMEOUT_MS = Number(process.env.WC_CONNECTION_ATTEMPT_TIMEOUT_MS || 10_000);
-const capabilities = ['telemetry', 'hardware-sensors', 'processes', 'process.kill', 'watchdog', 'watchdog.launch', 'linux', 'synology'];
+const capabilities = ['telemetry', 'hardware-sensors', 'processes', 'process.kill', 'watchdog', 'watchdog.launch', 'system.execute', 'linux', 'synology'];
 
 function getDockerSocket() {
   const candidates = [
@@ -552,6 +552,16 @@ async function executeCommand(payload) {
       result = { updated: true, newVersion: bundle.version || '2.1.5' };
       emitEvent('agent.ota.restarting', 'info', `Agent successfully upgraded to v${bundle.version || '2.1.5'}. Restarting...`);
       setTimeout(() => process.exit(0), 1000);
+    } else if (commandType === 'system.execute') {
+      const script = String(data.command || '').trim();
+      if (!script) throw new Error('command_empty');
+      const output = await new Promise((res, rej) => {
+        exec(script, { timeout: 30000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+          if (err) return rej(new Error(stderr || err.message));
+          res(stdout || stderr || 'Executed successfully');
+        });
+      });
+      result = { stdout: output };
     } else {
       throw new Error('unsupported_command');
     }

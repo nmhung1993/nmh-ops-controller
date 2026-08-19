@@ -43,6 +43,7 @@
   "nav.network": "Network",
   "nav.processes": "Processes",
   "nav.watchdog": "Watchdog",
+  "nav.scripts": "Script Hub",
   "nav.activity": "Activity",
   "nav.admin": "Admin",
   "socket.connecting": "Connecting",

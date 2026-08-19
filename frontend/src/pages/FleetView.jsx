@@ -45,6 +45,7 @@ import { useWebSocket } from '../context/WebSocketContext';
 import { apiRequest } from '../utils/api';
 import { formatBytes, formatRelativeTime, formatWatts, formatTemperature } from '../utils/formatters';
 import Label from '../components/common/Label';
+import HealthScoreWidget from '../components/dashboard/HealthScoreWidget';
 
 export default function FleetView({ onNavigate }) {
   const theme = useTheme();
@@ -348,6 +349,9 @@ export default function FleetView({ onNavigate }) {
           </Stack>
         </Stack>
       </Card>
+
+      {/* Infrastructure Health Score Widget */}
+      <HealthScoreWidget />
 
       {/* Fleet Summary Scorecards */}
       <Grid container spacing={2.5} sx={{ mb: 3.5 }}>

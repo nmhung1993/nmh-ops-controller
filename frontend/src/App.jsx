@@ -16,6 +16,7 @@ import ActivityView from './pages/ActivityView';
 import AdminView from './pages/AdminView';
 import NetworkMonitorView from './pages/NetworkMonitorView';
 import DockerView from './pages/DockerView';
+import ScriptHubView from './pages/ScriptHubView';
 import LoginView from './pages/LoginView';
 import SetupView from './pages/SetupView';
 import PasswordChangeDialog from './pages/PasswordChangeDialog';
@@ -25,7 +26,7 @@ function MainApp() {
   const { user, token, isSetupRequired, isLoading } = useAuth();
   const [currentPage, setCurrentPage] = useState(() => {
     const hash = window.location.hash.replace('#', '');
-    return ['fleet', 'dashboard', 'network', 'docker', 'processes', 'watchdog', 'activity', 'admin'].includes(hash)
+    return ['fleet', 'dashboard', 'network', 'docker', 'processes', 'watchdog', 'scripts', 'activity', 'admin'].includes(hash)
       ? hash
       : 'fleet';
   });
@@ -36,7 +37,7 @@ function MainApp() {
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.replace('#', '');
-      if (['fleet', 'dashboard', 'network', 'docker', 'processes', 'watchdog', 'activity', 'admin'].includes(hash)) {
+      if (['fleet', 'dashboard', 'network', 'docker', 'processes', 'watchdog', 'scripts', 'activity', 'admin'].includes(hash)) {
         setCurrentPage(hash);
       }
     };
@@ -79,6 +80,7 @@ function MainApp() {
           {currentPage === 'docker' && <DockerView />}
           {currentPage === 'processes' && <ProcessesView />}
           {currentPage === 'watchdog' && <WatchdogView />}
+          {currentPage === 'scripts' && <ScriptHubView />}
           {currentPage === 'activity' && <ActivityView />}
           {currentPage === 'admin' && <AdminView />}
         </ErrorBoundary>

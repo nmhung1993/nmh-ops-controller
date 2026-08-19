@@ -63,5 +63,38 @@ test('07. Network Monitor: Ping Monitor ranges, Subnet Scanner, and Router Mesh'
     assert.ok(hasDotsMask, 'PPPoE username should be masked or displayed properly');
   });
 
+  await t.test('MikroTik subtabs: DHCP Leases, Giới hạn Băng thông, and Port Forwarding exist and switch', async () => {
+    // Switch to Router & Mesh tab
+    const routerTab = page.getByRole('tab', { name: /Router & Mesh/i });
+    await routerTab.click();
+    await page.waitForSelector('text=MIKROTIK CORE ROUTER', { timeout: 5000 }).catch(() => null);
+    await page.waitForTimeout(500);
+
+    // Verify subtabs
+    const leasesBtn = page.getByRole('button', { name: /DHCP Leases/i });
+    const queuesBtn = page.getByRole('button', { name: /Giới hạn Băng thông/i });
+    const natBtn = page.getByRole('button', { name: /Port Forwarding & NAT/i });
+
+    assert.ok(await leasesBtn.isVisible(), 'DHCP Leases subtab should be visible');
+    assert.ok(await queuesBtn.isVisible(), 'Giới hạn Băng thông subtab should be visible');
+    assert.ok(await natBtn.isVisible(), 'Port Forwarding subtab should be visible');
+
+    // Click Queues tab
+    await queuesBtn.click();
+    await page.waitForTimeout(600);
+    const addQueueBtn = page.getByRole('button', { name: /Thêm giới hạn/i });
+    assert.ok(await addQueueBtn.isVisible(), 'Thêm giới hạn button should appear in Queues subtab');
+
+    // Click NAT tab
+    await natBtn.click();
+    await page.waitForTimeout(600);
+    const natHeader = page.getByText(/Bảng Quy Tắc Chuyển Tiếp Cổng/i);
+    assert.ok(await natHeader.isVisible(), 'NAT header should appear in NAT subtab');
+
+    // Click back to Leases tab
+    await leasesBtn.click();
+    await page.waitForTimeout(400);
+  });
+
   await browser.close();
 });
