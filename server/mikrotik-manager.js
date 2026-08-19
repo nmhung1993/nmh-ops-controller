@@ -402,26 +402,9 @@ class MikroTikManager {
   }
 
   async fetchStatus() {
-    const pingRes = await this.pingHost(this.host, 1000);
-    if (!pingRes.alive) {
-      return {
-        host: this.host,
-        port: this.port,
-        online: false,
-        routerName: 'MikroTik RouterOS (Gateway)',
-        hardware: 'MikroTik',
-        version: 'RouterOS',
-        uptime: 0,
-        uptimeFormatted: 'Ngoại tuyến (Không phản hồi Ping)',
-        wan: { ip: '--', gateway: '--', dns: '--', pppoeStatus: 'offline' },
-        cpu: 0,
-        memory: 0,
-        bandwidth: { rxMbps: 0, txMbps: 0, rxBytes: 0, txBytes: 0 },
-        dhcpLeases: [],
-        clientsCount: 0,
-        isApiConnected: false,
-        error: 'Host unreachable'
-      };
+    const now = Date.now();
+    if (this.lastStatusCache && (now - this.lastStatusTime < 1500)) {
+      return this.lastStatusCache;
     }
 
     // 1. Try Native Socket API (Port 8728 / 8729) if socket port
@@ -530,7 +513,7 @@ class MikroTikManager {
         this.prevTraffic = { rxBytes: curRxBytes, txBytes: curTxBytes };
         this.lastTrafficCheck = now;
 
-        return {
+        const result = {
           host: this.host,
           port: this.port,
           online: true,
@@ -562,6 +545,9 @@ class MikroTikManager {
           connectionType: 'RouterOS Socket API (Port ' + this.port + ')',
           authError: null
         };
+        this.lastStatusCache = result;
+        this.lastStatusTime = Date.now();
+        return result;
       } catch (err) {
         console.error('MikroTik Socket API error:', err.message);
       }
@@ -637,7 +623,7 @@ class MikroTikManager {
         return lastA - lastB;
       });
 
-      return {
+      const restResult = {
         host: this.host,
         port: this.port,
         online: true,
@@ -669,18 +655,21 @@ class MikroTikManager {
         connectionType: 'RouterOS REST API (Port ' + this.port + ')',
         authError: isApiSuccess ? null : resourceRes._error
       };
+      this.lastStatusCache = restResult;
+      this.lastStatusTime = Date.now();
+      return restResult;
 
     } catch (err) {
-      return {
+      const offlineResult = {
         host: this.host,
         port: this.port,
-        online: true,
+        online: false,
         routerName: 'MikroTik RouterOS (Gateway)',
         hardware: 'MikroTik RouterBOARD',
         version: 'RouterOS',
         uptime: 0,
-        uptimeFormatted: 'Đang phản hồi Ping (Chưa kết nối API Port ' + this.port + ')',
-        wan: { ip: '--', gateway: '--', dns: '8.8.8.8, 1.1.1.1', pppoeStatus: 'online' },
+        uptimeFormatted: 'Không thể kết nối API Port ' + this.port,
+        wan: { ip: '--', gateway: '--', dns: '8.8.8.8, 1.1.1.1', pppoeStatus: 'offline' },
         cpu: 0,
         memory: 0,
         bandwidth: { rxMbps: 0, txMbps: 0, rxBytes: 0, txBytes: 0 },
@@ -689,6 +678,7 @@ class MikroTikManager {
         isApiConnected: false,
         authError: err.message
       };
+      return offlineResult;
     }
   }
 

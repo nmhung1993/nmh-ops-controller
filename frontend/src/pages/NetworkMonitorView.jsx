@@ -76,6 +76,8 @@ import {
   Gauge,
   ArrowDown,
   ArrowUp,
+  Eye,
+  EyeOff,
   Router as RouterIcon
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
@@ -99,12 +101,13 @@ export default function NetworkMonitorView() {
   const isSuperAdmin = user?.role === 'super_admin';
 
   const [currentTab, setCurrentTab] = useState(0);
+  const [tagFilter, setTagFilter] = useState('all');
   const [targets, setTargets] = useState([]);
   const [summary, setSummary] = useState({ total: 0, online: 0, degraded: 0, offline: 0, paused: 0 });
-  const [loading, setLoading] = useState(true);
-  const [tagFilter, setTagFilter] = useState('all');
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // Chart metrics state
+  // Metrics chart state
   const [chartRange, setChartRange] = useState('1h');
   const [chartTargetId, setChartTargetId] = useState('all');
   const [chartMetrics, setChartMetrics] = useState([]);
@@ -128,13 +131,15 @@ export default function NetworkMonitorView() {
   const [loadingMikrotik, setLoadingMikrotik] = useState(false);
   const [mikrotikConfigOpen, setMikrotikConfigOpen] = useState(false);
   const [mikrotikHost, setMikrotikHost] = useState('192.168.1.1');
-  const [mikrotikPort, setMikrotikPort] = useState(80);
+  const [mikrotikPort, setMikrotikPort] = useState(8728);
   const [mikrotikUsername, setMikrotikUsername] = useState('admin');
   const [mikrotikPassword, setMikrotikPassword] = useState('');
   const [mikrotikUseHttps, setMikrotikUseHttps] = useState(false);
   const [mikrotikPppoeInterface, setMikrotikPppoeInterface] = useState('pppoe-out1');
   const [confirmReconnectPppoeOpen, setConfirmReconnectPppoeOpen] = useState(false);
   const [confirmMikrotikRebootOpen, setConfirmMikrotikRebootOpen] = useState(false);
+  const [showPppoeUser, setShowPppoeUser] = useState(false);
+  const [leaseSearch, setLeaseSearch] = useState('');
 
   // Router state (Xiaomi / Gecoos AP)
   const [selectedRouterHost, setSelectedRouterHost] = useState('192.168.1.2');
@@ -1523,9 +1528,25 @@ export default function NetworkMonitorView() {
                       <Typography variant="h5" sx={{ fontWeight: 800, my: 0.5, color: 'primary.main', fontFamily: 'monospace' }}>
                         {mikrotikStatus.wan?.ip || '--'}
                       </Typography>
-                      <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
-                        User: {mikrotikStatus.wan?.pppoeUser || '--'} • {mikrotikStatus.wan?.interface}
-                      </Typography>
+                      <Stack direction="row" alignItems="center" spacing={0.5}>
+                        <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
+                          User: {showPppoeUser ? (mikrotikStatus.wan?.pppoeUser || '--') : (mikrotikStatus.wan?.pppoeUser ? '••••••••' : '--')}
+                        </Typography>
+                        {mikrotikStatus.wan?.pppoeUser && (
+                          <Tooltip title={showPppoeUser ? "Ẩn tài khoản PPPoE" : "Hiện tài khoản PPPoE"}>
+                            <IconButton
+                              size="small"
+                              onClick={() => setShowPppoeUser(v => !v)}
+                              sx={{ p: 0.2, color: 'text.secondary', '&:hover': { color: 'primary.main' } }}
+                            >
+                              {showPppoeUser ? <EyeOff size={13} /> : <Eye size={13} />}
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                        <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
+                          • {mikrotikStatus.wan?.interface}
+                        </Typography>
+                      </Stack>
                     </Card>
                   </Grid>
 
@@ -1605,7 +1626,7 @@ export default function NetworkMonitorView() {
 
                 {/* DHCP Leases Table */}
                 <Card sx={{ p: 3 }}>
-                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2} sx={{ mb: 2 }}>
                     <Box>
                       <Typography variant="h6" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
                         <Server size={20} color={theme.palette.primary.main} /> Danh sách cấp phát DHCP Leases ({mikrotikStatus.dhcpLeases?.length || 0})
@@ -1614,9 +1635,21 @@ export default function NetworkMonitorView() {
                         Các thiết bị đang nhận địa chỉ IP động hoặc tĩnh từ DHCP Server của MikroTik
                       </Typography>
                     </Box>
-                    <Button size="small" variant="outlined" startIcon={<RefreshCw size={14} />} onClick={loadMikrotikStatus}>
-                      Làm mới
-                    </Button>
+                    <Stack direction="row" spacing={1.5} alignItems="center">
+                      <TextField
+                        size="small"
+                        placeholder="Tìm IP, MAC, Hostname..."
+                        value={leaseSearch}
+                        onChange={(e) => setLeaseSearch(e.target.value)}
+                        InputProps={{
+                          startAdornment: <Search size={16} style={{ marginRight: 6, opacity: 0.6 }} />
+                        }}
+                        sx={{ width: { xs: '100%', sm: 220 } }}
+                      />
+                      <Button size="small" variant="outlined" startIcon={<RefreshCw size={14} />} onClick={() => loadMikrotikStatus(false)}>
+                        Làm mới
+                      </Button>
+                    </Stack>
                   </Stack>
 
                   <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
@@ -1639,8 +1672,19 @@ export default function NetworkMonitorView() {
                             </TableCell>
                           </TableRow>
                         ) : (
-                          mikrotikStatus.dhcpLeases.map((lease, idx) => (
-                            <TableRow key={idx} hover>
+                          mikrotikStatus.dhcpLeases
+                            .filter(l => {
+                              const q = (leaseSearch || '').trim().toLowerCase();
+                              if (!q) return true;
+                              return (
+                                (l.ip && l.ip.toLowerCase().includes(q)) ||
+                                (l.hostname && l.hostname.toLowerCase().includes(q)) ||
+                                (l.mac && l.mac.toLowerCase().includes(q)) ||
+                                (l.comment && l.comment.toLowerCase().includes(q))
+                              );
+                            })
+                            .map((lease, idx) => (
+                            <TableRow key={lease.id || idx} hover>
                               <TableCell sx={{ fontFamily: 'monospace', fontWeight: 700 }}>{lease.ip}</TableCell>
                               <TableCell sx={{ fontWeight: 600 }}>
                                 {lease.hostname || lease.comment || 'Thiết bị LAN'}
