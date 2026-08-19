@@ -115,7 +115,7 @@ export default function NavSidebar({ openNav, onCloseNav, currentPage, onNavigat
           {!isCollapsed && (
             <Box>
               <Typography variant="subtitle1" sx={{ fontWeight: 800, lineHeight: 1.15 }}>
-                {settings.appName || 'NMH Ops'}
+                {settings.appName || 'NMH Ops Controller'}
               </Typography>
               <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 600, fontSize: '0.8125rem' }}>
                 {settings.appSubtitle || 'Controller'}

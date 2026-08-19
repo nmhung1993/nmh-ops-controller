@@ -55,4 +55,4 @@ EOF
 chmod 755 /usr/local/etc/rc.d/WindowsControllerSynologyAgent.sh
 /usr/local/etc/rc.d/WindowsControllerSynologyAgent.sh restart
 
-echo "Synology Agent installed. Approve hostname $(hostname) in Central Server."
+echo "NMH Ops Controller Synology Agent installed. Approve hostname $(hostname) in Central Server."

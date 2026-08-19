@@ -86,17 +86,17 @@ export default function DockerView() {
   const [hosts, setHosts] = useState([{ id: 'local', name: 'Máy Chủ Trung Tâm (Local Docker)', available: true, isLocal: true }]);
   const [selectedHostId, setSelectedHostId] = useState('local');
   const [hostInfo, setHostInfo] = useState(null);
-  
+
   const [containers, setContainers] = useState([]);
   const [images, setImages] = useState([]);
   const [volumes, setVolumes] = useState([]);
   const [stacks, setStacks] = useState([]);
-  
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  
+
   // Grouping & Sorting State
   const [viewMode, setViewMode] = useState('grouped'); // 'grouped' or 'flat'
   const [sortBy, setSortBy] = useState('name'); // 'name', 'cpu', 'memory', 'status'
@@ -107,7 +107,7 @@ export default function DockerView() {
   const [detailModal, setDetailModal] = useState({ open: false, container: null, data: null, activeSubTab: 'overview' });
   const [modalLogs, setModalLogs] = useState({ logs: '', isStreaming: false });
   const [modalTerm, setModalTerm] = useState({ execId: null, history: '', input: '', isConnected: false });
-  
+
   const [actionLoading, setActionLoading] = useState({});
   const [toast, setToast] = useState({ open: false, message: '', severity: 'info' });
 
@@ -230,7 +230,7 @@ export default function DockerView() {
           method: 'POST',
           body: JSON.stringify({ action })
         });
-      } catch {}
+      } catch { }
     }
     setToast({ open: true, message: `Đã gửi lệnh [${action.toUpperCase()}] cho Stack ${stack.name}`, severity: 'success' });
     loadData(true);
@@ -301,11 +301,11 @@ export default function DockerView() {
       if (res?.logs) {
         setModalLogs((prev) => ({ ...prev, logs: res.logs }));
       }
-    } catch {}
+    } catch { }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws/docker/logs?containerId=${containerId}&token=${token}&tail=50`;
-    
+
     const ws = new WebSocket(wsUrl);
     logSocketRef.current = ws;
 
@@ -327,7 +327,7 @@ export default function DockerView() {
 
   const stopLogsStream = () => {
     if (logSocketRef.current) {
-      try { logSocketRef.current.close(); } catch {}
+      try { logSocketRef.current.close(); } catch { }
       logSocketRef.current = null;
     }
     setModalLogs({ logs: '', isStreaming: false });
@@ -338,7 +338,7 @@ export default function DockerView() {
     stopTerminalSession();
     setModalTerm({
       execId: null,
-      history: `[MinhHungOps Shell: ${container.name}]\r\nĐang kết nối terminal...\r\n`,
+      history: `[NMH Ops Controller Shell: ${container.name}]\r\nĐang kết nối terminal...\r\n`,
       input: '',
       isConnected: false
     });
@@ -389,7 +389,7 @@ export default function DockerView() {
 
   const stopTerminalSession = () => {
     if (termSocketRef.current) {
-      try { termSocketRef.current.close(); } catch {}
+      try { termSocketRef.current.close(); } catch { }
       termSocketRef.current = null;
     }
     setModalTerm({ execId: null, history: '', input: '', isConnected: false });
@@ -444,7 +444,7 @@ export default function DockerView() {
         c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         c.image.toLowerCase().includes(searchQuery.toLowerCase()) ||
         c.id.toLowerCase().includes(searchQuery.toLowerCase());
-      
+
       if (!matchesSearch) return false;
       if (statusFilter === 'running') return c.state === 'running';
       if (statusFilter === 'stopped') return c.state === 'exited' || c.state === 'dead';
@@ -512,7 +512,7 @@ export default function DockerView() {
     return Array.from(map.values()).sort((a, b) => {
       if (a.isStandalone && !b.isStandalone) return 1;
       if (!a.isStandalone && b.isStandalone) return -1;
-      
+
       let cmp = 0;
       if (sortBy === 'name') {
         cmp = a.name.localeCompare(b.name);

@@ -119,10 +119,10 @@ export default function AuthLayout({ title, subtitle, children }) {
               </Box>
               <Box>
                 <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: 1.2 }}>
-                  {settings.tagline || 'NMH OPS SUITE / LAN'}
+                  {settings.tagline || 'NMH Ops SUITE / LAN'}
                 </Typography>
                 <Typography variant="h5" sx={{ fontWeight: 800 }}>
-                  {settings.appName || 'NMH Ops'}
+                  {settings.appName || 'NMH Ops Controller'}
                 </Typography>
               </Box>
             </Stack>

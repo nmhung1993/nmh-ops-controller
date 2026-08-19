@@ -125,7 +125,7 @@ function loadOrCreateSecret(name) {
   try {
     const current = fs.readFileSync(file, 'utf8').trim();
     if (current) return current;
-  } catch {}
+  } catch { }
   const secret = crypto.randomBytes(48).toString('base64url');
   fs.writeFileSync(file, secret, { encoding: 'utf8', mode: 0o600 });
   return secret;
@@ -235,7 +235,7 @@ function replaceUserHostAccess(username, hostIds) {
     for (const agentId of ids) insert.run(username, agentId, now);
     db.exec('COMMIT');
   } catch (error) {
-    try { db.exec('ROLLBACK'); } catch {}
+    try { db.exec('ROLLBACK'); } catch { }
     throw error;
   }
   return ids;
@@ -620,7 +620,7 @@ agentWss.on('connection', ws => {
           JSON.stringify(payload.capabilities || []), now, now);
         agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(agentId);
         attachLegacyDataToLocalAgent(db, agentId, payload.hostname);
-      broadcastUi('ui.agent.pending', serializeHost(getHost(agentId)), null, { superOnly: true });
+        broadcastUi('ui.agent.pending', serializeHost(getHost(agentId)), null, { superOnly: true });
       } else {
         if (agent.token_hash !== tokenHash) return ws.close(4004, 'invalid agent token');
         if (agent.status === 'revoked') return ws.close(4005, 'agent revoked');
@@ -691,7 +691,7 @@ uiWss.on('connection', (ws, req, user) => {
         ws.subscribedAgentId = agentId && hasHostAccess(ws.user, agentId) ? agentId : null;
       }
       if (message.type === 'ping') sendJson(ws, envelope('pong'));
-    } catch {}
+    } catch { }
   });
   ws.on('close', () => uiClients.delete(ws));
 });
@@ -918,8 +918,10 @@ app.get('/api/v1/hosts/:id/events', authenticate, requireHostAccess, (req, res) 
     SELECT id, type, severity, payload_json, occurred_at FROM events
     WHERE agent_id = ? ORDER BY occurred_at DESC LIMIT 200
   `).all(req.params.id);
-  res.json(rows.map(row => ({ id: row.id, type: row.type, severity: row.severity,
-    payload: parseJson(row.payload_json, {}), occurredAt: row.occurred_at })));
+  res.json(rows.map(row => ({
+    id: row.id, type: row.type, severity: row.severity,
+    payload: parseJson(row.payload_json, {}), occurredAt: row.occurred_at
+  })));
 });
 
 app.get('/api/v1/agents/pending', authenticate, requireSuperAdmin, (req, res) => {
@@ -1053,7 +1055,7 @@ app.put('/api/v1/users/:username', authenticate, requireSuperAdmin, async (req, 
     }
     db.exec('COMMIT');
   } catch (error) {
-    try { db.exec('ROLLBACK'); } catch {}
+    try { db.exec('ROLLBACK'); } catch { }
     return res.status(400).json({ error: error.message });
   }
   notifyUserAccessChanged(current.username, role);
@@ -1101,7 +1103,7 @@ app.get('/api/v1/system/settings', (req, res) => {
 app.put('/api/v1/system/settings', authenticate, requireSuperAdmin, (req, res) => {
   const { appName, appSubtitle, tagline, logoText, logoUrl, ownerSignature, timezone, environmentLabel } = req.body || {};
 
-  if (appName !== undefined) systemSettings.appName = String(appName).trim() || 'NMH Ops';
+  if (appName !== undefined) systemSettings.appName = String(appName).trim() || 'NMH Ops Controller';
   if (appSubtitle !== undefined) systemSettings.appSubtitle = String(appSubtitle).trim();
   if (tagline !== undefined) systemSettings.tagline = String(tagline).trim();
   if (logoText !== undefined) systemSettings.logoText = String(logoText).trim() || 'NMH';
@@ -1140,7 +1142,7 @@ app.post('/api/v1/alerts/test', authenticate, requireSuperAdmin, async (req, res
     await alertEngine.dispatchAlert({
       hostName: 'Central Controller (Test)',
       title: 'Kiểm tra thông báo cảnh báo',
-      message: 'Đây là thông báo thử nghiệm từ hệ thống NMH Ops.',
+      message: 'Đây là thông báo thử nghiệm từ hệ thống NMH Ops Controller.',
       severity: 'info',
       details: [
         { name: 'Kênh kiểm tra', value: 'Telegram / Discord / Webhook' },
@@ -1487,7 +1489,7 @@ function cleanupData() {
   const expiredScreenshots = db.prepare('SELECT id, file_path FROM screenshots WHERE created_at < ? ORDER BY created_at')
     .all(new Date(now - SCREENSHOT_RETENTION_MS).toISOString());
   for (const screenshot of expiredScreenshots) {
-    try { fs.unlinkSync(screenshot.file_path); } catch {}
+    try { fs.unlinkSync(screenshot.file_path); } catch { }
     db.prepare('DELETE FROM screenshots WHERE id = ?').run(screenshot.id);
   }
 
@@ -1495,7 +1497,7 @@ function cleanupData() {
   let totalSize = screenshots.reduce((sum, item) => sum + item.size_bytes, 0);
   for (const screenshot of screenshots) {
     if (totalSize <= 1024 * 1024 * 1024) break;
-    try { fs.unlinkSync(screenshot.file_path); } catch {}
+    try { fs.unlinkSync(screenshot.file_path); } catch { }
     db.prepare('DELETE FROM screenshots WHERE id = ?').run(screenshot.id);
     totalSize -= screenshot.size_bytes;
   }
@@ -1548,7 +1550,7 @@ function shutdown(exitCode = 0) {
   for (const ws of agentSockets.values()) ws.close(1001, 'server shutdown');
   for (const ws of uiClients) ws.close(1001, 'server shutdown');
   const finish = () => {
-    try { db.close(); } catch {}
+    try { db.close(); } catch { }
     process.exit(exitCode);
   };
   if (server.listening) server.close(finish);

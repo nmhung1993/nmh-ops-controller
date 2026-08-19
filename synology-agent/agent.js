@@ -23,7 +23,7 @@ function getDockerSocket() {
   for (const p of candidates) {
     try {
       if (fs.existsSync(p)) return p;
-    } catch {}
+    } catch { }
   }
   return null;
 }
@@ -89,7 +89,7 @@ function writeJson(file, value) {
   const temporary = `${file}.tmp`;
   fs.writeFileSync(temporary, JSON.stringify(value, null, 2), { mode: 0o600 });
   fs.renameSync(temporary, file);
-  try { fs.chmodSync(file, 0o600); } catch {}
+  try { fs.chmodSync(file, 0o600); } catch { }
 }
 function run(file, args = [], timeout = 15_000) {
   return new Promise((resolve, reject) => execFile(file, args, { encoding: 'utf8', timeout, maxBuffer: 10 * 1024 * 1024 }, (error, stdout) => error ? reject(error) : resolve(stdout)));
@@ -153,7 +153,7 @@ function failConnection(current, reason) {
   connectionAttemptTimer = null;
   socket = null; approved = false;
   console.error(`Synology Agent connection failed: ${reason}`);
-  try { current.terminate(); } catch {}
+  try { current.terminate(); } catch { }
   scheduleReconnect();
 }
 function connect() {
@@ -255,7 +255,7 @@ function hardwareSensors() {
   const powerParts = [];
   for (const base of ['/sys/class/thermal', '/sys/class/hwmon']) {
     let entries = [];
-    try { entries = fs.readdirSync(base, { withFileTypes: true }); } catch {}
+    try { entries = fs.readdirSync(base, { withFileTypes: true }); } catch { }
     for (const entry of entries) {
       if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
       const folder = path.join(base, entry.name);
@@ -267,7 +267,7 @@ function hardwareSensors() {
           const raw = Number(fs.readFileSync(path.join(folder, file), 'utf8').trim());
           if (/^(temp|thermal_zone).*input$|^temp$/.test(file) && raw > 0) temperatures.push({ id: `${entry.name}-${file}`, type: 'system', name, celsius: Math.round((raw > 1000 ? raw / 1000 : raw) * 10) / 10, source: 'linux-sysfs' });
           if (/^power\d+_input$/.test(file) && raw >= 0) powerParts.push({ id: `${entry.name}-${file}`, type: 'system', name, watts: Math.round(raw / 1_000_000 * 100) / 100, source: 'linux-sysfs' });
-        } catch {}
+        } catch { }
       }
     }
   }
@@ -285,7 +285,7 @@ async function collectTelemetry() {
           running: rawContainers.filter(c => c.State === 'running').length
         };
       }
-    } catch {}
+    } catch { }
   }
   return {
     sampledAt: new Date().toISOString(),
@@ -399,7 +399,7 @@ async function executeCommand(payload) {
               netRx: rawStats?.networks?.eth0?.rx_bytes || 0,
               netTx: rawStats?.networks?.eth0?.tx_bytes || 0
             };
-          } catch {}
+          } catch { }
         }
 
         return {
@@ -588,7 +588,7 @@ function initialize() {
   config = readJson(CONFIG_FILE, null);
   if (!config?.serverUrl) throw new Error(`Missing serverUrl in ${CONFIG_FILE}`);
   config.stateDir ||= path.join(path.dirname(CONFIG_FILE), 'state');
-  console.log(`Synology Agent ${VERSION} starting; server=${config.serverUrl}`);
+  console.log(`NMH Ops Controller Synology Agent ${VERSION} starting; server=${config.serverUrl}`);
   state = readJson(path.join(config.stateDir, 'state.json'), null) || { installId: crypto.randomUUID(), agentId: null, token: crypto.randomBytes(32).toString('base64url'), sequence: 0, telemetryBuffer: [], eventBuffer: [], resultBuffer: [], completedCommands: {}, watchdog: { version: 0, rules: [] } };
   state.telemetryBuffer ||= []; state.eventBuffer ||= []; state.resultBuffer ||= []; state.completedCommands ||= {}; state.watchdog ||= { version: 0, rules: [] }; state.sequence ||= 0; saveState();
   connect(); telemetryTick(); setInterval(telemetryTick, 2000); setInterval(watchdogTick, 10_000); setInterval(maintainConnection, 5000);

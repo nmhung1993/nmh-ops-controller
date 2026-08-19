@@ -133,11 +133,11 @@ class AlertEngine {
     return new Promise((resolve) => {
       const payload = JSON.stringify({
         embeds: [{
-          title: `🚨 NMH Ops Alert: ${title}`,
+          title: `🚨 NMH Ops Controller Alert: ${title}`,
           description: description,
           color: colors[severity] || colors.warning,
           fields: fields,
-          footer: { text: 'NMH Ops • Unified Fleet & LAN Controller' },
+          footer: { text: 'NMH Ops Controller • Unified Fleet & LAN Controller' },
           timestamp: new Date().toISOString()
         }]
       });
@@ -264,7 +264,7 @@ class AlertEngine {
 
     // Telegram format
     const tgIcon = severity === 'critical' ? '🔴' : severity === 'warning' ? '🟡' : 'ℹ️';
-    const tgMessage = `<b>${tgIcon} NMH Ops Cảnh báo: ${title}</b>\n\n` +
+    const tgMessage = `<b>${tgIcon} NMH Ops Controller Cảnh báo: ${title}</b>\n\n` +
       `🖥 <b>Máy trạm:</b> ${hostName || 'Hệ thống'}\n` +
       `📝 <b>Chi tiết:</b> ${message}\n` +
       details.map(d => `• <b>${d.name}:</b> ${d.value}`).join('\n') +
@@ -328,8 +328,8 @@ class AlertEngine {
     const temps = Array.isArray(telemetry.hardware?.temperatures)
       ? telemetry.hardware.temperatures
       : Array.isArray(telemetry.hardware?.sensors)
-      ? telemetry.hardware.sensors.filter(s => Number.isFinite(s.celsius))
-      : [];
+        ? telemetry.hardware.sensors.filter(s => Number.isFinite(s.celsius))
+        : [];
     const maxTemp = temps.reduce((max, s) => Math.max(max, Number(s.celsius || 0)), 0);
     if (maxTemp >= thresholds.tempCelsius) {
       const key = `${hostId}_temp`;

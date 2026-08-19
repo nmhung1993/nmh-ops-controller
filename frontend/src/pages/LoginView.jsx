@@ -29,7 +29,7 @@ export default function LoginView() {
   };
 
   return (
-    <AuthLayout title={t('login.eyebrow')} subtitle="NMH Ops">
+    <AuthLayout title={t('login.eyebrow')} subtitle="NMH Ops Controller">
       <form onSubmit={handleSubmit}>
         <Stack spacing={2.5}>
           {error && <Alert severity="error" sx={{ borderRadius: 1.5 }}>{error}</Alert>}

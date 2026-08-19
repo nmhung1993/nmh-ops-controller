@@ -1,7 +1,7 @@
-name: Windows Controller Home Assistant Connector
+name: NMH Ops Controller Home Assistant Connector
 version: "2.1.5"
 slug: windows_controller_connector
-description: Publishes Home Assistant system and selected sensor telemetry to Windows Controller Fleet.
+description: Publishes Home Assistant system and selected sensor telemetry to NMH Ops Controller Fleet.
 arch:
   - amd64
   - aarch64

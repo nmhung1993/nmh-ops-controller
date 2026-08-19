@@ -48,7 +48,7 @@ class RouterOSSocketClient {
         isDone = true;
         clearTimeout(timer);
         if (socket) {
-          try { socket.destroy(); } catch {}
+          try { socket.destroy(); } catch { }
         }
         if (err) reject(err);
         else resolve(data);
@@ -330,7 +330,7 @@ class MikroTikManager {
       proc.on('error', () => finish(false, null));
 
       setTimeout(() => {
-        try { proc.kill(); } catch (e) {}
+        try { proc.kill(); } catch (e) { }
         finish(false, null);
       }, timeoutMs + 200);
     });
@@ -350,7 +350,7 @@ class MikroTikManager {
 
       const timer = setTimeout(() => {
         if (!isDone) {
-          try { req.destroy(); } catch {}
+          try { req.destroy(); } catch { }
           done(new Error(`MikroTik REST API timeout (${timeoutMs}ms) for ${apiPath}`));
         }
       }, timeoutMs);
@@ -359,7 +359,7 @@ class MikroTikManager {
       const headers = {
         'Authorization': `Basic ${auth}`,
         'Accept': 'application/json',
-        'User-Agent': 'MinhHungOps-MikroTik-Client'
+        'User-Agent': 'NMH Ops-Controller-MikroTik-Client'
       };
 
       let bodyData = null;
@@ -440,7 +440,7 @@ class MikroTikManager {
         const totalMem = Number(resource['total-memory'] || 0);
         const freeMem = Number(resource['free-memory'] || 0);
         const memUsagePct = totalMem > 0 ? Math.round(((totalMem - freeMem) / totalMem) * 100) : 0;
-        
+
         const totalHdd = Number(resource['total-hdd-space'] || 0);
         const freeHdd = Number(resource['free-hdd-space'] || 0);
         const hddUsagePct = totalHdd > 0 ? Math.round(((totalHdd - freeHdd) / totalHdd) * 100) : 0;
@@ -496,7 +496,7 @@ class MikroTikManager {
         const curRxBytes = Number(pppoeIf['rx-byte'] || pppoeIf['rx-bytes'] || 0);
         const curTxBytes = Number(pppoeIf['tx-byte'] || pppoeIf['tx-bytes'] || 0);
         const now = Date.now();
-        
+
         let rxMbps = 0;
         let txMbps = 0;
 
@@ -578,7 +578,7 @@ class MikroTikManager {
       const totalMem = Number(resource?.['total-memory'] ?? 0);
       const freeMem = Number(resource?.['free-memory'] ?? 0);
       const memUsagePct = totalMem > 0 ? Math.round(((totalMem - freeMem) / totalMem) * 100) : 0;
-      
+
       const totalHdd = Number(resource?.['total-hdd-space'] ?? 0);
       const freeHdd = Number(resource?.['free-hdd-space'] ?? 0);
       const hddUsagePct = totalHdd > 0 ? Math.round(((totalHdd - freeHdd) / totalHdd) * 100) : 0;
@@ -720,7 +720,7 @@ class MikroTikManager {
           return map;
         }
       }
-    } catch (e) {}
+    } catch (e) { }
     return this.cachedDeviceMap || new Map();
   }
 

@@ -15,8 +15,8 @@ const DEFAULT_SETTINGS = {
 const SystemSettingsContext = createContext({
   settings: DEFAULT_SETTINGS,
   loading: false,
-  updateSettings: async () => {},
-  refreshSettings: async () => {}
+  updateSettings: async () => { },
+  refreshSettings: async () => { }
 });
 
 export function SystemSettingsProvider({ children }) {

@@ -30,7 +30,7 @@ function getDockerSocket() {
   }
   const candidates = ['/var/run/docker.sock', '/run/docker.sock'];
   for (const p of candidates) {
-    try { if (fs.existsSync(p)) return { socketPath: p }; } catch {}
+    try { if (fs.existsSync(p)) return { socketPath: p }; } catch { }
   }
   return null;
 }
@@ -213,7 +213,7 @@ async function connect() {
     ws = null;
     connecting = false;
     approved = false;
-    try { staleSocket?.terminate(); } catch {}
+    try { staleSocket?.terminate(); } catch { }
     scheduleReconnect();
   }, CONNECTION_ATTEMPT_TIMEOUT_MS);
   try {
@@ -233,7 +233,7 @@ async function connect() {
 
   socket.on('open', () => {
     if (attemptId !== connectionAttemptId) {
-      try { socket.terminate(); } catch {}
+      try { socket.terminate(); } catch { }
       return;
     }
     connecting = false;
@@ -305,7 +305,7 @@ async function connect() {
     ws = null;
     connecting = false;
     approved = false;
-    try { socket.terminate(); } catch {}
+    try { socket.terminate(); } catch { }
     scheduleReconnect();
   });
 }
@@ -344,7 +344,7 @@ function maintainConnection() {
     const staleSocket = ws;
     ws = null;
     approved = false;
-    try { staleSocket?.terminate(); } catch {}
+    try { staleSocket?.terminate(); } catch { }
     scheduleReconnect();
     return;
   }
@@ -361,7 +361,7 @@ function maintainConnection() {
       if (connectionAttemptTimer) clearTimeout(connectionAttemptTimer);
       connectionAttemptTimer = null;
       approved = false;
-      try { staleSocket.terminate(); } catch {}
+      try { staleSocket.terminate(); } catch { }
       scheduleReconnect();
     }
     return;
@@ -374,7 +374,7 @@ function maintainConnection() {
     connecting = false;
     approved = false;
     connectionAttemptId += 1;
-    try { staleSocket.terminate(); } catch {}
+    try { staleSocket.terminate(); } catch { }
     scheduleReconnect();
     return;
   }
@@ -474,7 +474,7 @@ async function captureWindow(processName, commandId = null, source = 'manual.cap
   }
   if (!fs.existsSync(resolvedOutput)) throw new Error('Screenshot file was not created');
   const buffer = fs.readFileSync(resolvedOutput);
-  try { fs.unlinkSync(resolvedOutput); } catch {}
+  try { fs.unlinkSync(resolvedOutput); } catch { }
   const sent = sendRaw(createEnvelope('agent.screenshot', {
     commandId,
     processName,
@@ -582,7 +582,7 @@ async function executeCommand(command) {
               stdio: 'ignore',
               windowsHide: true
             }).unref();
-          } catch {}
+          } catch { }
         }
         process.exit(1);
       }, 1000);
@@ -648,7 +648,7 @@ async function executeCommand(command) {
               netRx: rawStats?.networks?.eth0?.rx_bytes || 0,
               netTx: rawStats?.networks?.eth0?.tx_bytes || 0
             };
-          } catch {}
+          } catch { }
         }
 
         return {
@@ -833,7 +833,7 @@ function initialize() {
     process.exit(1);
   }
   config.stateDir = config.stateDir || path.dirname(CONFIG_FILE);
-  console.log(`Windows Controller Agent ${VERSION} starting; server=${config.serverUrl}`);
+  console.log(`NMH Ops Controller Agent ${VERSION} starting; server=${config.serverUrl}`);
   fs.mkdirSync(config.stateDir, { recursive: true });
   const stateFile = path.join(config.stateDir, 'state.json');
   state = readJson(stateFile, {

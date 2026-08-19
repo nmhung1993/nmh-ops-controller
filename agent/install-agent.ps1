@@ -51,12 +51,14 @@ function Read-FileTextResilient([string]$Path, [string]$Fallback = '') {
       $encoding = New-Object System.Text.UTF8Encoding($false)
       return [System.IO.File]::ReadAllText($Path, $encoding)
     }
-  } catch {}
+  }
+  catch {}
   try {
     if (Test-Path -LiteralPath $Path) {
       return (Get-Content -LiteralPath $Path -Raw -Encoding UTF8 -ErrorAction Stop)
     }
-  } catch {}
+  }
+  catch {}
   return $Fallback
 }
 
@@ -74,7 +76,8 @@ function Copy-FileResilient([string]$SourcePath, [string]$DestinationDir, [strin
         return
       }
     }
-  } catch {
+  }
+  catch {
     Write-Warning "Direct text read of $fileName encountered: $($_.Exception.Message)"
   }
 
@@ -87,7 +90,8 @@ function Copy-FileResilient([string]$SourcePath, [string]$DestinationDir, [strin
         return
       }
     }
-  } catch {
+  }
+  catch {
     Write-Warning "Direct byte read of $fileName encountered: $($_.Exception.Message)"
   }
 
@@ -97,7 +101,8 @@ function Copy-FileResilient([string]$SourcePath, [string]$DestinationDir, [strin
       Copy-Item -LiteralPath $SourcePath -Destination $destPath -Force -ErrorAction Stop
       return
     }
-  } catch {
+  }
+  catch {
     Write-Warning "Copy-Item of $fileName encountered: $($_.Exception.Message)"
   }
 
@@ -158,7 +163,8 @@ function Remove-ExistingService([string]$Name, [string]$Executable) {
   if ($existingService.Status -ne 'Stopped') {
     if (Test-Path -LiteralPath $Executable) {
       Invoke-WinSWChecked -Executable $Executable -Operation 'stop'
-    } else {
+    }
+    else {
       Stop-Service -Name $Name -Force
     }
   }
@@ -168,7 +174,8 @@ function Remove-ExistingService([string]$Name, [string]$Executable) {
 
   if (Test-Path -LiteralPath $Executable) {
     Invoke-WinSWChecked -Executable $Executable -Operation 'uninstall'
-  } else {
+  }
+  else {
     & sc.exe delete $Name | Out-Null
     if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 1060) {
       throw "sc.exe could not delete service $Name (exit code $LASTEXITCODE)."
@@ -195,7 +202,8 @@ try {
   if ($serverUri.Scheme -notin @('http', 'https') -or -not $serverUri.Host) {
     throw 'ServerUrl must be an absolute http:// or https:// URL.'
   }
-} catch {
+}
+catch {
   throw "Invalid ServerUrl: $ServerUrl. Use for example http://192.168.1.10:3003"
 }
 $hardwareInstaller = Join-Path $sourceDir 'install-hardware-monitor.ps1'
@@ -206,7 +214,7 @@ if (-not $SkipHardwareMonitor -and -not (Test-Path -LiteralPath $hardwareInstall
 # Stop the old helper before rotating its pipe secret and replacing the runtime.
 Stop-ScheduledTask -TaskName $helperTaskName -ErrorAction SilentlyContinue
 $helperProcesses = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
-  Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($helperScript, [StringComparison]::OrdinalIgnoreCase) -ge 0 }
+Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($helperScript, [StringComparison]::OrdinalIgnoreCase) -ge 0 }
 foreach ($helperProcess in $helperProcesses) {
   Stop-Process -Id $helperProcess.ProcessId -Force -ErrorAction SilentlyContinue
 }
@@ -230,7 +238,8 @@ try {
   if ($sourceHash -and $runtimeHash -and $sourceHash -ne $runtimeHash) {
     throw 'Installed Agent runtime does not match the source agent.js.'
   }
-} catch {
+}
+catch {
   if ($_.Exception.Message -match 'Installed Agent runtime does not match') { throw $_ }
 }
 
@@ -238,14 +247,15 @@ Push-Location $runtimeDir
 try {
   & "$env:ProgramFiles\nodejs\npm.cmd" install --omit=dev --no-audit --no-fund
   if ($LASTEXITCODE -ne 0) { throw 'npm install failed' }
-} finally {
+}
+finally {
   Pop-Location
 }
 
 $config = @{
-  serverUrl = $ServerUrl.TrimEnd('/')
-  stateDir = $stateDir
-  helperConfig = $helperConfig
+  serverUrl        = $ServerUrl.TrimEnd('/')
+  stateDir         = $stateDir
+  helperConfig     = $helperConfig
   helperCaptureDir = $captureDir
 }
 Write-Utf8NoBom -Path $configFile -Content ($config | ConvertTo-Json)
@@ -256,7 +266,7 @@ $random.GetBytes($secretBytes)
 $random.Dispose()
 $helper = @{
   pipeName = $pipeName
-  secret = [Convert]::ToBase64String($secretBytes)
+  secret   = [Convert]::ToBase64String($secretBytes)
   stateDir = $captureDir
 }
 Write-Utf8NoBom -Path $helperConfig -Content ($helper | ConvertTo-Json)
@@ -280,8 +290,8 @@ $xmlRoot = [Security.SecurityElement]::Escape($InstallRoot)
 @"
 <service>
   <id>WindowsControllerAgent</id>
-  <name>Windows Controller Agent</name>
-  <description>Collects Windows telemetry and executes approved controller commands.</description>
+  <name>NMH Opss Controller Agent</name>
+  <description>NMH Opsts Windows telemetry and executes approved controller commands.</description>
   <executable>$xmlNode</executable>
   <arguments>&quot;$xmlAgent&quot; --config &quot;$xmlConfig&quot;</arguments>
   <workingdirectory>$xmlRoot</workingdirectory>
@@ -301,8 +311,8 @@ if (-not (Wait-ServiceStatus -Name $serviceName -Status 'Running')) {
 $processDeadline = [DateTime]::UtcNow.AddSeconds(30)
 do {
   $agentProcess = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($agentRuntime, [StringComparison]::OrdinalIgnoreCase) -ge 0 } |
-    Select-Object -First 1
+  Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($agentRuntime, [StringComparison]::OrdinalIgnoreCase) -ge 0 } |
+  Select-Object -First 1
   if ($agentProcess) { break }
   Start-Sleep -Milliseconds 500
 } while ([DateTime]::UtcNow -lt $processDeadline)
@@ -328,7 +338,7 @@ if (-not $SkipHardwareMonitor) {
   Write-Host 'Installing LibreHardwareMonitor bridge and PawnIO...' -ForegroundColor Cyan
   $hardwareArguments = @{
     InstallRoot = $HardwareMonitorInstallRoot
-    DotnetRoot = $DotnetRoot
+    DotnetRoot  = $DotnetRoot
   }
   if ($HardwareMonitorPackagePath) {
     $hardwareArguments.PackagePath = $HardwareMonitorPackagePath

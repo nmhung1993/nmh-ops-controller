@@ -22,7 +22,7 @@ if ((Test-Path -LiteralPath $serviceExe) -and $existingService) {
 }
 Stop-ScheduledTask -TaskName 'Windows Controller Desktop Helper' -ErrorAction SilentlyContinue
 $helperProcesses = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
-  Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($helperScript, [StringComparison]::OrdinalIgnoreCase) -ge 0 }
+Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($helperScript, [StringComparison]::OrdinalIgnoreCase) -ge 0 }
 foreach ($helperProcess in $helperProcesses) {
   Stop-Process -Id $helperProcess.ProcessId -Force -ErrorAction SilentlyContinue
 }
@@ -33,7 +33,7 @@ if (-not $KeepHardwareMonitor) {
   Stop-ScheduledTask -TaskName $hardwareTaskName -ErrorAction SilentlyContinue
   Unregister-ScheduledTask -TaskName $hardwareTaskName -Confirm:$false -ErrorAction SilentlyContinue
   $probeProcesses = Get-CimInstance Win32_Process -Filter "Name = 'dotnet.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($hardwareProbeDll, [StringComparison]::OrdinalIgnoreCase) -ge 0 }
+  Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($hardwareProbeDll, [StringComparison]::OrdinalIgnoreCase) -ge 0 }
   foreach ($probeProcess in $probeProcesses) {
     Stop-Process -Id $probeProcess.ProcessId -Force -ErrorAction SilentlyContinue
   }
@@ -43,7 +43,8 @@ if ($RemoveData) {
   $windowsControllerPath = Join-Path $env:ProgramData 'WindowsController'
   if (-not (Test-Path -LiteralPath $windowsControllerPath)) {
     Write-Host 'No Windows Controller data directory remains.'
-  } else {
+  }
+  else {
     $windowsControllerRoot = (Resolve-Path -LiteralPath $windowsControllerPath).Path
     $dataCandidates = @($InstallRoot)
     if (-not $KeepHardwareMonitor) {
@@ -53,7 +54,7 @@ if ($RemoveData) {
       if (-not (Test-Path -LiteralPath $candidate)) { continue }
       $resolved = (Resolve-Path -LiteralPath $candidate).Path
       if ($resolved.Equals($windowsControllerRoot, [StringComparison]::OrdinalIgnoreCase) -or
-          -not $resolved.StartsWith($windowsControllerRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+        -not $resolved.StartsWith($windowsControllerRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
         throw "Refusing to remove data outside $windowsControllerRoot`: $resolved"
       }
       Remove-Item -LiteralPath $resolved -Recurse -Force
@@ -61,4 +62,4 @@ if ($RemoveData) {
   }
 }
 $hardwareMessage = if ($KeepHardwareMonitor) { 'Hardware monitor preserved.' } else { 'Hardware monitor task removed; PawnIO driver is preserved.' }
-Write-Host "Windows Controller Agent uninstalled. $hardwareMessage" -ForegroundColor Green
+Write-Host "NMH Opss Controller Agent uninstalled. $hardwareMessage" -ForegroundColor Green

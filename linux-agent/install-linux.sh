@@ -38,7 +38,7 @@ chmod 700 "$INSTALL_ROOT" "$STATE_DIR"
 SERVICE_FILE="/etc/systemd/system/windows-controller-agent.service"
 cat > "$SERVICE_FILE" <<EOF
 [Unit]
-Description=Windows Controller Linux Agent
+Description=NMH Ops Controller Linux Agent
 After=network-online.target
 Wants=network-online.target
 

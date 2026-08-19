@@ -59,7 +59,7 @@ function failConnection(current, reason) {
   connectionAttemptTimer = null;
   socket = null; approved = false;
   console.error(`Home Assistant connector connection failed: ${reason}`);
-  try { current.terminate(); } catch {}
+  try { current.terminate(); } catch { }
   scheduleReconnect();
 }
 function connect() {
@@ -195,7 +195,7 @@ async function telemetryTick() {
 function initialize() {
   config = readJson(CONFIG_FILE, null);
   if (!config?.central_server_url || !config?.home_assistant_url) throw new Error(`Invalid add-on options in ${CONFIG_FILE}`);
-  console.log(`Home Assistant connector ${VERSION} starting; server=${config.central_server_url}`);
+  console.log(`NMH Ops Controller Home Assistant Connector ${VERSION} starting; server=${config.central_server_url}`);
   state = readJson(STATE_FILE, null) || { installId: crypto.randomUUID(), agentId: null, token: crypto.randomBytes(32).toString('base64url'), hostname: `homeassistant-${os.hostname()}`, sequence: 0, telemetryBuffer: [] };
   state.telemetryBuffer ||= []; state.sequence ||= 0; saveState();
   connect(); telemetryTick(); setInterval(telemetryTick, Math.max(2, Number(config.telemetry_interval_seconds || 5)) * 1000); setInterval(maintainConnection, 5000);

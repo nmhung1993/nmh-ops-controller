@@ -1,4 +1,4 @@
-# MinhHungOps — Unified Fleet, Docker & LAN Operations Controller
+# NMH Ops Controller — Unified Fleet, Docker & LAN Operations Controller
 
 [![Node.js](https://img.shields.io/badge/Node.js-24%20LTS-green.svg)](https://nodejs.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/Author-%40nmhung1993-orange.svg)](https://github.com/nmhung1993)
 [![Timezone](https://img.shields.io/badge/Timezone-GMT%2B7%20(Asia%2FHo__Chi__Minh)-blueviolet.svg)]()
 
-**MinhHungOps** là nền tảng quản trị và giám sát tập trung toàn diện cho hạ tầng máy chủ, máy trạm Windows, Linux, Synology NAS và cụm container Docker trong mạng LAN tin cậy. Hệ thống tích hợp khả năng quản lý Docker chuẩn Dockhand, giám sát phần cứng S.M.A.R.T, tự phục hồi Watchdog với cảnh báo Telegram Topic/Discord riêng biệt từng máy, kiểm tra mạng/Router Mesh, và thực thi lệnh từ xa an toàn.
+**NMH Ops Controller** là nền tảng quản trị và giám sát tập trung toàn diện cho hạ tầng máy chủ, máy trạm Windows, Linux, Synology NAS, MikroTik RouterOS và cụm container Docker trong mạng LAN tin cậy. Hệ thống tích hợp khả năng quản lý Docker chuẩn Dockhand, giám sát phần cứng S.M.A.R.T, tự phục hồi Watchdog với cảnh báo Telegram Topic/Discord riêng biệt từng máy, kiểm tra mạng/Router Mesh, và thực thi lệnh từ xa an toàn.
 
 ---
 
@@ -60,7 +60,7 @@
 
 ```mermaid
 flowchart TD
-    subgraph Client["🖥️ Trình duyệt Web (MinhHungOps Dashboard)"]
+    subgraph Client["🖥️ Trình duyệt Web (NMH Ops Controller Dashboard)"]
         UI["React 18 + MUI v6 + Vite"]
         DockerTab["Docker Fleet & Stacks Management"]
         LogsTerm["Live Log Stream (WebSocket)"]
@@ -360,4 +360,4 @@ MinhHungOps/
 
 - **Phát triển bởi**: `@nmhung1993`
 - **Múi giờ vận hành**: GMT+7 (`Asia/Ho_Chi_Minh`)
-- **Dự án**: MinhHungOps Unified Operations Controller
+- **Dự án**: NMH Ops Controller Unified Operations Controller
