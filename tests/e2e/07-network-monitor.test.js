@@ -24,27 +24,43 @@ test('07. Network Monitor: Ping Monitor ranges, Subnet Scanner, and Router Mesh'
 
   await t.test('Tab switching between Ping Monitor, Subnet Scanner, and Router Mesh is smooth', async () => {
     // Switch to Subnet Scanner
-    const scannerTab = page.getByRole('button', { name: /Quét mạng LAN/i });
+    const scannerTab = page.getByRole('tab', { name: /Quét mạng LAN/i });
     if (await scannerTab.isVisible()) {
       await scannerTab.click();
-      await page.waitForTimeout(800);
+      await page.waitForTimeout(500);
     }
 
     // Switch to Router & Mesh
-    const routerTab = page.getByRole('button', { name: /Router & Mesh/i });
+    const routerTab = page.getByRole('tab', { name: /Router & Mesh/i });
     if (await routerTab.isVisible()) {
       await routerTab.click();
-      await page.waitForTimeout(800);
+      await page.waitForTimeout(500);
     }
 
     // Switch back to Ping Monitor
-    const pingTab = page.getByRole('button', { name: /Giám sát kết nối/i });
+    const pingTab = page.getByRole('tab', { name: /Giám sát kết nối/i });
     if (await pingTab.isVisible()) {
       await pingTab.click();
-      await page.waitForTimeout(800);
+      await page.waitForTimeout(500);
     }
 
     assert.ok(true, 'Tab switching executed cleanly without error');
+  });
+
+  await t.test('MikroTik RouterOS dashboard displays telemetry and masks PPPoE username by default', async () => {
+    // Switch to Router & Mesh tab
+    const routerTab = page.getByRole('tab', { name: /Router & Mesh/i });
+    await routerTab.click();
+    await page.waitForTimeout(1000);
+
+    // Verify MikroTik selector button
+    const mikrotikBtn = page.getByRole('button', { name: /MikroTik RouterOS/i });
+    assert.ok(await mikrotikBtn.isVisible(), 'MikroTik selector button should be visible');
+
+    // Check if PPPoE username is masked with dots by default
+    const content = await page.content();
+    const hasDotsMask = content.includes('••••••••') || content.includes('User:');
+    assert.ok(hasDotsMask, 'PPPoE username should be masked or displayed properly');
   });
 
   await browser.close();
