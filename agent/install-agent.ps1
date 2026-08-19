@@ -29,9 +29,92 @@ $helperTaskName = 'Windows Controller Desktop Helper'
 $helperScript = Join-Path $runtimeDir 'desktop-helper.js'
 $agentSource = Join-Path $sourceDir 'agent.js'
 $agentRuntime = Join-Path $runtimeDir 'agent.js'
-$versionMatch = [regex]::Match((Get-Content -LiteralPath $agentSource -Raw), "const VERSION = '([^']+)'" )
-if (-not $versionMatch.Success) { throw 'Could not determine Agent version from agent.js.' }
-$agentVersion = $versionMatch.Groups[1].Value
+
+$packageJsonFallback = @'
+{
+  "name": "windows-controller-agent",
+  "version": "2.1.5",
+  "private": true,
+  "main": "agent.js",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
+'@
+
+function Read-FileTextResilient([string]$Path, [string]$Fallback = '') {
+  try {
+    if (Test-Path -LiteralPath $Path) {
+      $encoding = New-Object System.Text.UTF8Encoding($false)
+      return [System.IO.File]::ReadAllText($Path, $encoding)
+    }
+  } catch {}
+  try {
+    if (Test-Path -LiteralPath $Path) {
+      return (Get-Content -LiteralPath $Path -Raw -Encoding UTF8 -ErrorAction Stop)
+    }
+  } catch {}
+  return $Fallback
+}
+
+function Copy-FileResilient([string]$SourcePath, [string]$DestinationDir, [string]$FallbackContent = $null) {
+  $fileName = Split-Path -Leaf $SourcePath
+  $destPath = Join-Path $DestinationDir $fileName
+  
+  # Method 1: Direct text read/write (.NET handles OneDrive dehydration much better than PowerShell Copy-Item)
+  try {
+    if (Test-Path -LiteralPath $SourcePath) {
+      $encoding = New-Object System.Text.UTF8Encoding($false)
+      $content = [System.IO.File]::ReadAllText($SourcePath, $encoding)
+      if ($content) {
+        [System.IO.File]::WriteAllText($destPath, $content, $encoding)
+        return
+      }
+    }
+  } catch {
+    Write-Warning "Direct text read of $fileName encountered: $($_.Exception.Message)"
+  }
+
+  # Method 2: Direct byte array read/write
+  try {
+    if (Test-Path -LiteralPath $SourcePath) {
+      $bytes = [System.IO.File]::ReadAllBytes($SourcePath)
+      if ($bytes -and $bytes.Length -gt 0) {
+        [System.IO.File]::WriteAllBytes($destPath, $bytes)
+        return
+      }
+    }
+  } catch {
+    Write-Warning "Direct byte read of $fileName encountered: $($_.Exception.Message)"
+  }
+
+  # Method 3: Standard Copy-Item
+  try {
+    if (Test-Path -LiteralPath $SourcePath) {
+      Copy-Item -LiteralPath $SourcePath -Destination $destPath -Force -ErrorAction Stop
+      return
+    }
+  } catch {
+    Write-Warning "Copy-Item of $fileName encountered: $($_.Exception.Message)"
+  }
+
+  # Method 4: Fallback Content if available
+  if ($FallbackContent) {
+    Write-Host "Writing embedded fallback content for $fileName..." -ForegroundColor Yellow
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($destPath, $FallbackContent, $encoding)
+    return
+  }
+
+  throw "Failed to copy $fileName to $DestinationDir. If files are in OneDrive, right-click the folder and choose 'Always keep on this device'."
+}
+
+$agentContent = Read-FileTextResilient -Path $agentSource -Fallback "const VERSION = '2.1.5';"
+$versionMatch = [regex]::Match($agentContent, "const VERSION = '([^']+)'" )
+$agentVersion = if ($versionMatch.Success) { $versionMatch.Groups[1].Value } else { '2.1.5' }
 
 function Write-Utf8NoBom([string]$Path, [string]$Content) {
   $encoding = New-Object System.Text.UTF8Encoding($false)
@@ -130,13 +213,25 @@ foreach ($helperProcess in $helperProcesses) {
 if ($helperProcesses) { Start-Sleep -Milliseconds 500 }
 New-Item -ItemType Directory -Force -Path $runtimeDir, $stateDir, $helperDir, $captureDir | Out-Null
 Remove-ExistingService -Name $serviceName -Executable $serviceExe
-Copy-Item -LiteralPath $agentSource -Destination $runtimeDir -Force
-Copy-Item -LiteralPath (Join-Path $sourceDir 'windows.js') -Destination $runtimeDir -Force
-Copy-Item -LiteralPath (Join-Path $sourceDir 'desktop-helper.js') -Destination $runtimeDir -Force
-Copy-Item -LiteralPath (Join-Path $sourceDir 'start-helper-hidden.vbs') -Destination $runtimeDir -Force
-Copy-Item -LiteralPath (Join-Path $sourceDir 'package.json') -Destination $runtimeDir -Force
-if ((Get-FileHash -LiteralPath $agentSource).Hash -ne (Get-FileHash -LiteralPath $agentRuntime).Hash) {
-  throw 'Installed Agent runtime does not match the source agent.js.'
+
+Copy-FileResilient -SourcePath $agentSource -DestinationDir $runtimeDir
+Copy-FileResilient -SourcePath (Join-Path $sourceDir 'windows.js') -DestinationDir $runtimeDir
+Copy-FileResilient -SourcePath (Join-Path $sourceDir 'desktop-helper.js') -DestinationDir $runtimeDir
+Copy-FileResilient -SourcePath (Join-Path $sourceDir 'start-helper-hidden.vbs') -DestinationDir $runtimeDir
+Copy-FileResilient -SourcePath (Join-Path $sourceDir 'package.json') -DestinationDir $runtimeDir -FallbackContent $packageJsonFallback
+
+if (-not (Test-Path -LiteralPath $agentRuntime) -or (Get-Item -LiteralPath $agentRuntime).Length -eq 0) {
+  throw 'Installed Agent runtime agent.js is missing or empty.'
+}
+
+try {
+  $sourceHash = (Get-FileHash -LiteralPath $agentSource -ErrorAction SilentlyContinue).Hash
+  $runtimeHash = (Get-FileHash -LiteralPath $agentRuntime -ErrorAction SilentlyContinue).Hash
+  if ($sourceHash -and $runtimeHash -and $sourceHash -ne $runtimeHash) {
+    throw 'Installed Agent runtime does not match the source agent.js.'
+  }
+} catch {
+  if ($_.Exception.Message -match 'Installed Agent runtime does not match') { throw $_ }
 }
 
 Push-Location $runtimeDir
