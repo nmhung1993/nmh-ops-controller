@@ -80,7 +80,16 @@ function connect() {
     if (message.type === 'server.pending') { if (connectionAttemptTimer) clearTimeout(connectionAttemptTimer); connectionAttemptTimer = null; reconnectDelay = 1000; approved = false; state.agentId = message.payload?.agentId || state.agentId; saveState(); console.log(`Home Assistant connector pending approval: ${state.agentId}`); }
     else if (message.type === 'server.approved') { if (connectionAttemptTimer) clearTimeout(connectionAttemptTimer); connectionAttemptTimer = null; reconnectDelay = 1000; approved = true; state.agentId = message.payload?.agentId || state.agentId; saveState(); flush(); console.log(`Home Assistant connector approved: ${state.agentId}`); }
     else if (message.type === 'server.config') send(envelope('agent.config.ack', { version: Number(message.payload?.version || 0) }));
+    else if (message.type === 'server.event') {
+      const eventName = message.payload?.event;
+      const issueId = message.payload?.issueId;
+      console.log(`[HA Agent Event] Server dispatched: ${eventName} (${issueId || 'N/A'})`);
+      if (eventName === 'health.issue.resolved' && issueId) {
+        send(envelope('agent.event', { eventType: 'health.resolved.ack', severity: 'info', message: `Issue ${issueId} resolved.`, issueId }));
+      }
+    }
     else if (message.type === 'server.command') {
+
       const { commandId, commandType, data = {} } = message.payload || {};
       if (commandType === 'system.execute') {
         const script = String(data.command || '').trim();

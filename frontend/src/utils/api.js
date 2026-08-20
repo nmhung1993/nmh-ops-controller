@@ -1,13 +1,24 @@
-export async function apiRequest(path, options = {}) {
+export async function apiRequest(path, optionsOrMethod = {}, body = null, extraHeaders = {}) {
+  let reqOptions = {};
+  if (typeof optionsOrMethod === 'string') {
+    reqOptions = {
+      method: optionsOrMethod,
+      ...(body ? { body: typeof body === 'string' ? body : JSON.stringify(body) } : {}),
+      headers: extraHeaders
+    };
+  } else {
+    reqOptions = { ...optionsOrMethod };
+  }
+
   const token = localStorage.getItem('wc_token') || '';
   const headers = {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(options.headers || {})
+    ...(reqOptions.headers || {})
   };
 
   const response = await fetch(path, {
-    ...options,
+    ...reqOptions,
     headers
   });
 

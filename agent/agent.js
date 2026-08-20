@@ -279,9 +279,17 @@ async function connect() {
       applyWatchdogConfig(message.payload || {});
     } else if (message.type === 'server.command') {
       executeCommand(message.payload || {});
+    } else if (message.type === 'server.event') {
+      const eventName = message.payload?.event;
+      const issueId = message.payload?.issueId;
+      console.log(`[Agent Event] Server dispatched event: ${eventName} (issue: ${issueId || 'N/A'})`);
+      if (eventName === 'health.issue.resolved' && issueId) {
+        sendEvent('health.resolved.ack', 'info', `Issue ${issueId} resolved by operator.`, { issueId });
+      }
     } else if (message.type === 'pong') {
       state.lastPongAt = new Date().toISOString();
     }
+
   });
 
   socket.on('close', (code, reason) => {

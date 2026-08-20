@@ -11,7 +11,14 @@
 
 ---
 
+## 📚 Tài Liệu Hướng Dẫn Chi Tiết
+- 📖 **[Hướng Dẫn Cài Đặt Agent Đa Nền Tảng (Windows, Linux, Synology, Home Assistant)](./HUONG_DAN_CAI_DAT_AGENT.md)**: Chi tiết lệnh cài đặt 1-dòng, thiết lập Windows Service, systemd, DSM 7 Task Scheduler, và quy trình phê duyệt Token.
+- 🚀 **[Hướng Dẫn Sử Dụng & Vận Hành Toàn Bộ Tính Năng Kèm Sơ Đồ Trực Quan](./HUONG_DAN_SU_DUNG.md)**: Cẩm nang vận hành Fleet, Health Score, Docker Manager, Watchdog Engine, Script Hub, Network Monitor và cài đặt PWA trên Android/iOS.
+
+---
+
 ## 🌟 Tính Năng Nổi Bật
+
 
 ### 🐳 1. Quản lý Docker Fleet Chuẩn Dockhand (Local & LAN Hosts)
 - **Quản lý Vòng đời Container (Lifecycle Control)**: Thao tác 1-Click: *Start, Stop, Restart, Pause, Unpause, Kill, Remove, Prune*.

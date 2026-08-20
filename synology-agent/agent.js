@@ -185,6 +185,15 @@ function connect() {
       console.log(`Synology Agent approved: ${state.agentId}`);
     } else if (message.type === 'server.config') applyWatchdog(message.payload || {});
     else if (message.type === 'server.command') executeCommand(message.payload || {});
+    else if (message.type === 'server.event') {
+      const eventName = message.payload?.event;
+      const issueId = message.payload?.issueId;
+      console.log(`[Synology Agent Event] Server dispatched: ${eventName} (${issueId || 'N/A'})`);
+      if (eventName === 'health.issue.resolved' && issueId) {
+        sendEvent('health.resolved.ack', 'info', `Issue ${issueId} resolved.`, { issueId });
+      }
+    }
+
   });
   current.on('error', error => {
     console.error('Synology Agent connection error:', error.message);

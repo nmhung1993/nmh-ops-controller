@@ -1600,8 +1600,28 @@ app.post('/api/v1/docker/:hostId/volumes/prune', authenticate, requireDockerHost
 });
 
 // ==========================================
-// Health Score Endpoint
+// Health Score & Issue Resolution Endpoints
 // ==========================================
+const RESOLVED_HEALTH_ISSUES_FILE = path.join(DATA_DIR, 'resolved-health-issues.json');
+
+function loadResolvedHealthIssues() {
+  try {
+    if (fs.existsSync(RESOLVED_HEALTH_ISSUES_FILE)) {
+      return JSON.parse(fs.readFileSync(RESOLVED_HEALTH_ISSUES_FILE, 'utf8'));
+    }
+  } catch { }
+  return [];
+}
+
+function saveResolvedHealthIssues(data) {
+  try {
+    fs.mkdirSync(path.dirname(RESOLVED_HEALTH_ISSUES_FILE), { recursive: true });
+    fs.writeFileSync(RESOLVED_HEALTH_ISSUES_FILE, JSON.stringify(data, null, 2), 'utf8');
+  } catch (err) {
+    console.error('Failed to save resolved health issues:', err.message);
+  }
+}
+
 app.get('/api/v1/health-score', authenticate, async (req, res) => {
   try {
     let targets = [];
@@ -1621,12 +1641,93 @@ app.get('/api/v1/health-score', authenticate, async (req, res) => {
       }
     } catch { }
 
-    const health = calculateHealthScore(db, mikrotikStatus, targets);
-    res.json(health);
+    const resolvedItems = loadResolvedHealthIssues();
+    const resolvedIds = resolvedItems.map(item => typeof item === 'string' ? item : item.id);
+    const health = calculateHealthScore(db, mikrotikStatus, targets, resolvedIds);
+    res.json({ ...health, resolvedItems });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
+app.post('/api/v1/health-score/resolve', authenticate, (req, res) => {
+  try {
+    const { issueId, agentId, note } = req.body || {};
+    if (!issueId) return res.status(400).json({ error: 'issueId is required' });
+
+    let resolved = loadResolvedHealthIssues();
+    const existingIndex = resolved.findIndex(i => (typeof i === 'string' ? i : i.id) === issueId);
+    const entry = {
+      id: issueId,
+      agentId: agentId || null,
+      note: note || '',
+      resolvedBy: req.user?.username || 'admin',
+      resolvedAt: new Date().toISOString()
+    };
+
+    if (existingIndex >= 0) {
+      resolved[existingIndex] = entry;
+    } else {
+      resolved.push(entry);
+    }
+    saveResolvedHealthIssues(resolved);
+
+    // If agent is connected, dispatch event to agent
+    if (agentId) {
+      const ws = agentSockets.get(agentId);
+      if (ws) {
+        sendJson(ws, envelope('server.event', { event: 'health.issue.resolved', issueId }));
+      }
+    }
+
+    logAuditEvent(db, {
+      agentId: agentId || null,
+      type: 'audit.health.resolved',
+      user: req.user?.username || 'admin',
+      action: `Đã xử lý vấn đề sức khỏe: ${issueId}`,
+      details: entry
+    });
+
+    broadcastUi('ui.health.updated', { issueId, action: 'resolved', entry });
+    res.json({ success: true, message: 'Vấn đề đã được đánh dấu là đã xử lý', entry });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/v1/health-score/restore', authenticate, (req, res) => {
+  try {
+    const { issueId } = req.body || {};
+    if (!issueId) return res.status(400).json({ error: 'issueId is required' });
+
+    let resolved = loadResolvedHealthIssues();
+    resolved = resolved.filter(i => (typeof i === 'string' ? i : i.id) !== issueId);
+    saveResolvedHealthIssues(resolved);
+
+    logAuditEvent(db, {
+      type: 'audit.health.restored',
+      user: req.user?.username || 'admin',
+      action: `Khôi phục vấn đề sức khỏe: ${issueId}`,
+      details: { issueId }
+    });
+
+    broadcastUi('ui.health.updated', { issueId, action: 'restored' });
+    res.json({ success: true, message: 'Đã khôi phục trạng thái vấn đề' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/v1/health-score/clear-resolved', authenticate, (req, res) => {
+  try {
+    saveResolvedHealthIssues([]);
+    broadcastUi('ui.health.updated', { action: 'cleared_resolved' });
+    res.json({ success: true, message: 'Đã xóa toàn bộ lịch sử đã xử lý' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // ==========================================
 // Script Hub Endpoints

@@ -78,9 +78,13 @@ export default function FleetView({ onNavigate }) {
   const [upgradingAll, setUpgradingAll] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
 
-  // Real-time OTA Progress Modal State
   const [otaProgressOpen, setOtaProgressOpen] = useState(false);
   const [otaTasks, setOtaTasks] = useState([]);
+  const [releaseNotesOpen, setReleaseNotesOpen] = useState(false);
+
+  const outdatedHosts = hosts.filter(h => h.version !== otaStatus.latestAgentVersion);
+  const updatedHosts = hosts.filter(h => h.version === otaStatus.latestAgentVersion);
+
 
   useEffect(() => {
     apiRequest('/api/v1/ota/status')
@@ -309,19 +313,19 @@ export default function FleetView({ onNavigate }) {
                 <Typography variant="subtitle1" sx={{ fontWeight: 800, letterSpacing: '-0.01em' }}>
                   Trung Tâm Nâng Cấp Tự Động (OTA Center)
                 </Typography>
-                <Label variant="filled" color="primary" sx={{ fontWeight: 700, fontSize: '0.7rem' }}>
-                  Mới nhất: v{otaStatus.latestAgentVersion}
+                <Label variant="filled" color="primary" sx={{ fontWeight: 800, fontSize: '0.75rem', px: 1 }}>
+                  Bản OTA Server: v{otaStatus.latestAgentVersion}
                 </Label>
               </Stack>
               <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.8125rem' }}>
-                Nâng cấp tức thì qua mạng không gián đoạn cho toàn bộ máy trạm.
+                Phiên bản Agent mới nhất sẵn sàng phát hành qua mạng • Không gián đoạn dịch vụ.
               </Typography>
             </Box>
           </Stack>
 
           <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap', gap: 1 }}>
             <Chip
-              label={`${hosts.filter(h => h.version === otaStatus.latestAgentVersion).length} máy đã cập nhật`}
+              label={`${hosts.filter(h => h.version === otaStatus.latestAgentVersion).length} máy đã ở v${otaStatus.latestAgentVersion}`}
               color="success"
               variant="outlined"
               size="small"
@@ -329,11 +333,24 @@ export default function FleetView({ onNavigate }) {
             />
             {hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length > 0 && (
               <Chip
-                label={`${hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length} máy cần nâng cấp`}
+                label={`${hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length} máy cần nâng cấp lên v${otaStatus.latestAgentVersion}`}
                 color="warning"
                 size="small"
-                sx={{ fontWeight: 700 }}
+                sx={{ fontWeight: 800 }}
               />
+            )}
+            {isSuperAdmin && hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length > 0 && (
+              <Button
+                size="small"
+                variant="contained"
+                color="warning"
+                disabled={upgradingAll}
+                startIcon={<UploadCloud size={15} className={upgradingAll ? 'animate-spin' : ''} />}
+                onClick={handleUpgradeAllFleet}
+                sx={{ fontWeight: 800, boxShadow: '0 4px 12px rgba(245, 158, 11, 0.35)' }}
+              >
+                Nâng Cấp Toàn Bộ ({hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length})
+              </Button>
             )}
             {otaTasks.length > 0 && (
               <Button
@@ -617,13 +634,28 @@ export default function FleetView({ onNavigate }) {
                           <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 600 }}>
                             {host.ip ? `${host.ip} • ` : ''}{host.platform || 'Windows'}
                           </Typography>
-                          <Label
-                            variant="outlined"
-                            color={host.version === otaStatus.latestAgentVersion ? 'success' : 'warning'}
-                            sx={{ fontSize: '0.65rem', height: 18, px: 0.6 }}
-                          >
-                            v{host.version || '2.1.4'}
-                          </Label>
+                          {host.version === otaStatus.latestAgentVersion ? (
+                            <Tooltip title={`Agent đang ở phiên bản mới nhất (v${host.version || otaStatus.latestAgentVersion})`}>
+                              <Label
+                                variant="soft"
+                                color="success"
+                                sx={{ fontSize: '0.65rem', height: 18, px: 0.6, fontWeight: 700 }}
+                              >
+                                v{host.version || otaStatus.latestAgentVersion} (Mới nhất)
+                              </Label>
+                            </Tooltip>
+                          ) : (
+                            <Tooltip title={`Phiên bản hiện tại: v${host.version || '2.1.4'} • Phiên bản OTA trên Server: v${otaStatus.latestAgentVersion}`}>
+                              <Label
+                                variant="filled"
+                                color="warning"
+                                sx={{ fontSize: '0.65rem', height: 18, px: 0.6, fontWeight: 800 }}
+                              >
+                                v{host.version || '2.1.4'} ➔ OTA v{otaStatus.latestAgentVersion}
+                              </Label>
+                            </Tooltip>
+                          )}
+
                           {host.includeHealth === false && (
                             <Label
                               variant="soft"
@@ -896,7 +928,48 @@ export default function FleetView({ onNavigate }) {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Release Notes Dialog */}
+      <Dialog
+        open={releaseNotesOpen}
+        onClose={() => setReleaseNotesOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1.5, borderBottom: `1px solid ${theme.palette.divider}` }}>
+          <Stack direction="row" alignItems="center" spacing={1.5}>
+            <Sparkles size={20} color={theme.palette.primary.main} />
+            <Typography variant="h6" sx={{ fontWeight: 800 }}>
+              Ghi Chú Phát Hành • v{otaStatus.latestAgentVersion}
+            </Typography>
+          </Stack>
+          <Label variant="filled" color="primary">
+            {otaStatus.releaseDate || 'Mới nhất'}
+          </Label>
+        </DialogTitle>
+
+        <DialogContent sx={{ py: 3 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, color: 'text.primary' }}>
+            Nội dung cập nhật trong phiên bản OTA:
+          </Typography>
+          <Card variant="outlined" sx={{ p: 2, bgcolor: isLight ? '#F8FAFC' : '#0B0F17', borderRadius: 2, mb: 2 }}>
+            <Typography variant="body2" sx={{ color: 'text.secondary', lineHeight: 1.6 }}>
+              {otaStatus.releaseNotes || 'Đồng bộ hóa các tính năng giám sát và bảo mật mới nhất từ Central Server.'}
+            </Typography>
+          </Card>
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            Sau khi kích hoạt nâng cấp, máy trạm sẽ tải file bundle tự động và khởi động lại dịch vụ trong vòng 5 giây mà không làm ngắt kết nối mạng.
+          </Typography>
+        </DialogContent>
+
+        <DialogActions sx={{ p: 2, px: 3, borderTop: `1px solid ${theme.palette.divider}` }}>
+          <Button onClick={() => setReleaseNotesOpen(false)} variant="contained" color="primary">
+            Đã Hiểu
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
+
 

@@ -29,56 +29,22 @@ import {
   Shield,
   ArrowRight,
   Zap,
-  EyeOff,
+  CheckCircle,
   RotateCcw,
-  Eye
+  Eye,
+  EyeOff,
+  Trash2
 } from 'lucide-react';
 import { apiRequest } from '../../utils/api';
 import Label from '../common/Label';
-
-const IGNORED_ISSUES_STORAGE_KEY = 'minhhungops_ignored_health_issues';
 
 export default function HealthScoreWidget() {
   const theme = useTheme();
   const [health, setHealth] = useState(null);
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const [showIgnored, setShowIgnored] = useState(false);
-
-  // Ignored issues state persisted in localStorage
-  const [ignoredIssueIds, setIgnoredIssueIds] = useState(() => {
-    try {
-      const stored = localStorage.getItem(IGNORED_ISSUES_STORAGE_KEY);
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const saveIgnored = (ids) => {
-    setIgnoredIssueIds(ids);
-    try {
-      localStorage.setItem(IGNORED_ISSUES_STORAGE_KEY, JSON.stringify(ids));
-    } catch (e) {
-      console.error('Failed to save ignored issues:', e);
-    }
-  };
-
-  const handleIgnoreIssue = (e, issueId) => {
-    e?.stopPropagation();
-    if (!ignoredIssueIds.includes(issueId)) {
-      saveIgnored([...ignoredIssueIds, issueId]);
-    }
-  };
-
-  const handleRestoreIssue = (e, issueId) => {
-    e?.stopPropagation();
-    saveIgnored(ignoredIssueIds.filter((id) => id !== issueId));
-  };
-
-  const handleClearAllIgnored = () => {
-    saveIgnored([]);
-  };
+  const [showResolved, setShowResolved] = useState(false);
+  const [resolvingId, setResolvingId] = useState(null);
 
   const loadHealth = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -92,21 +58,46 @@ export default function HealthScoreWidget() {
     }
   }, []);
 
+  const handleResolveIssue = async (e, issue) => {
+    e?.stopPropagation();
+    setResolvingId(issue.id);
+    try {
+      await apiRequest('/api/v1/health-score/resolve', 'POST', {
+        issueId: issue.id,
+        agentId: issue.agentId
+      });
+      await loadHealth(true);
+    } catch (err) {
+      console.error('Failed to resolve issue:', err);
+    } finally {
+      setResolvingId(null);
+    }
+  };
+
+  const handleRestoreIssue = async (e, issueId) => {
+    e?.stopPropagation();
+    try {
+      await apiRequest('/api/v1/health-score/restore', 'POST', { issueId });
+      await loadHealth(true);
+    } catch (err) {
+      console.error('Failed to restore issue:', err);
+    }
+  };
+
+  const handleClearAllResolved = async () => {
+    try {
+      await apiRequest('/api/v1/health-score/clear-resolved', 'POST');
+      await loadHealth(true);
+    } catch (err) {
+      console.error('Failed to clear resolved issues:', err);
+    }
+  };
+
   useEffect(() => {
     loadHealth();
     const interval = setInterval(() => loadHealth(true), 15000);
     return () => clearInterval(interval);
   }, [loadHealth]);
-
-  const rawIssues = health?.issues || [];
-  const activeIssues = useMemo(
-    () => rawIssues.filter((iss) => !ignoredIssueIds.includes(iss.id)),
-    [rawIssues, ignoredIssueIds]
-  );
-  const ignoredList = useMemo(
-    () => rawIssues.filter((iss) => ignoredIssueIds.includes(iss.id)),
-    [rawIssues, ignoredIssueIds]
-  );
 
   if (!health && loading) {
     return (
@@ -134,6 +125,8 @@ export default function HealthScoreWidget() {
     ? alpha(theme.palette.warning.main, 0.08)
     : alpha(theme.palette.error.main, 0.08);
 
+  const activeIssues = health.issues || [];
+  const resolvedIssues = health.resolvedIssues || [];
   const totalActiveIssues = activeIssues.length;
 
   return (
@@ -200,10 +193,12 @@ export default function HealthScoreWidget() {
               >
                 {health.status === 'excellent' ? 'Hoàn Hảo' : health.status === 'good' ? 'Tốt' : health.status === 'warning' ? 'Cần Lưu Ý' : 'Nghiêm Trọng'}
               </Label>
-              {ignoredList.length > 0 && (
+              {resolvedIssues.length > 0 && (
                 <Chip
-                  label={`Đã bỏ qua ${ignoredList.length}`}
+                  icon={<CheckCircle2 size={12} />}
+                  label={`Đã xử lý ${resolvedIssues.length}`}
                   size="small"
+                  color="success"
                   variant="outlined"
                   sx={{ height: 20, fontSize: '0.6875rem', fontWeight: 700 }}
                 />
@@ -212,7 +207,7 @@ export default function HealthScoreWidget() {
 
             <Typography variant="h6" sx={{ fontWeight: 800, mt: 0.2 }}>
               {totalActiveIssues === 0
-                ? (ignoredList.length > 0 ? 'Tất cả vấn đề đã được bỏ qua / Hệ thống ổn định' : 'Toàn bộ máy trạm, kết nối mạng & Gateway hoạt động ổn định')
+                ? (resolvedIssues.length > 0 ? 'Tất cả vấn đề đã xử lý xong • Hệ thống hoạt động tối ưu' : 'Toàn bộ máy trạm, kết nối mạng & Gateway hoạt động ổn định')
                 : `Phát hiện ${totalActiveIssues} vấn đề cần lưu ý trong hạ tầng`}
             </Typography>
 
@@ -262,7 +257,7 @@ export default function HealthScoreWidget() {
             <Box>
               <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.3 }}>
                 <Typography variant="caption" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <Shield size={12} /> RouterOS & PPPoE
+                  <Shield size={12} /> Gateway & PPPoE
                 </Typography>
                 <Typography variant="caption" sx={{ fontWeight: 800 }}>
                   {health.categoryScores?.gateway ?? 100}%
@@ -305,26 +300,26 @@ export default function HealthScoreWidget() {
             <Grid item xs={12} md={6}>
               <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <AlertTriangle size={16} color={theme.palette.warning.main} /> Vấn đề phát hiện ({totalActiveIssues})
+                  <AlertTriangle size={16} color={theme.palette.warning.main} /> Vấn đề cần xử lý ({totalActiveIssues})
                 </Typography>
-                {ignoredList.length > 0 && (
+                {resolvedIssues.length > 0 && (
                   <Button
                     size="small"
                     variant="text"
-                    color="inherit"
-                    onClick={() => setShowIgnored((v) => !v)}
-                    startIcon={showIgnored ? <Eye size={14} /> : <EyeOff size={14} />}
+                    color="success"
+                    onClick={() => setShowResolved((v) => !v)}
+                    startIcon={showResolved ? <EyeOff size={14} /> : <CheckCircle2 size={14} />}
                     sx={{ fontSize: '0.725rem', fontWeight: 700, py: 0 }}
                   >
-                    {showIgnored ? 'Ẩn mục đã bỏ qua' : `Xem đã bỏ qua (${ignoredList.length})`}
+                    {showResolved ? 'Ẩn mục đã xử lý' : `Xem đã xử lý (${resolvedIssues.length})`}
                   </Button>
                 )}
               </Stack>
 
               {totalActiveIssues === 0 ? (
                 <Alert severity="success" sx={{ py: 0.5, borderRadius: 1.5, fontSize: '0.8rem', mb: 1 }}>
-                  {ignoredList.length > 0
-                    ? `Không còn vấn đề chưa xử lý (Đã bỏ qua ${ignoredList.length} vấn đề).`
+                  {resolvedIssues.length > 0
+                    ? `Không còn vấn đề tồn đọng (Đã xử lý xong ${resolvedIssues.length} vấn đề).`
                     : 'Không có cảnh báo hay sự cố nào đang diễn ra trên hệ thống.'}
                 </Alert>
               ) : (
@@ -351,25 +346,31 @@ export default function HealthScoreWidget() {
                           {iss.message}
                         </Typography>
                       </Box>
-                      <Tooltip title="Bỏ qua cảnh báo này">
+                      <Tooltip title="Đánh dấu đã xử lý và xóa cảnh báo">
                         <Button
                           size="small"
                           variant="outlined"
-                          color="inherit"
-                          onClick={(e) => handleIgnoreIssue(e, iss.id)}
-                          startIcon={<EyeOff size={12} />}
+                          color="success"
+                          disabled={resolvingId === iss.id}
+                          onClick={(e) => handleResolveIssue(e, iss)}
+                          startIcon={<CheckCircle2 size={13} />}
                           sx={{
                             fontSize: '0.7rem',
                             fontWeight: 700,
-                            py: 0.25,
-                            px: 0.75,
+                            py: 0.35,
+                            px: 1,
                             minWidth: 'auto',
                             whiteSpace: 'nowrap',
                             flexShrink: 0,
-                            borderColor: alpha(theme.palette.divider, 0.8)
+                            bgcolor: alpha(theme.palette.success.main, 0.08),
+                            borderColor: alpha(theme.palette.success.main, 0.5),
+                            '&:hover': {
+                              bgcolor: alpha(theme.palette.success.main, 0.18),
+                              borderColor: theme.palette.success.main
+                            }
                           }}
                         >
-                          Bỏ qua
+                          {resolvingId === iss.id ? 'Đang lưu...' : 'Đã xử lý'}
                         </Button>
                       </Tooltip>
                     </Box>
@@ -377,18 +378,18 @@ export default function HealthScoreWidget() {
                 </Stack>
               )}
 
-              {/* Show Ignored Issues Collapsible */}
-              <Collapse in={showIgnored && ignoredList.length > 0}>
-                <Box sx={{ mt: 1.5, p: 1.5, borderRadius: 2, bgcolor: alpha(theme.palette.grey[500], 0.06), border: `1px dashed ${theme.palette.divider}` }}>
+              {/* Show Resolved Issues Collapsible */}
+              <Collapse in={showResolved && resolvedIssues.length > 0}>
+                <Box sx={{ mt: 1.5, p: 1.5, borderRadius: 2, bgcolor: alpha(theme.palette.success.main, 0.04), border: `1px dashed ${alpha(theme.palette.success.main, 0.3)}` }}>
                   <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-                    <Typography variant="caption" sx={{ fontWeight: 800, color: 'text.secondary', textTransform: 'uppercase' }}>
-                      CÁC VẤN ĐỀ ĐÃ BỎ QUA ({ignoredList.length})
+                    <Typography variant="caption" sx={{ fontWeight: 800, color: 'success.main', textTransform: 'uppercase' }}>
+                      CÁC VẤN ĐỀ ĐÃ XỬ LÝ ({resolvedIssues.length})
                     </Typography>
                     <Button
                       size="small"
                       variant="text"
-                      color="primary"
-                      onClick={handleClearAllIgnored}
+                      color="inherit"
+                      onClick={handleClearAllResolved}
                       startIcon={<RotateCcw size={12} />}
                       sx={{ fontSize: '0.7rem', fontWeight: 700, py: 0 }}
                     >
@@ -396,13 +397,13 @@ export default function HealthScoreWidget() {
                     </Button>
                   </Stack>
                   <Stack spacing={0.75}>
-                    {ignoredList.map((iss) => (
+                    {resolvedIssues.map((iss) => (
                       <Box
                         key={iss.id}
                         sx={{
                           p: 1,
                           borderRadius: 1,
-                          bgcolor: alpha(theme.palette.background.paper, 0.8),
+                          bgcolor: alpha(theme.palette.background.paper, 0.9),
                           border: `1px solid ${theme.palette.divider}`,
                           display: 'flex',
                           alignItems: 'center',
@@ -411,7 +412,7 @@ export default function HealthScoreWidget() {
                         }}
                       >
                         <Box sx={{ minWidth: 0 }}>
-                          <Typography variant="caption" noWrap sx={{ fontWeight: 700, display: 'block' }}>
+                          <Typography variant="caption" noWrap sx={{ fontWeight: 700, display: 'block', color: 'text.primary' }}>
                             {iss.title}
                           </Typography>
                           <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
@@ -433,6 +434,7 @@ export default function HealthScoreWidget() {
                 </Box>
               </Collapse>
             </Grid>
+
 
             {/* Smart Recommendations */}
             <Grid item xs={12} md={6}>

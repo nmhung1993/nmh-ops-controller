@@ -142,22 +142,46 @@ function createIconPNG(width, height, isMaskable = false) {
 }
 
 const outDir = path.join(__dirname, '..', 'frontend', 'public', 'icons');
+const frontendPublic = path.join(__dirname, '..', 'frontend', 'public');
+const rootPublic = path.join(__dirname, '..', 'public');
+const rootDir = path.join(__dirname, '..');
+
 fs.mkdirSync(outDir, { recursive: true });
+fs.mkdirSync(frontendPublic, { recursive: true });
+fs.mkdirSync(rootPublic, { recursive: true });
+fs.mkdirSync(path.join(rootPublic, 'assets'), { recursive: true });
 
-console.log('Generating PWA PNG icons...');
-fs.writeFileSync(path.join(outDir, 'icon-192.png'), createIconPNG(192, 192, false));
-fs.writeFileSync(path.join(outDir, 'icon-512.png'), createIconPNG(512, 512, false));
-fs.writeFileSync(path.join(outDir, 'icon-512-maskable.png'), createIconPNG(512, 512, true));
-fs.writeFileSync(path.join(outDir, 'apple-touch-icon.png'), createIconPNG(180, 180, true));
-fs.writeFileSync(path.join(outDir, 'icon-180.png'), createIconPNG(180, 180, true));
+console.log('Generating Project PNG icons and Favicons...');
+const icon192 = createIconPNG(192, 192, false);
+const icon512 = createIconPNG(512, 512, false);
+const icon512Maskable = createIconPNG(512, 512, true);
+const icon180 = createIconPNG(180, 180, true);
+const icon32 = createIconPNG(32, 32, false);
 
-// Also copy to root public/ if exists
-const rootPublicIcons = path.join(__dirname, '..', 'public', 'icons');
+fs.writeFileSync(path.join(outDir, 'icon-192.png'), icon192);
+fs.writeFileSync(path.join(outDir, 'icon-512.png'), icon512);
+fs.writeFileSync(path.join(outDir, 'icon-512-maskable.png'), icon512Maskable);
+fs.writeFileSync(path.join(outDir, 'apple-touch-icon.png'), icon180);
+fs.writeFileSync(path.join(outDir, 'icon-180.png'), icon180);
+
+// Root & Frontend public icons
+fs.writeFileSync(path.join(frontendPublic, 'favicon.png'), icon32);
+fs.writeFileSync(path.join(frontendPublic, 'icon.png'), icon512);
+fs.writeFileSync(path.join(rootPublic, 'favicon.png'), icon32);
+fs.writeFileSync(path.join(rootPublic, 'icon.png'), icon512);
+fs.writeFileSync(path.join(rootPublic, 'assets', 'logo.png'), icon512);
+fs.writeFileSync(path.join(rootDir, 'icon.png'), icon512);
+
+// Copy icons to public/icons/
+const rootPublicIcons = path.join(rootPublic, 'icons');
 fs.mkdirSync(rootPublicIcons, { recursive: true });
 fs.copyFileSync(path.join(outDir, 'icon-192.png'), path.join(rootPublicIcons, 'icon-192.png'));
 fs.copyFileSync(path.join(outDir, 'icon-512.png'), path.join(rootPublicIcons, 'icon-512.png'));
 fs.copyFileSync(path.join(outDir, 'icon-512-maskable.png'), path.join(rootPublicIcons, 'icon-512-maskable.png'));
 fs.copyFileSync(path.join(outDir, 'apple-touch-icon.png'), path.join(rootPublicIcons, 'apple-touch-icon.png'));
-fs.copyFileSync(path.join(outDir, 'icon.svg'), path.join(rootPublicIcons, 'icon.svg'));
+if (fs.existsSync(path.join(outDir, 'icon.svg'))) {
+  fs.copyFileSync(path.join(outDir, 'icon.svg'), path.join(rootPublicIcons, 'icon.svg'));
+}
 
-console.log('All PWA Icons generated successfully!');
+console.log('All Project PNG Icons generated successfully!');
+
