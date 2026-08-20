@@ -195,4 +195,24 @@ Hệ thống bảo vệ đa tầng với 3 cấp độ phân quyền người d�
 
 ---
 
+## 12. Cài Đặt & Sử Dụng Progressive Web App (PWA) Trên Android & iOS
+
+Hệ thống hỗ trợ chuẩn **Progressive Web App (PWA)** toàn diện, cho phép cài đặt và chạy như một ứng dụng Native App độc lập mà không cần thông qua App Store hay Google Play:
+
+### 🤖 Hướng dẫn cài đặt trên Android (Chrome / Edge / Brave):
+1. Truy cập vào địa chỉ Controller trên trình duyệt (ví dụ: `http://192.168.1.x:3003` hoặc domain HTTPS của bạn).
+2. Nhấn vào nút **"Cài App PWA"** màu xanh ngọc ở góc trên thanh Header hoặc Menu bên trái.
+3. Hoặc nhấn vào menu `⋮` của trình duyệt Chrome và chọn **"Cài đặt ứng dụng"** (Install App).
+4. Ứng dụng sẽ xuất hiện trên màn hình chính và khay ứng dụng Android với icon chất lượng cao, chạy toàn màn hình độc lập.
+
+### 🍎 Hướng dẫn cài đặt trên iOS (iPhone / iPad - Safari):
+1. Mở trang Controller bằng trình duyệt **Safari**.
+2. Nhấn vào nút **Chia sẻ** (biểu tượng hình vuông có mũi tên trỏ lên $\uparrow$ hoặc nút Cài App trên thanh điều hướng).
+3. Cuộn xuống danh sách tính năng và chọn **"Thêm vào Màn hình chính" (Add to Home Screen ➕)**.
+4. Đặt tên gợi nhớ (mặc định: `NMH Ops`) rồi nhấn **Thêm (Add)** ở góc trên bên phải.
+5. Biểu tượng ứng dụng sẽ xuất hiện trên màn hình chính iPhone/iPad, tự động ẩn thanh điều hướng Safari và tận dụng toàn bộ diện tích màn hình (hỗ trợ Dynamic Island và Notch tai thỏ).
+
+---
+
 *Tài liệu được phát triển và duy trì bởi đội ngũ MinhHungOps.*
+

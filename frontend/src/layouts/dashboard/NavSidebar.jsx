@@ -32,8 +32,10 @@ import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { useWebSocket } from '../../context/WebSocketContext';
 import { useSystemSettings } from '../../context/SystemSettingsContext';
+import PwaInstallButton from '../../components/common/PwaInstallButton';
 
 export const NAV_ITEMS = [
+
   { id: 'network', path: '#network', labelKey: 'nav.network', icon: Globe },
   { id: 'docker', path: '#docker', labelKey: 'nav.docker', icon: Boxes },
   { id: 'fleet', path: '#fleet', labelKey: 'nav.fleet', icon: Server },
@@ -328,17 +330,24 @@ export default function NavSidebar({ openNav, onCloseNav, currentPage, onNavigat
       </List>
 
       {/* Footer Info */}
-      <Box sx={{ pt: 1.5, borderTop: `1px solid ${theme.palette.divider}`, textAlign: 'center' }}>
+      <Box sx={{ pt: 1.5, px: isCollapsed ? 0.5 : 1.5, pb: 0.5, borderTop: `1px solid ${theme.palette.divider}`, textAlign: 'center' }}>
         {!isCollapsed ? (
-          <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, letterSpacing: 0.2, fontSize: '0.7rem' }}>
-            <Box component="span" sx={{ color: 'primary.main', fontWeight: 700 }}>{settings.ownerSignature || '@nmhung1993'}</Box>
-          </Typography>
+          <Stack spacing={1} alignItems="center">
+            <PwaInstallButton variant="button" sx={{ width: '100%', py: 0.6 }} />
+            <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, letterSpacing: 0.2, fontSize: '0.7rem' }}>
+              <Box component="span" sx={{ color: 'primary.main', fontWeight: 700 }}>{settings.ownerSignature || '@nmhung1993'}</Box>
+            </Typography>
+          </Stack>
         ) : (
-          <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 800 }}>
-            {settings.logoText || 'NMH'}
-          </Typography>
+          <Stack spacing={1} alignItems="center">
+            <PwaInstallButton variant="icon" />
+            <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 800 }}>
+              {settings.logoText || 'NMH'}
+            </Typography>
+          </Stack>
         )}
       </Box>
+
     </Box>
   );
 

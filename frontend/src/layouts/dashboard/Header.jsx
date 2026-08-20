@@ -36,8 +36,10 @@ import { useThemeMode } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 import { useWebSocket } from '../../context/WebSocketContext';
 import Label from '../../components/common/Label';
+import PwaInstallButton from '../../components/common/PwaInstallButton';
 
 export const HEADER_MOBILE = 64;
+
 export const HEADER_DESKTOP = 72;
 export const NAV_WIDTH = 280;
 export const NAV_COLLAPSED_WIDTH = 88;
@@ -220,8 +222,12 @@ export default function Header({ onOpenNav, currentPage, onOpenPasswordDialog, o
             </FormControl>
           )}
 
+          {/* PWA Install Button (Android / iOS / Desktop) */}
+          <PwaInstallButton />
+
           {/* Refresh Button */}
           <Tooltip title={t('common.refresh')}>
+
             <IconButton
               onClick={handleRefresh}
               sx={{

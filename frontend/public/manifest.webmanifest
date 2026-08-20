@@ -1,0 +1,89 @@
+{
+  "id": "/",
+  "name": "MinhHungOps Controller",
+  "short_name": "NMH Ops",
+  "description": "Unified Fleet, Docker & LAN Operations Controller",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": [
+    "window-controls-overlay",
+    "standalone",
+    "minimal-ui"
+  ],
+  "background_color": "#0B0F17",
+  "theme_color": "#0B0F17",
+  "orientation": "any",
+  "lang": "vi",
+  "dir": "ltr",
+  "categories": [
+    "utilities",
+    "productivity",
+    "developer"
+  ],
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Cụm Máy Trạm (Fleet)",
+      "short_name": "Fleet",
+      "description": "Xem tổng quan cụm máy trạm và trạng thái online",
+      "url": "/",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Quản Trị Docker",
+      "short_name": "Docker",
+      "description": "Quản trị Docker Stacks và Containers",
+      "url": "/",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Trung Tâm Kịch Bản",
+      "short_name": "Scripts",
+      "description": "Thực thi kịch bản vận hành tự động",
+      "url": "/",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}

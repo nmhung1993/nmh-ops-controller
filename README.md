@@ -61,6 +61,12 @@
 - **PowerShell / Web Console**: Chạy lệnh và script từ xa an toàn với preset câu lệnh tiện lợi.
 - **Trung tâm Nâng cấp OTA (Over-The-Air)**: Nâng cấp phiên bản Agent hàng loạt chỉ với 1 click kèm Release Notes.
 
+### 📱 7. Progressive Web App (PWA) Chuẩn Native Cho Android & iOS
+- **Cài đặt 1-Click trên Android & Desktop**: Tích hợp Web App Manifest với maskable icons và trình bắt sự kiện `beforeinstallprompt`.
+- **Trải nghiệm Toàn màn hình trên iOS (iPhone/iPad)**: Hỗ trợ Apple WebKit Standalone Mode, `viewport-fit=cover` tương thích Dynamic Island & Notch, thanh status bar mờ (`black-translucent`), cùng modal hướng dẫn thêm vào Home Screen trực quan.
+- **Tải Trang Tức Thì & Chạy Ngoại Tuyến (Service Worker)**: Caching thông minh tài nguyên tĩnh (Stale-While-Revalidate) và tự động cập nhật phiên bản không làm gián đoạn kết nối.
+
+
 
 
 ---
