@@ -468,7 +468,7 @@ export default function HealthScoreWidget() {
                     }}
                   >
                     <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
-                      {rec.title}
+                      {rec.key ? t(rec.key, rec.params) : (rec.title === 'Hệ thống đang hoạt động tối ưu. Toàn bộ máy trạm, kết nối mạng và Gateway ổn định.' ? t('health.allOptimal') : rec.title)}
                     </Typography>
                     {rec.href && (
                       <Button

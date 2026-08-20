@@ -136,7 +136,7 @@ export default function ActivityView() {
         id: eventKey,
         messageId: lastEvent.messageId,
         agentId: lastEvent.agentId || 'system',
-        hostName: host?.displayName || host?.hostname || 'Hệ thống',
+        hostName: host?.displayName || host?.hostname || t('common.system'),
         type: lastEvent.type || lastEvent.eventType,
         severity,
         payload: lastEvent.payload || lastEvent,
@@ -240,10 +240,10 @@ export default function ActivityView() {
                 SECURITY & AUDIT TRAIL
               </Typography>
               <Typography variant="h4" sx={{ fontWeight: 800 }}>
-                Nhật Ký Hoạt Động & Kiểm Toán Toàn Diện
+                {t('activity.pageTitle')}
               </Typography>
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                Theo dõi tập trung mọi sự kiện hệ thống, đăng nhập, thực thi kịch bản và biến động hạ tầng mạng.
+                {t('activity.pageSubtitle')}
               </Typography>
             </Box>
           </Stack>
@@ -256,7 +256,7 @@ export default function ActivityView() {
               onClick={handleExportCsv}
               sx={{ fontWeight: 700, borderRadius: 2 }}
             >
-              Xuất CSV
+              {t('activity.exportCsv')}
             </Button>
             <Button
               variant="outlined"
@@ -265,7 +265,7 @@ export default function ActivityView() {
               onClick={handleExportJson}
               sx={{ fontWeight: 700, borderRadius: 2 }}
             >
-              Xuất JSON
+              {t('activity.exportJson')}
             </Button>
             <IconButton onClick={loadAuditLogs} size="small">
               <RefreshCw size={18} />
@@ -280,14 +280,14 @@ export default function ActivityView() {
           {/* Target Host Filter */}
           <Grid item xs={12} sm={6} md={3.5}>
             <FormControl fullWidth size="small">
-              <InputLabel>Phạm vi máy trạm</InputLabel>
+              <InputLabel>{t('activity.scope')}</InputLabel>
               <Select
                 value={targetAgentId}
-                label="Phạm vi máy trạm"
+                label={t('activity.scope')}
                 onChange={(e) => setTargetAgentId(e.target.value)}
               >
-                <MenuItem value="all">Toàn bộ máy trạm (Toàn hệ thống)</MenuItem>
-                <MenuItem value="system">Trung tâm Điều khiển (Server)</MenuItem>
+                <MenuItem value="all">{t('activity.scopeAll')}</MenuItem>
+                <MenuItem value="system">{t('activity.scopeServer')}</MenuItem>
                 {(hosts || []).map((h) => (
                   <MenuItem key={h.id} value={h.id}>
                     {h.displayName || h.hostname || h.id} {h.ip ? `(${h.ip})` : ''}
@@ -303,7 +303,7 @@ export default function ActivityView() {
             <TextField
               size="small"
               fullWidth
-              placeholder="Tìm kiếm tác vụ, người thực hiện, chi tiết..."
+              placeholder={t('activity.searchPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               InputProps={{
@@ -315,19 +315,19 @@ export default function ActivityView() {
           {/* Category Filter */}
           <Grid item xs={6} md={2.5}>
             <FormControl fullWidth size="small">
-              <InputLabel>Danh mục sự kiện</InputLabel>
+              <InputLabel>{t('activity.category')}</InputLabel>
               <Select
                 value={categoryFilter}
-                label="Danh mục sự kiện"
+                label={t('activity.category')}
                 onChange={(e) => setCategoryFilter(e.target.value)}
               >
-                <MenuItem value="all">Tất cả danh mục</MenuItem>
-                <MenuItem value="scripts">Kịch bản (Script Hub)</MenuItem>
-                <MenuItem value="auth">Đăng nhập & Người dùng</MenuItem>
-                <MenuItem value="watchdog">Watchdog & Tự phục hồi</MenuItem>
-                <MenuItem value="network">Mạng & MikroTik RouterOS</MenuItem>
-                <MenuItem value="docker">Docker Containers</MenuItem>
-                <MenuItem value="process">Tiến trình (Process)</MenuItem>
+                <MenuItem value="all">{t('activity.catAll')}</MenuItem>
+                <MenuItem value="scripts">{t('activity.catScripts')}</MenuItem>
+                <MenuItem value="auth">{t('activity.catAuth')}</MenuItem>
+                <MenuItem value="watchdog">{t('activity.catWatchdog')}</MenuItem>
+                <MenuItem value="network">{t('activity.catNetwork')}</MenuItem>
+                <MenuItem value="docker">{t('activity.catDocker')}</MenuItem>
+                <MenuItem value="process">{t('activity.catProcess')}</MenuItem>
               </Select>
             </FormControl>
           </Grid>
@@ -335,16 +335,16 @@ export default function ActivityView() {
           {/* Severity Filter */}
           <Grid item xs={6} md={2.5}>
             <FormControl fullWidth size="small">
-              <InputLabel>Mức độ</InputLabel>
+              <InputLabel>{t('activity.severity')}</InputLabel>
               <Select
                 value={severityFilter}
-                label="Mức độ"
+                label={t('activity.severity')}
                 onChange={(e) => setSeverityFilter(e.target.value)}
               >
-                <MenuItem value="all">Tất cả mức độ</MenuItem>
-                <MenuItem value="info">Thông tin (Info)</MenuItem>
-                <MenuItem value="warning">Cảnh báo (Warning)</MenuItem>
-                <MenuItem value="error">Lỗi / Nghiêm trọng (Error)</MenuItem>
+                <MenuItem value="all">{t('activity.sevAll')}</MenuItem>
+                <MenuItem value="info">{t('activity.sevInfo')}</MenuItem>
+                <MenuItem value="warning">{t('activity.sevWarning')}</MenuItem>
+                <MenuItem value="error">{t('activity.sevError')}</MenuItem>
               </Select>
             </FormControl>
           </Grid>
@@ -357,7 +357,7 @@ export default function ActivityView() {
           title={
             <Stack direction="row" spacing={1.5} alignItems="center">
               <Typography variant="h6" sx={{ fontWeight: 800 }}>
-                Nhật Ký Sự Kiện ({auditLogs.length})
+                {t('activity.eventLogs', { count: auditLogs.length })}
               </Typography>
             </Stack>
           }
@@ -370,10 +370,10 @@ export default function ActivityView() {
           <Box sx={{ p: 6, textAlign: 'center', color: 'text.secondary' }}>
             <Activity size={40} style={{ opacity: 0.4, marginBottom: 12 }} />
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              Không có sự kiện nào phù hợp với bộ lọc
+              {t('activity.noLogs')}
             </Typography>
             <Typography variant="body2">
-              Thử làm mới hoặc thay đổi từ khóa tìm kiếm.
+              {t('activity.noLogsHint')}
             </Typography>
           </Box>
         ) : (
@@ -434,13 +434,13 @@ export default function ActivityView() {
 
                     <Stack direction="row" spacing={1} alignItems="center">
                       {screenshotId && (
-                        <Tooltip title="Xem ảnh chụp màn hình">
+                        <Tooltip title={t('activity.viewScreenshot')}>
                           <IconButton size="small" color="primary" onClick={() => setSelectedScreenshotId(screenshotId)}>
                             <Camera size={16} />
                           </IconButton>
                         </Tooltip>
                       )}
-                      <Tooltip title="Xem chi tiết Payload JSON">
+                      <Tooltip title={t('activity.viewJsonPayload')}>
                         <IconButton size="small" onClick={() => setSelectedPayload(log.payload)}>
                           <Eye size={16} />
                         </IconButton>
@@ -456,7 +456,7 @@ export default function ActivityView() {
 
       {/* Payload Modal */}
       <Dialog open={Boolean(selectedPayload)} onClose={() => setSelectedPayload(null)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ fontWeight: 800 }}>Chi Tiết Dữ Liệu Sự Kiện (Payload)</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800 }}>{t('activity.payloadTitle')}</DialogTitle>
         <DialogContent>
           <Box
             sx={{
@@ -476,13 +476,13 @@ export default function ActivityView() {
           </Box>
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setSelectedPayload(null)}>Đóng</Button>
+          <Button onClick={() => setSelectedPayload(null)}>{t('common.close')}</Button>
         </DialogActions>
       </Dialog>
 
       {/* Screenshot Modal */}
       <Dialog open={Boolean(selectedScreenshotId)} onClose={() => setSelectedScreenshotId(null)} maxWidth="md" fullWidth>
-        <DialogTitle sx={{ fontWeight: 800 }}>Ảnh Chụp Cửa Sổ Watchdog</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800 }}>{t('activity.screenshotTitle')}</DialogTitle>
         <DialogContent sx={{ textAlign: 'center', p: 2 }}>
           {selectedScreenshotId && (
             <img
@@ -493,7 +493,7 @@ export default function ActivityView() {
           )}
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setSelectedScreenshotId(null)}>Đóng</Button>
+          <Button onClick={() => setSelectedScreenshotId(null)}>{t('common.close')}</Button>
         </DialogActions>
       </Dialog>
     </Box>

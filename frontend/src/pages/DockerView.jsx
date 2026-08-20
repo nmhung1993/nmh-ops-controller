@@ -83,7 +83,7 @@ export default function DockerView() {
   const canManage = isSuperAdmin || isAdmin;
 
   const [currentTab, setCurrentTab] = useState('containers');
-  const [hosts, setHosts] = useState([{ id: 'local', name: 'Máy Chủ Trung Tâm (Local Docker)', available: true, isLocal: true }]);
+  const [hosts, setHosts] = useState([{ id: 'local', name: t('docker.localServer') || 'Central Server (Local Docker)', available: true, isLocal: true }]);
   const [selectedHostId, setSelectedHostId] = useState('local');
   const [hostInfo, setHostInfo] = useState(null);
 
@@ -167,7 +167,7 @@ export default function DockerView() {
       setImages(imagesRes.images || []);
       setVolumes(volumesRes.volumes || []);
     } catch (err) {
-      setToast({ open: true, message: `Lỗi tải dữ liệu Docker: ${err.message}`, severity: 'error' });
+      setToast({ open: true, message: t('docker.toastLoadError', { error: err.message }), severity: 'error' });
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -208,12 +208,12 @@ export default function DockerView() {
       });
       setToast({
         open: true,
-        message: `Đã thực hiện [${action.toUpperCase()}] thành công trên container ${name || containerId.slice(0, 12)}`,
+        message: t('docker.toastActionSuccess', { action: action.toUpperCase(), name: name || containerId.slice(0, 12) }),
         severity: 'success'
       });
       loadData(true);
     } catch (err) {
-      setToast({ open: true, message: `Lỗi thao tác: ${err.message}`, severity: 'error' });
+      setToast({ open: true, message: t('docker.toastActionError', { error: err.message }), severity: 'error' });
     } finally {
       setActionLoading((prev) => ({ ...prev, [containerId]: null }));
     }
@@ -222,7 +222,7 @@ export default function DockerView() {
   // Stack Action (Restart all containers in stack)
   const handleStackAction = async (e, stack, action) => {
     if (e) e.stopPropagation();
-    if (!window.confirm(`Bạn có chắc muốn ${action.toUpperCase()} toàn bộ Stack [${stack.name}] (${stack.containers.length} containers)?`)) return;
+    if (!window.confirm(t('docker.confirmStackAction', { action: action.toUpperCase(), name: stack.name, count: stack.containers.length }))) return;
 
     for (const c of stack.containers) {
       try {
@@ -232,7 +232,7 @@ export default function DockerView() {
         });
       } catch { }
     }
-    setToast({ open: true, message: `Đã gửi lệnh [${action.toUpperCase()}] cho Stack ${stack.name}`, severity: 'success' });
+    setToast({ open: true, message: t('docker.toastStackSent', { action: action.toUpperCase(), name: stack.name }), severity: 'success' });
     loadData(true);
   };
 
@@ -338,7 +338,7 @@ export default function DockerView() {
     stopTerminalSession();
     setModalTerm({
       execId: null,
-      history: `[NMH Ops Controller Shell: ${container.name}]\r\nĐang kết nối terminal...\r\n`,
+      history: t('docker.connectingShell', { name: container.name }),
       input: '',
       isConnected: false
     });
@@ -349,7 +349,7 @@ export default function DockerView() {
         body: JSON.stringify({ cmd: ['/bin/sh'] })
       });
 
-      if (!res?.execId) throw new Error('Không thể tạo phiên exec');
+      if (!res?.execId) throw new Error(t('docker.errorExecSession'));
 
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}/ws/docker/exec?execId=${res.execId}&token=${token}`;
@@ -375,14 +375,14 @@ export default function DockerView() {
         setModalTerm((prev) => ({
           ...prev,
           isConnected: false,
-          history: prev.history + '\r\n[Phiên Terminal đã kết thúc]\r\n'
+          history: prev.history + t('docker.shellTerminated')
         }));
       };
     } catch (err) {
       setModalTerm((prev) => ({
         ...prev,
         isConnected: false,
-        history: prev.history + `\r\n[Lỗi kết nối Shell]: ${err.message}\r\n`
+        history: prev.history + t('docker.shellError', { error: err.message })
       }));
     }
   };
@@ -405,13 +405,13 @@ export default function DockerView() {
 
   // Prune Images
   const handlePruneImages = async () => {
-    if (!window.confirm('Bạn có chắc muốn dọn dẹp toàn bộ Image rác (dangling images) không?')) return;
+    if (!window.confirm(t('docker.confirmPruneImages'))) return;
     try {
       const res = await apiRequest(`/api/v1/docker/${selectedHostId}/images/prune`, { method: 'POST' });
       const reclaimed = res?.result?.SpaceReclaimed || 0;
       setToast({
         open: true,
-        message: `Đã dọn dẹp images rác thành công. Giải phóng ${formatBytes(reclaimed)}.`,
+        message: t('docker.toastPruneImages', { bytes: formatBytes(reclaimed) }),
         severity: 'success'
       });
       loadData(true);
@@ -422,13 +422,13 @@ export default function DockerView() {
 
   // Prune Volumes
   const handlePruneVolumes = async () => {
-    if (!window.confirm('Bạn có chắc muốn dọn dẹp các Volume không còn gắn với container nào không?')) return;
+    if (!window.confirm(t('docker.confirmPruneVolumes'))) return;
     try {
       const res = await apiRequest(`/api/v1/docker/${selectedHostId}/volumes/prune`, { method: 'POST' });
       const reclaimed = res?.result?.SpaceReclaimed || 0;
       setToast({
         open: true,
-        message: `Đã dọn dẹp volumes rác thành công. Giải phóng ${formatBytes(reclaimed)}.`,
+        message: t('docker.toastPruneVolumes', { bytes: formatBytes(reclaimed) }),
         severity: 'success'
       });
       loadData(true);
@@ -607,7 +607,7 @@ export default function DockerView() {
       {/* Host Offline Warning */}
       {hostInfo && !hostInfo.available && (
         <Alert severity="warning" sx={{ mb: 3, borderRadius: 2 }}>
-          Không thể kết nối đến Docker daemon trên node này. Hãy chắc chắn Docker đang chạy hoặc socket đã được mount.
+          {t('docker.daemonUnavailable')}
         </Alert>
       )}
 
@@ -628,7 +628,7 @@ export default function DockerView() {
                   <Typography variant="h6" sx={{ fontWeight: 800, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                     {containers.length}
                   </Typography>
-                  <Chip label={`${runningCount} chạy`} size="small" color="success" sx={{ height: 16, fontSize: 9, fontWeight: 700, px: 0.25 }} />
+                  <Chip label={t('docker.runningBadge', { count: runningCount })} size="small" color="success" sx={{ height: 16, fontSize: 9, fontWeight: 700, px: 0.25 }} />
                 </Stack>
               </Box>
             </Stack>
@@ -918,7 +918,7 @@ export default function DockerView() {
                           />
 
                           {!st.isStandalone && (
-                            <Tooltip title="Khởi động lại toàn bộ Stack">
+                            <Tooltip title={t('docker.restartStackTooltip')}>
                               <IconButton
                                 size="small"
                                 color="primary"
@@ -1051,7 +1051,7 @@ export default function DockerView() {
                             {st.name}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {st.runningCount} / {st.totalCount} containers đang chạy
+                            {t('docker.runningContainers', { running: st.runningCount, total: st.totalCount })}
                           </Typography>
                         </Box>
                       </Stack>
@@ -1139,8 +1139,8 @@ export default function DockerView() {
                   <TableRow>
                     <TableCell sx={{ fontWeight: 700 }}>Image Tag</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>ID</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Dung Lượng</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>Containers Sử Dụng</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>{t('docker.imageSize')}</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>{t('docker.containersUsing')}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1177,7 +1177,7 @@ export default function DockerView() {
               <Table size="medium">
                 <TableHead sx={{ bgcolor: alpha(theme.palette.primary.main, 0.03) }}>
                   <TableRow>
-                    <TableCell sx={{ fontWeight: 700 }}>Tên Volume</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>{t('docker.volumeName')}</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Driver</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Mountpoint</TableCell>
                     <TableCell sx={{ fontWeight: 700 }}>Scope</TableCell>
@@ -1353,7 +1353,7 @@ export default function DockerView() {
                 <Box sx={{ py: 4, textAlign: 'center' }}>
                   <CircularProgress size={28} />
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                    Đang tải chi tiết cấu hình container...
+                    {t('docker.loadingDetails')}
                   </Typography>
                 </Box>
               )}
@@ -1404,7 +1404,7 @@ export default function DockerView() {
                   wordBreak: 'break-all'
                 }}
               >
-                {modalLogs.logs || 'Đang kết nối luồng log container...'}
+                {modalLogs.logs || t('docker.connectingLog')}
                 <div ref={logsEndRef} />
               </Box>
             </Box>
@@ -1775,13 +1775,13 @@ function ContainerTableRow({
           )}
 
           {!isRunning && (
-            <Tooltip title="Xoá Container">
+            <Tooltip title={t('docker.deleteContainerTooltip')}>
               <IconButton
                 size="small"
                 color="error"
                 disabled={Boolean(currentAction)}
                 onClick={(e) => {
-                  if (window.confirm(`Xoá container [${c.name}] vĩnh viễn?`)) {
+                  if (window.confirm(t('docker.confirmDeleteContainer', { name: c.name }))) {
                     onAction(e, c.id, 'remove', c.name);
                   }
                 }}

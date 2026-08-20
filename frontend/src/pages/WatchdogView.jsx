@@ -141,7 +141,7 @@ export default function WatchdogView() {
         })
       });
       setWatchdogData(res);
-      setToastMessage(`Đã lưu cấu hình thông báo Watchdog cho máy [${selectedHost?.displayName || selectedHost?.hostname}] thành công`);
+      setToastMessage(t('watchdog.toastSaved', { host: selectedHost?.displayName || selectedHost?.hostname }));
     } catch (err) {
       alert(err.message);
     } finally {
@@ -157,9 +157,9 @@ export default function WatchdogView() {
         method: 'POST',
         body: JSON.stringify({ notifications })
       });
-      setToastMessage(res.message || 'Đã gửi thông báo thử nghiệm Watchdog thành công');
+      setToastMessage(res.message || t('watchdog.testSentSuccess'));
     } catch (err) {
-      alert(err.message || 'Lỗi gửi thông báo thử nghiệm Watchdog');
+      alert(err.message || t('watchdog.testSendError'));
     } finally {
       setTestingNotify(false);
     }
@@ -190,7 +190,7 @@ export default function WatchdogView() {
   const handleSaveRule = async (e) => {
     e.preventDefault();
     if (!formProcessName.trim() || !formFilePath.trim()) {
-      setDialogError('Vui lòng điền đầy đủ tên tiến trình và đường dẫn tệp thực thi.');
+      setDialogError(t('watchdog.dialogErrorRequired'));
       return;
     }
 
@@ -468,14 +468,14 @@ export default function WatchdogView() {
             title={
               <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'flex-start', sm: 'center' }} spacing={1.5}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 800, color: 'primary.main' }}>
-                  KÊNH THÔNG BÁO SỰ CỐ WATCHDOG
+                  {t('watchdog.notificationChannelTitle')}
                 </Typography>
                 <Label variant="filled" color="primary" sx={{ fontWeight: 700 }}>
-                  Máy: {selectedHost?.displayName || selectedHost?.hostname}
+                  {t('watchdog.machineBadge', { host: selectedHost?.displayName || selectedHost?.hostname })}
                 </Label>
               </Stack>
             }
-            subheader={`Cấu hình thông báo sự cố tiến trình độc lập chỉ áp dụng riêng cho máy ${selectedHost?.displayName || selectedHost?.hostname}.`}
+            subheader={t('watchdog.notificationSubheader', { host: selectedHost?.displayName || selectedHost?.hostname })}
             action={<Bell size={22} color={theme.palette.primary.main} />}
           />
           <CardContent>
@@ -489,7 +489,7 @@ export default function WatchdogView() {
                 }
                 label={
                   <Typography sx={{ fontWeight: 700 }}>
-                    Kích hoạt thông báo tự phục hồi riêng cho máy {selectedHost?.displayName || selectedHost?.hostname}
+                    {t('watchdog.enableAutoRecover', { host: selectedHost?.displayName || selectedHost?.hostname })}
                   </Typography>
                 }
                 sx={{ mb: 2 }}
@@ -510,11 +510,11 @@ export default function WatchdogView() {
                             })}
                           />
                         }
-                        label={<Typography sx={{ fontWeight: 700 }}>✈️ Telegram Channel (Sự cố Watchdog)</Typography>}
+                        label={<Typography sx={{ fontWeight: 700 }}>{t('watchdog.telegramChannel')}</Typography>}
                       />
                       <TextField
                         label="Telegram Bot Token"
-                        placeholder="Để trống nếu dùng cấu hình chung từ Admin"
+                        placeholder={t('watchdog.telegramBotTokenPlaceholder')}
                         size="small"
                         value={notifications.telegram?.botToken || ''}
                         onChange={(e) => setNotifications({
@@ -525,7 +525,7 @@ export default function WatchdogView() {
                       />
                       <TextField
                         label="Telegram Chat ID"
-                        placeholder="-1001234567890 hoặc 987654321"
+                        placeholder={t('watchdog.telegramChatIdPlaceholder')}
                         size="small"
                         value={notifications.telegram?.chatId || ''}
                         onChange={(e) => setNotifications({
@@ -535,8 +535,8 @@ export default function WatchdogView() {
                         fullWidth
                       />
                       <TextField
-                        label="Telegram Topic ID (Tùy chọn cho Supergroup Topics)"
-                        placeholder="Ví dụ: 456 (Topic chuyên báo lỗi ứng dụng)"
+                        label={t('watchdog.telegramTopicId')}
+                        placeholder={t('watchdog.telegramTopicIdPlaceholder')}
                         size="small"
                         value={notifications.telegram?.topicId || ''}
                         onChange={(e) => setNotifications({
@@ -563,11 +563,11 @@ export default function WatchdogView() {
                             })}
                           />
                         }
-                        label={<Typography sx={{ fontWeight: 700 }}>🎮 Discord Webhook Channel (Watchdog)</Typography>}
+                        label={<Typography sx={{ fontWeight: 700 }}>{t('watchdog.discordChannel')}</Typography>}
                       />
                       <TextField
                         label="Discord Webhook URL"
-                        placeholder="https://discord.com/api/webhooks/..."
+                        placeholder={t('watchdog.discordWebhookPlaceholder')}
                         size="small"
                         value={notifications.discord?.webhookUrl || ''}
                         onChange={(e) => setNotifications({
@@ -578,7 +578,7 @@ export default function WatchdogView() {
                       />
                       <Box sx={{ p: 1.5, bgcolor: 'action.hover', borderRadius: 1.5 }}>
                         <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
-                          💡 <b>Độc lập từng máy:</b> Cấu hình kênh thông báo Watchdog được lưu riêng biệt cho từng máy trạm. Khi sự cố xảy ra trên máy trạm này, thông báo sẽ chỉ được gửi đến đúng Telegram/Discord của máy này.
+                          {t('watchdog.isolatedNotice')}
                         </Typography>
                       </Box>
                     </Stack>
@@ -596,7 +596,7 @@ export default function WatchdogView() {
                   disabled={testingNotify || !notifications.enabled}
                   sx={{ px: 2.5, fontWeight: 700 }}
                 >
-                  {testingNotify ? 'Đang gửi thử...' : 'Gửi Thử Thông Báo Cho Máy Này'}
+                  {testingNotify ? t('watchdog.testingNotify') : t('watchdog.testNotify')}
                 </Button>
                 <Button
                   type="submit"
@@ -606,7 +606,7 @@ export default function WatchdogView() {
                   disabled={savingNotify}
                   sx={{ px: 3, fontWeight: 700 }}
                 >
-                  {savingNotify ? 'Đang lưu...' : 'Lưu Kênh Thông Báo Watchdog'}
+                  {savingNotify ? t('watchdog.savingNotify') : t('watchdog.saveNotify')}
                 </Button>
               </Box>
             </form>

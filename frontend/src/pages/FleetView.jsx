@@ -73,7 +73,7 @@ export default function FleetView({ onNavigate }) {
   const [filterStatus, setFilterStatus] = useState('all'); // 'all' | 'online' | 'offline' | 'attention'
 
   // OTA Upgrade State
-  const [otaStatus, setOtaStatus] = useState({ serverVersion: '2.1.4', latestAgentVersion: '2.1.4', releaseNotes: 'Tối ưu hiệu năng, S.M.A.R.T Disks, Remote Web Terminal & Telegram Topics', releaseDate: '2026-08-18' });
+  const [otaStatus, setOtaStatus] = useState({ serverVersion: '2.1.4', latestAgentVersion: '2.1.4', releaseNotes: '', releaseDate: '2026-08-18' });
   const [upgradingMap, setUpgradingMap] = useState({});
   const [upgradingAll, setUpgradingAll] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
@@ -110,8 +110,8 @@ export default function FleetView({ onNavigate }) {
           ...t,
           step: 2,
           progress: 35,
-          statusText: 'Đang tải gói bundle mã nguồn (/api/v1/ota/agent-bundle)...',
-          logs: [...t.logs, `[${new Date().toLocaleTimeString()}] Agent đã nhận lệnh, bắt đầu tải runtime bundle...`]
+          statusText: t('fleet.otaDownloading'),
+          logs: [...t.logs, t('fleet.otaLogReceived', { time: new Date().toLocaleTimeString() })]
         } : t));
       }, 1200);
 
@@ -120,8 +120,8 @@ export default function FleetView({ onNavigate }) {
           ...t,
           step: 3,
           progress: 75,
-          statusText: 'Đang ghi đè file runtime & Khởi động lại dịch vụ...',
-          logs: [...t.logs, `[${new Date().toLocaleTimeString()}] Đã ghi đè agent.js & windows.js. Kích hoạt restart...`]
+          statusText: t('fleet.otaOverwriting'),
+          logs: [...t.logs, t('fleet.otaLogOverwritten', { time: new Date().toLocaleTimeString() })]
         } : t));
       }, 2800);
 
@@ -130,9 +130,9 @@ export default function FleetView({ onNavigate }) {
           ...t,
           step: 4,
           progress: 100,
-          statusText: `Hoàn tất thành công! Agent v${otaStatus.latestAgentVersion} đã hoạt động.`,
+          statusText: t('fleet.otaCompleted', { version: otaStatus.latestAgentVersion }),
           isDone: true,
-          logs: [...t.logs, `[${new Date().toLocaleTimeString()}] Nâng cấp OTA hoàn tất! Agent đã online với phiên bản mới.`]
+          logs: [...t.logs, t('fleet.otaLogOnline', { time: new Date().toLocaleTimeString() })]
         } : t));
       }, 4500);
     });
@@ -145,7 +145,7 @@ export default function FleetView({ onNavigate }) {
     setUpgradingMap(prev => ({ ...prev, [hostId]: true }));
     try {
       await apiRequest(`/api/v1/hosts/${hostId}/upgrade`, { method: 'POST' });
-      setToastMessage(`Đã gửi lệnh nâng cấp OTA đến máy ${friendlyName}.`);
+      setToastMessage(t('fleet.otaToastSent', { name: friendlyName }));
       startOtaTracking([{
         hostId,
         displayName: friendlyName,
@@ -153,9 +153,9 @@ export default function FleetView({ onNavigate }) {
         hostname: targetHost?.hostname || hostId,
         step: 1,
         progress: 15,
-        statusText: 'Đã gửi lệnh qua WebSocket...',
+        statusText: t('fleet.otaSendingWs'),
         isDone: false,
-        logs: [`[${new Date().toLocaleTimeString()}] Lệnh nâng cấp OTA đã được gửi từ Central Server.`]
+        logs: [t('fleet.otaLogCentralSent', { time: new Date().toLocaleTimeString() })]
       }]);
     } catch (err) {
       alert(err.message);
@@ -178,9 +178,9 @@ export default function FleetView({ onNavigate }) {
         hostname: h.hostname,
         step: 1,
         progress: 15,
-        statusText: 'Đã gửi lệnh qua WebSocket...',
+        statusText: t('fleet.otaSendingWs'),
         isDone: false,
-        logs: [`[${new Date().toLocaleTimeString()}] Lệnh nâng cấp OTA đã được gửi từ Central Server.`]
+        logs: [t('fleet.otaLogCentralSent', { time: new Date().toLocaleTimeString() })]
       }));
       startOtaTracking(newTasks);
     } catch (err) {

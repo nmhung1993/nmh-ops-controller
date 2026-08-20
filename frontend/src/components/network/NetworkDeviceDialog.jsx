@@ -23,13 +23,13 @@ import { Server, Shield, Wifi } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 
 const DEVICE_TYPES = [
-  { value: 'mikrotik', labelVi: 'MikroTik RouterOS (Gateway)', labelEn: 'MikroTik RouterOS (Gateway)', role: 'gateway', defaultPort: 8728, defaultUser: 'admin' },
-  { value: 'openwrt', labelVi: 'OpenWrt / ImmortalWrt (Gateway / Router)', labelEn: 'OpenWrt / ImmortalWrt (Gateway / Router)', role: 'gateway', defaultPort: 80, defaultUser: 'root' },
-  { value: 'zte', labelVi: 'ZTE EasyMesh / ONT (H196A, F670L, H3601...)', labelEn: 'ZTE EasyMesh / ONT (H196A, F670L, H3601...)', role: 'router_mesh', defaultPort: 80, defaultUser: 'admin' },
-  { value: 'tplink_deco', labelVi: 'TP-Link Deco Mesh (Wi-Fi System)', labelEn: 'TP-Link Deco Mesh (Wi-Fi System)', role: 'router_mesh', defaultPort: 80, defaultUser: 'admin' },
-  { value: 'xiaomi', labelVi: 'Xiaomi Mesh / MiWiFi (AP)', labelEn: 'Xiaomi Mesh / MiWiFi (AP)', role: 'router_mesh', defaultPort: 80, defaultUser: 'admin' },
-  { value: 'gecoos', labelVi: 'Gecoos Enterprise AP', labelEn: 'Gecoos Enterprise AP', role: 'router_mesh', defaultPort: 80, defaultUser: 'admin' },
-  { value: 'generic', labelVi: 'Thiết bị Router / Gateway khác (Ping)', labelEn: 'Other Router / Gateway Device (Ping)', role: 'router_mesh', defaultPort: 80, defaultUser: 'admin' }
+  { value: 'mikrotik', key: 'deviceDialog.typeMikrotik', role: 'gateway', defaultPort: 8728, defaultUser: 'admin' },
+  { value: 'openwrt', key: 'deviceDialog.typeOpenwrt', role: 'gateway', defaultPort: 80, defaultUser: 'root' },
+  { value: 'zte', key: 'deviceDialog.typeZte', role: 'router_mesh', defaultPort: 80, defaultUser: 'admin' },
+  { value: 'tplink_deco', key: 'deviceDialog.typeTplinkDeco', role: 'router_mesh', defaultPort: 80, defaultUser: 'admin' },
+  { value: 'xiaomi', key: 'deviceDialog.typeXiaomi', role: 'router_mesh', defaultPort: 80, defaultUser: 'admin' },
+  { value: 'gecoos', key: 'deviceDialog.typeGecoos', role: 'router_mesh', defaultPort: 80, defaultUser: 'admin' },
+  { value: 'generic', key: 'deviceDialog.typeGeneric', role: 'router_mesh', defaultPort: 80, defaultUser: 'admin' }
 ];
 
 export default function NetworkDeviceDialog({ open, onClose, onSave, editingDevice, defaultRole = 'gateway' }) {
@@ -140,7 +140,7 @@ export default function NetworkDeviceDialog({ open, onClose, onSave, editingDevi
                   >
                     {DEVICE_TYPES.map(typeItem => (
                       <MenuItem key={typeItem.value} value={typeItem.value}>
-                        {lang === 'vi' ? typeItem.labelVi : typeItem.labelEn}
+                        {t(typeItem.key)}
                       </MenuItem>
                     ))}
                   </Select>

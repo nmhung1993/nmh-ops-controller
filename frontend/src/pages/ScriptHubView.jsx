@@ -54,6 +54,7 @@ import { apiRequest } from '../utils/api';
 import Label from '../components/common/Label';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import { useWebSocket } from '../context/WebSocketContext';
+import { useLanguage } from '../context/LanguageContext';
 
 // Helper to detect host OS
 const detectHostOs = (host) => {
@@ -77,6 +78,7 @@ const detectHostOs = (host) => {
 
 export default function ScriptHubView() {
   const theme = useTheme();
+  const { t, lang } = useLanguage();
   const { hosts, refreshHosts } = useWebSocket();
 
   const [scripts, setScripts] = useState([]);
@@ -156,7 +158,7 @@ export default function ScriptHubView() {
   // Handle run script
   const handleRunScript = async (script) => {
     if (!selectedAgentId) {
-      setActionAlert({ type: 'error', text: 'Vui lòng chọn máy trạm đích để chạy kịch bản.' });
+      setActionAlert({ type: 'error', text: t('scripts.selectTargetError') });
       return;
     }
 
@@ -174,7 +176,7 @@ export default function ScriptHubView() {
     } catch (err) {
       setExecResult({
         success: false,
-        error: err.message || 'Lỗi khi thực thi kịch bản'
+        error: err.message || t('scripts.execError')
       });
     } finally {
       setExecuting(false);
@@ -216,18 +218,18 @@ export default function ScriptHubView() {
           method: 'PUT',
           body: JSON.stringify(scriptForm)
         });
-        setActionAlert({ type: 'success', text: 'Đã cập nhật kịch bản thành công!' });
+        setActionAlert({ type: 'success', text: t('scripts.updatedSuccess') });
       } else {
         await apiRequest('/api/v1/scripts', {
           method: 'POST',
           body: JSON.stringify(scriptForm)
         });
-        setActionAlert({ type: 'success', text: 'Đã thêm kịch bản mới thành công!' });
+        setActionAlert({ type: 'success', text: t('scripts.createdSuccess') });
       }
       setScriptDialogOpen(false);
       loadScripts();
     } catch (err) {
-      setActionAlert({ type: 'error', text: err.message || 'Lỗi khi lưu kịch bản' });
+      setActionAlert({ type: 'error', text: err.message || t('scripts.saveError') });
     }
   };
 
@@ -235,11 +237,11 @@ export default function ScriptHubView() {
   const handleDeleteScript = async (id) => {
     try {
       await apiRequest(`/api/v1/scripts/${id}`, { method: 'DELETE' });
-      setActionAlert({ type: 'success', text: 'Đã xóa kịch bản!' });
+      setActionAlert({ type: 'success', text: t('scripts.deletedSuccess') });
       setDeleteScriptId(null);
       loadScripts();
     } catch (err) {
-      setActionAlert({ type: 'error', text: err.message || 'Lỗi khi xóa kịch bản' });
+      setActionAlert({ type: 'error', text: err.message || t('scripts.deleteError') });
     }
   };
 
@@ -247,7 +249,7 @@ export default function ScriptHubView() {
   const handleCopyOutput = () => {
     if (execResult?.output) {
       navigator.clipboard.writeText(execResult.output);
-      setActionAlert({ type: 'success', text: 'Đã sao chép kết quả đầu ra vào clipboard!' });
+      setActionAlert({ type: 'success', text: t('scripts.copiedOutput') });
     }
   };
 
@@ -283,10 +285,10 @@ export default function ScriptHubView() {
                 SMART OPS & AUTOMATION
               </Typography>
               <Typography variant="h4" sx={{ fontWeight: 800 }}>
-                Kho Kịch Bản & Thao Tác Nhanh (Script Hub)
+                {t('scripts.hubTitle')}
               </Typography>
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                Thực thi kịch bản PowerShell / Bash 1-Click trên toàn bộ máy trạm, dọn dẹp hệ thống và chẩn đoán từ xa.
+                {t('scripts.hubSubtitle')}
               </Typography>
             </Box>
           </Stack>
@@ -298,7 +300,7 @@ export default function ScriptHubView() {
             onClick={handleOpenAdd}
             sx={{ fontWeight: 700, borderRadius: 2, alignSelf: { xs: 'flex-start', sm: 'center' } }}
           >
-            Thêm Kịch Bản Mới
+            {t('scripts.addBtn')}
           </Button>
         </Stack>
       </Card>
@@ -320,10 +322,10 @@ export default function ScriptHubView() {
           {/* Target Host */}
           <Grid item xs={12} sm={6} md={4}>
             <FormControl fullWidth size="small">
-              <InputLabel sx={{ fontWeight: 700 }}>Máy trạm thực thi (Target Agent)</InputLabel>
+              <InputLabel sx={{ fontWeight: 700 }}>{t('scripts.targetAgent')}</InputLabel>
               <Select
                 value={selectedAgentId}
-                label="Máy trạm thực thi (Target Agent)"
+                label={t('scripts.targetAgent')}
                 onChange={(e) => setSelectedAgentId(e.target.value)}
                 renderValue={(val) => {
                   const h = hosts?.find(item => item.id === val);
@@ -390,7 +392,7 @@ export default function ScriptHubView() {
             <TextField
               size="small"
               fullWidth
-              placeholder="Tìm theo tên kịch bản, nội dung..."
+              placeholder={t('scripts.searchPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               InputProps={{
@@ -402,13 +404,13 @@ export default function ScriptHubView() {
           {/* Platform Filter */}
           <Grid item xs={6} md={2.5}>
             <FormControl fullWidth size="small">
-              <InputLabel>Nền tảng OS</InputLabel>
+              <InputLabel>{t('scripts.platform')}</InputLabel>
               <Select
                 value={platformFilter}
-                label="Nền tảng OS"
+                label={t('scripts.platform')}
                 onChange={(e) => setPlatformFilter(e.target.value)}
               >
-                <MenuItem value="all">Tất cả hệ điều hành</MenuItem>
+                <MenuItem value="all">{t('scripts.platformAll')}</MenuItem>
                 <MenuItem value="windows">Windows (PowerShell)</MenuItem>
                 <MenuItem value="linux">Linux (Bash)</MenuItem>
                 <MenuItem value="synology">Synology DSM (Bash)</MenuItem>
@@ -420,18 +422,18 @@ export default function ScriptHubView() {
           {/* Category Filter */}
           <Grid item xs={6} md={2.5}>
             <FormControl fullWidth size="small">
-              <InputLabel>Phân loại</InputLabel>
+              <InputLabel>{t('scripts.category')}</InputLabel>
               <Select
                 value={categoryFilter}
-                label="Phân loại"
+                label={t('scripts.category')}
                 onChange={(e) => setCategoryFilter(e.target.value)}
               >
-                <MenuItem value="all">Tất cả danh mục</MenuItem>
-                <MenuItem value="maintenance">Bảo trì & Dọn dẹp</MenuItem>
-                <MenuItem value="diagnostic">Chẩn đoán & S.M.A.R.T</MenuItem>
-                <MenuItem value="network">Mạng & Kết nối</MenuItem>
-                <MenuItem value="troubleshooting">Khắc phục sự cố</MenuItem>
-                <MenuItem value="custom">Kịch bản tự tạo</MenuItem>
+                <MenuItem value="all">{t('scripts.catAll')}</MenuItem>
+                <MenuItem value="maintenance">{t('scripts.catMaintenance')}</MenuItem>
+                <MenuItem value="diagnostic">{t('scripts.catDiagnostic')}</MenuItem>
+                <MenuItem value="network">{t('scripts.catNetwork')}</MenuItem>
+                <MenuItem value="troubleshooting">{t('scripts.catTroubleshooting')}</MenuItem>
+                <MenuItem value="custom">{t('scripts.catCustom')}</MenuItem>
               </Select>
             </FormControl>
           </Grid>
@@ -443,13 +445,16 @@ export default function ScriptHubView() {
             <Chip
               size="small"
               icon={<Filter size={13} />}
-              label={`Kịch bản tương thích cho: ${selectedHost.displayName || selectedHost.hostname || selectedHost.id} (${selectedHostOs === 'windows' ? 'Windows' : selectedHostOs === 'linux' ? 'Linux' : selectedHostOs === 'synology' ? 'Synology DSM' : selectedHostOs === 'homeassistant' ? 'Home Assistant OS' : selectedHostOs.toUpperCase()})`}
+              label={t('scripts.compatibleNotice', {
+                host: selectedHost.displayName || selectedHost.hostname || selectedHost.id,
+                os: selectedHostOs === 'windows' ? 'Windows' : selectedHostOs === 'linux' ? 'Linux' : selectedHostOs === 'synology' ? 'Synology DSM' : selectedHostOs === 'homeassistant' ? 'Home Assistant OS' : selectedHostOs.toUpperCase()
+              })}
               color="primary"
               variant="outlined"
               sx={{ fontWeight: 700 }}
             />
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-              • Hệ thống tự động ẩn các script không hỗ trợ trên hệ điều hành này.
+              {t('scripts.autoHideHint')}
             </Typography>
           </Stack>
         )}
@@ -462,13 +467,13 @@ export default function ScriptHubView() {
         <Card sx={{ p: 6, textAlign: 'center', borderRadius: 2.5 }}>
           <Code size={48} color={theme.palette.text.disabled} />
           <Typography variant="h6" sx={{ mt: 2, fontWeight: 700 }}>
-            Không tìm thấy kịch bản phù hợp
+            {t('scripts.noMatch')}
           </Typography>
           <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3 }}>
-            Thử thay đổi bộ lọc tìm kiếm hoặc tạo kịch bản mới cho hệ thống.
+            {t('scripts.noMatchHint')}
           </Typography>
           <Button variant="contained" startIcon={<Plus size={16} />} onClick={handleOpenAdd}>
-            Thêm Kịch Bản
+            {t('scripts.addBtn')}
           </Button>
         </Card>
       ) : (
@@ -511,7 +516,7 @@ export default function ScriptHubView() {
                         }
                       </Label>
                       {script.isPreset && (
-                        <Label variant="soft" color="success">Hệ thống</Label>
+                        <Label variant="soft" color="success">{t('scripts.systemPreset')}</Label>
                       )}
                     </Stack>
 
@@ -532,7 +537,7 @@ export default function ScriptHubView() {
                   </Typography>
 
                   <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.825rem', mb: 2, minHeight: 40 }}>
-                    {script.description || 'Kịch bản thực thi tùy biến.'}
+                    {script.description || t('scripts.defaultDescription')}
                   </Typography>
 
                   {/* Code snippet preview */}
@@ -565,7 +570,7 @@ export default function ScriptHubView() {
                   onClick={() => handleRunScript(script)}
                   sx={{ fontWeight: 700, borderRadius: 2 }}
                 >
-                  Chạy ngay (1-Click Run)
+                  {t('scripts.runNow')}
                 </Button>
               </Card>
             </Grid>
@@ -580,10 +585,10 @@ export default function ScriptHubView() {
             <Terminal size={22} color={theme.palette.primary.main} />
             <Box>
               <Typography variant="h6" sx={{ fontWeight: 800 }}>
-                {activeRunningScript?.name || 'Thực thi Kịch Bản'}
+                {activeRunningScript?.name || t('scripts.execModalDefault')}
               </Typography>
               <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                Đích: {hosts?.find(h => h.id === selectedAgentId)?.hostname || selectedAgentId}
+                {t('scripts.targetPrefix')} {hosts?.find(h => h.id === selectedAgentId)?.hostname || selectedAgentId}
               </Typography>
             </Box>
           </Stack>
@@ -603,10 +608,10 @@ export default function ScriptHubView() {
             <Box sx={{ py: 6, textAlign: 'center' }}>
               <Terminal size={40} className="spin" color={theme.palette.primary.main} />
               <Typography variant="h6" sx={{ mt: 2, fontWeight: 700 }}>
-                Đang truyền lệnh & thực thi kịch bản trên máy trạm...
+                {t('scripts.executing')}
               </Typography>
               <Typography variant="body2" sx={{ color: 'text.secondary', mt: 0.5 }}>
-                Đang chờ Agent gửi phản hồi output qua kênh WebSocket an toàn.
+                {t('scripts.waitingOutput')}
               </Typography>
               <LinearProgress sx={{ maxWidth: 300, mx: 'auto', mt: 3, borderRadius: 1.5 }} />
             </Box>
@@ -615,9 +620,9 @@ export default function ScriptHubView() {
               <Stack direction="row" justifyContent="space-between" alignItems="center">
                 <Stack direction="row" spacing={1} alignItems="center">
                   {execResult.success ? (
-                    <Chip icon={<CheckCircle2 size={14} />} label="Thành công" color="success" size="small" sx={{ fontWeight: 700 }} />
+                    <Chip icon={<CheckCircle2 size={14} />} label={t('scripts.success')} color="success" size="small" sx={{ fontWeight: 700 }} />
                   ) : (
-                    <Chip icon={<AlertCircle size={14} />} label="Thất bại" color="error" size="small" sx={{ fontWeight: 700 }} />
+                    <Chip icon={<AlertCircle size={14} />} label={t('scripts.failed')} color="error" size="small" sx={{ fontWeight: 700 }} />
                   )}
                   {execResult.error && (
                     <Typography variant="caption" sx={{ color: 'error.main', fontWeight: 600 }}>
@@ -628,7 +633,7 @@ export default function ScriptHubView() {
 
                 <Stack direction="row" spacing={1}>
                   <Button size="small" variant="outlined" startIcon={<Copy size={14} />} onClick={handleCopyOutput}>
-                    Sao chép
+                    {t('scripts.copy')}
                   </Button>
                 </Stack>
               </Stack>
@@ -650,7 +655,7 @@ export default function ScriptHubView() {
                   lineHeight: 1.6
                 }}
               >
-                {execResult.output || execResult.error || 'Thực thi không có đầu ra.'}
+                {execResult.output || execResult.error || t('scripts.noOutput')}
               </Box>
             </Stack>
           ) : null}
@@ -658,7 +663,7 @@ export default function ScriptHubView() {
 
         <DialogActions sx={{ p: 2.5 }}>
           <Button onClick={() => setExecModalOpen(false)} disabled={executing}>
-            Đóng
+            {t('common.close')}
           </Button>
           {execResult && (
             <Button
@@ -669,7 +674,7 @@ export default function ScriptHubView() {
               disabled={executing}
               sx={{ fontWeight: 700 }}
             >
-              Chạy lại
+              {t('scripts.rerun')}
             </Button>
           )}
         </DialogActions>
@@ -679,65 +684,65 @@ export default function ScriptHubView() {
       <Dialog open={scriptDialogOpen} onClose={() => setScriptDialogOpen(false)} maxWidth="sm" fullWidth>
         <form onSubmit={handleSaveScript}>
           <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Code size={20} color={theme.palette.primary.main} /> {editingScript ? 'Chỉnh Sửa Kịch Bản' : 'Tạo Kịch Bản Mới'}
+            <Code size={20} color={theme.palette.primary.main} /> {editingScript ? t('scripts.editTitle') : t('scripts.createTitle')}
           </DialogTitle>
 
           <DialogContent>
             <Stack spacing={2.5} sx={{ mt: 1 }}>
               <TextField
-                label="Tên kịch bản (Name)"
+                label={t('scripts.name')}
                 value={scriptForm.name}
                 onChange={(e) => setScriptForm(prev => ({ ...prev, name: e.target.value }))}
-                placeholder="VD: Dọn dẹp Log IIS, Khởi động lại NGINX..."
+                placeholder={t('scripts.namePlaceholder')}
                 required
                 fullWidth
               />
 
               <TextField
-                label="Mô tả tác vụ"
+                label={t('scripts.description')}
                 value={scriptForm.description}
                 onChange={(e) => setScriptForm(prev => ({ ...prev, description: e.target.value }))}
-                placeholder="VD: Giải phóng dung lượng log trên máy chủ web"
+                placeholder={t('scripts.descriptionPlaceholder')}
                 fullWidth
               />
 
               <Grid container spacing={2}>
                 <Grid item xs={6}>
                   <FormControl fullWidth>
-                    <InputLabel>Nền tảng OS</InputLabel>
+                    <InputLabel>{t('scripts.platform')}</InputLabel>
                     <Select
                       value={scriptForm.platform}
-                      label="Nền tảng OS"
+                      label={t('scripts.platform')}
                       onChange={(e) => setScriptForm(prev => ({ ...prev, platform: e.target.value }))}
                     >
                       <MenuItem value="windows">Windows (PowerShell)</MenuItem>
                       <MenuItem value="linux">Linux (Bash)</MenuItem>
                       <MenuItem value="synology">Synology DSM (Bash)</MenuItem>
                       <MenuItem value="homeassistant">Home Assistant (Core CLI)</MenuItem>
-                      <MenuItem value="all">Tất cả (Cross-platform / Docker)</MenuItem>
+                      <MenuItem value="all">{t('scripts.platformCross')}</MenuItem>
                     </Select>
                   </FormControl>
                 </Grid>
                 <Grid item xs={6}>
                   <FormControl fullWidth>
-                    <InputLabel>Phân loại</InputLabel>
+                    <InputLabel>{t('scripts.category')}</InputLabel>
                     <Select
                       value={scriptForm.category}
-                      label="Phân loại"
+                      label={t('scripts.category')}
                       onChange={(e) => setScriptForm(prev => ({ ...prev, category: e.target.value }))}
                     >
-                      <MenuItem value="maintenance">Bảo trì & Dọn dẹp</MenuItem>
-                      <MenuItem value="diagnostic">Chẩn đoán & Kiểm tra</MenuItem>
-                      <MenuItem value="network">Mạng & Kết nối</MenuItem>
-                      <MenuItem value="troubleshooting">Khắc phục sự cố</MenuItem>
-                      <MenuItem value="custom">Tùy biến</MenuItem>
+                      <MenuItem value="maintenance">{t('scripts.catMaintenance')}</MenuItem>
+                      <MenuItem value="diagnostic">{t('scripts.catDiagnostic')}</MenuItem>
+                      <MenuItem value="network">{t('scripts.catNetwork')}</MenuItem>
+                      <MenuItem value="troubleshooting">{t('scripts.catTroubleshooting')}</MenuItem>
+                      <MenuItem value="custom">{t('scripts.catCustom')}</MenuItem>
                     </Select>
                   </FormControl>
                 </Grid>
               </Grid>
 
               <TextField
-                label="Nội dung Kịch bản (Script Content)"
+                label={t('scripts.content')}
                 value={scriptForm.scriptContent}
                 onChange={(e) => setScriptForm(prev => ({ ...prev, scriptContent: e.target.value }))}
                 placeholder={`Write-Output "Executing maintenance task...";\nGet-Service | Where-Object Status -eq 'Stopped';`}
@@ -753,9 +758,9 @@ export default function ScriptHubView() {
           </DialogContent>
 
           <DialogActions sx={{ p: 2.5 }}>
-            <Button onClick={() => setScriptDialogOpen(false)}>Hủy</Button>
+            <Button onClick={() => setScriptDialogOpen(false)}>{t('scripts.cancel')}</Button>
             <Button type="submit" variant="contained" color="primary" sx={{ fontWeight: 700 }}>
-              {editingScript ? 'Lưu Thay Đổi' : 'Tạo Kịch Bản'}
+              {editingScript ? t('scripts.save') : t('scripts.create')}
             </Button>
           </DialogActions>
         </form>
@@ -764,8 +769,8 @@ export default function ScriptHubView() {
       {/* Delete Confirm Dialog */}
       <ConfirmDialog
         open={Boolean(deleteScriptId)}
-        title="Xóa kịch bản tùy chỉnh?"
-        message="Bạn có chắc chắn muốn xóa kịch bản này khỏi Kho Kịch Bản?"
+        title={t('scripts.deleteTitle')}
+        message={t('scripts.deleteMessage')}
         onConfirm={() => handleDeleteScript(deleteScriptId)}
         onClose={() => setDeleteScriptId(null)}
       />

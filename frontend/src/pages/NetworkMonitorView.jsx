@@ -98,10 +98,10 @@ import TPLinkDecoSection from '../components/network/TPLinkDecoSection';
 import ZTESection from '../components/network/ZTESection';
 
 const PING_TIME_RANGES = [
-  { value: '1h', labelVi: '1 giờ', labelEn: '1 hour' },
-  { value: '8h', labelVi: '8 tiếng', labelEn: '8 hours' },
-  { value: '24h', labelVi: '1 ngày', labelEn: '24 hours' },
-  { value: '7d', labelVi: '1 tuần', labelEn: '7 days' }
+  { value: '1h', key: 'dashboard.range1h' },
+  { value: '8h', key: 'dashboard.range8h' },
+  { value: '24h', key: 'dashboard.range24h' },
+  { value: '7d', key: 'dashboard.range7d' }
 ];
 
 export default function NetworkMonitorView() {
@@ -1443,10 +1443,10 @@ export default function NetworkMonitorView() {
             >
               <Box sx={{ minWidth: 0 }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1, fontSize: { xs: '0.9rem', sm: '1.05rem' } }}>
-                  <TrendingUp size={18} color={theme.palette.primary.main} /> {lang === 'vi' ? 'Biến động độ trễ & Drop Packet' : 'Latency & Drop Packet Trends'}
+                  <TrendingUp size={18} color={theme.palette.primary.main} /> {t('network.trendsTitle')}
                 </Typography>
                 <Typography variant="caption" sx={{ color: 'text.secondary', display: { xs: 'none', sm: 'block' }, fontSize: '0.75rem' }}>
-                  {lang === 'vi' ? 'Ưu tiên cảnh báo gói tin bị Drop (Timeout) và Spike giật lag theo thời gian thực' : 'Real-time Drop (Timeout) & latency spike monitoring'}
+                  {t('network.trendsSubtitle')}
                 </Typography>
               </Box>
 
@@ -1458,7 +1458,7 @@ export default function NetworkMonitorView() {
                     onChange={(e) => setChartTargetId(e.target.value)}
                     sx={{ height: 32, fontSize: '0.75rem', borderRadius: 1.5 }}
                   >
-                    <MenuItem value="all">{lang === 'vi' ? 'Tất cả Target' : 'All Targets'}</MenuItem>
+                    <MenuItem value="all">{t('network.allTargets')}</MenuItem>
                     {targets.map((t) => (
                       <MenuItem key={t.id} value={t.id}>
                         {t.name}
@@ -1489,7 +1489,7 @@ export default function NetworkMonitorView() {
                           bgcolor: active ? undefined : alpha(theme.palette.grey[500], 0.06)
                         }}
                       >
-                        {lang === 'vi' ? r.labelVi : r.labelEn}
+                        {t(r.key)}
                       </Button>
                     );
                   })}
@@ -1506,10 +1506,10 @@ export default function NetworkMonitorView() {
                   </Box>
                   <Box sx={{ minWidth: 0 }}>
                     <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, fontSize: { xs: '0.58rem', sm: '0.6875rem' }, display: 'block', noWrap: true }}>
-                      DROP TIMEOUT
+                      {t('network.dropTimeout')}
                     </Typography>
                     <Typography variant="subtitle2" sx={{ fontWeight: 800, color: totalDrops > 0 ? 'error.main' : 'success.main', fontSize: { xs: '0.85rem', sm: '1rem' } }} noWrap>
-                      {totalDrops} {lang === 'vi' ? 'gói' : 'pkts'} ({chartMetrics.length > 0 ? ((totalDrops / chartMetrics.length) * 100).toFixed(0) : 0}%)
+                      {totalDrops} {t('network.pktsUnit')} ({chartMetrics.length > 0 ? ((totalDrops / chartMetrics.length) * 100).toFixed(0) : 0}%)
                     </Typography>
                   </Box>
                 </Card>
@@ -1522,7 +1522,7 @@ export default function NetworkMonitorView() {
                   </Box>
                   <Box sx={{ minWidth: 0 }}>
                     <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, fontSize: { xs: '0.58rem', sm: '0.6875rem' }, display: 'block', noWrap: true }}>
-                      {lang === 'vi' ? 'SPIKE CAO NHẤT' : 'MAX SPIKE'}
+                      {t('network.maxSpike')}
                     </Typography>
                     <Typography variant="subtitle2" sx={{ fontWeight: 800, color: maxSpike > 100 ? 'warning.main' : 'text.primary', fontSize: { xs: '0.85rem', sm: '1rem' } }} noWrap>
                       {maxSpike} ms {totalSpikes > 0 && <span style={{ fontSize: '0.65rem', fontWeight: 600 }}>({totalSpikes})</span>}
@@ -1538,7 +1538,7 @@ export default function NetworkMonitorView() {
                   </Box>
                   <Box sx={{ minWidth: 0 }}>
                     <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, fontSize: { xs: '0.58rem', sm: '0.6875rem' }, display: 'block', noWrap: true }}>
-                      {lang === 'vi' ? 'TRUNG BÌNH' : 'AVG LATENCY'}
+                      {t('network.avgLatency')}
                     </Typography>
                     <Typography variant="subtitle2" sx={{ fontWeight: 800, color: 'primary.main', fontSize: { xs: '0.85rem', sm: '1rem' } }} noWrap>
                       {avgLatency} ms
@@ -1554,7 +1554,7 @@ export default function NetworkMonitorView() {
                   </Box>
                   <Box sx={{ minWidth: 0 }}>
                     <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, fontSize: { xs: '0.58rem', sm: '0.6875rem' }, display: 'block', noWrap: true }}>
-                      {lang === 'vi' ? 'JITTER (DAO ĐỘNG)' : 'JITTER'}
+                      {t('network.jitter')}
                     </Typography>
                     <Typography variant="subtitle2" sx={{ fontWeight: 800, fontSize: { xs: '0.85rem', sm: '1rem' } }} noWrap>
                       ±{jitterVal} ms
@@ -1588,7 +1588,7 @@ export default function NetworkMonitorView() {
                 onClick={() => setTagFilter(tag)}
                 sx={{ borderRadius: 1.5, fontWeight: 700, fontSize: '0.75rem' }}
               >
-                {tag === 'all' ? (lang === 'vi' ? `Tất cả (${targets.length})` : `All (${targets.length})`) : tag}
+                {tag === 'all' ? t('network.allCount', { count: targets.length }) : tag}
               </Button>
             ))}
           </Stack>
@@ -1600,7 +1600,7 @@ export default function NetworkMonitorView() {
               const isOnline = target.enabled && target.status === 'online';
               const isDegraded = target.enabled && target.status === 'degraded';
               const statusColor = isPaused ? 'default' : isOnline ? 'success' : isDegraded ? 'warning' : 'error';
-              const statusLabel = isPaused ? (lang === 'vi' ? 'Tạm dừng' : 'Paused') : isOnline ? 'Online' : isDegraded ? 'Degraded' : 'Offline';
+              const statusLabel = isPaused ? t('network.statusPaused') : isOnline ? t('network.statusOnline') : isDegraded ? t('network.statusDegraded') : t('network.statusOffline');
 
               return (
                 <Grid item xs={12} sm={6} lg={4} key={target.id}>
@@ -1648,7 +1648,7 @@ export default function NetworkMonitorView() {
                       <Stack direction="row" spacing={1.5} justifyContent="center" textAlign="center" sx={{ my: { xs: 1, sm: 1.5 }, p: { xs: 1, sm: 1.25 }, borderRadius: 2, bgcolor: alpha(theme.palette.grey[500], 0.06) }}>
                         <Box sx={{ flex: 1 }}>
                           <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.65rem' }}>
-                            {lang === 'vi' ? 'ĐỘ TRỄ (PING)' : 'LATENCY (PING)'}
+                            {t('network.latencyPing')}
                           </Typography>
                           <Typography variant="h6" sx={{ fontWeight: 800, fontSize: { xs: '1.05rem', sm: '1.25rem' }, color: isPaused ? 'text.disabled' : `${statusColor}.main` }}>
                             {!isPaused && target.latency !== null ? `${target.latency} ms` : '--'}
@@ -1657,7 +1657,7 @@ export default function NetworkMonitorView() {
                         <Divider orientation="vertical" flexItem />
                         <Box sx={{ flex: 1 }}>
                           <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.65rem' }}>
-                            PACKET LOSS
+                            {t('network.packetLoss')}
                           </Typography>
                           <Typography variant="h6" sx={{ fontWeight: 800, fontSize: { xs: '1.05rem', sm: '1.25rem' }, color: target.packetLoss > 10 ? 'error.main' : 'text.primary' }}>
                             {!isPaused ? `${target.packetLoss}%` : '--'}
@@ -1669,7 +1669,7 @@ export default function NetworkMonitorView() {
                       <Box sx={{ mb: 1 }}>
                         <Stack direction="row" spacing={0.5} alignItems="center" justifyContent={{ xs: 'center', sm: 'flex-start' }}>
                           <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.65rem', mr: 0.5 }}>
-                            {lang === 'vi' ? 'Lịch sử:' : 'History:'}
+                            {t('network.historyLabel')}
                           </Typography>
                           {(target.history || []).slice(-12).map((h, i) => (
                             <Tooltip key={i} title={`${h.time.split('T')[1].slice(0, 8)}: ${h.latency !== null ? `${h.latency}ms` : 'Timeout'}`}>
@@ -1694,7 +1694,6 @@ export default function NetworkMonitorView() {
                           <Clock size={11} /> {target.lastCheck ? target.lastCheck.split('T')[1].slice(0, 8) : '--'}
                         </Typography>
 
-
                         <Stack direction="row" spacing={0.5}>
                           {/* Pause / Resume Button (Super Admin) */}
                           {isSuperAdmin && (
@@ -1702,7 +1701,7 @@ export default function NetworkMonitorView() {
                               size="small"
                               color={target.enabled ? 'warning' : 'success'}
                               onClick={(e) => handleToggleTargetEnabled(target, e)}
-                              title={target.enabled ? 'Tạm dừng ping' : 'Tiếp tục ping'}
+                              title={target.enabled ? t('network.pausePing') || 'Tạm dừng ping' : t('network.resumePing') || 'Tiếp tục ping'}
                             >
                               {target.enabled ? <Pause size={14} /> : <Play size={14} />}
                             </IconButton>
@@ -1714,7 +1713,7 @@ export default function NetworkMonitorView() {
                               size="small"
                               color="primary"
                               onClick={(e) => handleOpenEditTarget(target, e)}
-                              title="Sửa target"
+                              title={t('common.edit')}
                             >
                               <Edit2 size={14} />
                             </IconButton>
@@ -1724,7 +1723,7 @@ export default function NetworkMonitorView() {
                           <IconButton
                             size="small"
                             onClick={(e) => handlePingNow(target.id, e)}
-                            title="Ping ngay"
+                            title={t('network.pingNow') || 'Ping ngay'}
                           >
                             <RotateCcw size={14} />
                           </IconButton>
@@ -1735,7 +1734,7 @@ export default function NetworkMonitorView() {
                               size="small"
                               color="error"
                               onClick={() => setConfirmDeleteId(target.id)}
-                              title="Xóa target"
+                              title={t('common.delete')}
                             >
                               <Trash2 size={14} />
                             </IconButton>
@@ -1759,7 +1758,7 @@ export default function NetworkMonitorView() {
           <Card sx={{ p: 3 }}>
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center" sx={{ mb: 3 }}>
               <TextField
-                label={lang === 'vi' ? "Dải mạng / Subnet CIDR" : "Subnet Range / CIDR"}
+                label={t('network.subnetLabel')}
                 value={scanSubnet}
                 onChange={(e) => setScanSubnet(e.target.value)}
                 size="small"
@@ -1767,11 +1766,11 @@ export default function NetworkMonitorView() {
               />
               {scanState.isScanning ? (
                 <Button variant="contained" color="error" startIcon={<RotateCcw size={16} />} onClick={handleStopScan}>
-                  {lang === 'vi' ? `Dừng quét (${scanState.current}/${scanState.total})` : `Stop Scan (${scanState.current}/${scanState.total})`}
+                  {t('network.stopScan', { current: scanState.current, total: scanState.total })}
                 </Button>
               ) : (
                 <Button variant="contained" color="primary" startIcon={<Play size={16} />} onClick={handleStartScan}>
-                  {lang === 'vi' ? 'Bắt đầu quét mạng' : 'Start Subnet Scan'}
+                  {t('network.startScan')}
                 </Button>
               )}
             </Stack>
@@ -1780,34 +1779,32 @@ export default function NetworkMonitorView() {
               <Box sx={{ mb: 3 }}>
                 <LinearProgress variant="determinate" value={(scanState.current / scanState.total) * 100} sx={{ height: 8, borderRadius: 4 }} />
                 <Typography variant="caption" sx={{ color: 'text.secondary', mt: 0.5, display: 'block' }}>
-                  {lang === 'vi' 
-                    ? `Đang quét: ${scanState.current} / ${scanState.total} địa chỉ IP (${Math.round((scanState.current / scanState.total) * 100)}%)` 
-                    : `Scanning: ${scanState.current} / ${scanState.total} IP addresses (${Math.round((scanState.current / scanState.total) * 100)}%)`}
+                  {t('network.scanning')} {scanState.current} / {scanState.total} ({Math.round((scanState.current / scanState.total) * 100)}%)
                 </Typography>
               </Box>
             )}
 
             <Typography variant="h6" sx={{ fontWeight: 800, mb: 2 }}>
-              {lang === 'vi' ? `Kết quả quét hiện tại (${scanState.results?.length || 0} thiết bị)` : `Current Scan Results (${scanState.results?.length || 0} devices)`}
+              {t('network.currentScanResults', { count: scanState.results?.length || 0 })}
             </Typography>
 
             <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Địa chỉ IP' : 'IP Address'}</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Tên / Thiết bị (Có thể đổi tên)' : 'Device Name / Host'}</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>MAC Address</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Độ trễ' : 'Latency'}</TableCell>
-                    <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Trạng thái' : 'Status'}</TableCell>
-                    <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>{lang === 'vi' ? 'Thao tác' : 'Actions'}</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>{t('network.ipAddress')}</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>{t('network.deviceNameEditable')}</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>{t('network.macAddress')}</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>{t('network.latency')}</TableCell>
+                    <TableCell sx={{ fontWeight: 700 }}>{t('common.status')}</TableCell>
+                    <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>{t('common.actions')}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {!scanState.results || scanState.results.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>
-                        {lang === 'vi' ? 'Chưa có thiết bị nào được quét. Hãy nhấn "Bắt đầu quét mạng".' : 'No devices scanned yet. Click "Start Subnet Scan".'}
+                        {t('network.noDevicesScanned')}
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -1822,11 +1819,11 @@ export default function NetworkMonitorView() {
                               </Typography>
                               {item.customName && item.autoName && item.customName !== item.autoName && (
                                 <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', fontSize: '0.7rem' }}>
-                                  {lang === 'vi' ? `Gốc: ${item.autoName}` : `Original: ${item.autoName}`}
+                                  {t('network.originalName', { name: item.autoName })}
                                 </Typography>
                               )}
                             </Box>
-                            <Tooltip title={lang === 'vi' ? "Đổi tên cho IP này" : "Rename this IP"}>
+                            <Tooltip title={t('network.renameTooltip')}>
                               <IconButton
                                 size="small"
                                 onClick={() => handleOpenEditIpName(item.ip, item.hostname)}
@@ -1851,7 +1848,7 @@ export default function NetworkMonitorView() {
                             startIcon={<Plus size={14} />}
                             onClick={() => handleOpenAddTarget(item.ip, item.hostname || `Device (${item.ip})`)}
                           >
-                            {lang === 'vi' ? 'Theo dõi' : 'Monitor'}
+                            {t('network.monitorBtn')}
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -1865,12 +1862,12 @@ export default function NetworkMonitorView() {
           {/* Scan History (Pinned on top, preserved forever) */}
           <Card sx={{ p: 3 }}>
             <Typography variant="h6" sx={{ fontWeight: 800, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <History size={20} color={theme.palette.primary.main} /> {lang === 'vi' ? 'Lịch sử quét mạng (Bản ghi đã ghim & 20 lần gần nhất)' : 'Subnet Scan History (Pinned & 20 Recent)'}
+              <History size={20} color={theme.palette.primary.main} /> {t('network.scanHistoryTitle')}
             </Typography>
 
             {scanHistoryList.length === 0 ? (
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                {lang === 'vi' ? 'Chưa có lịch sử phiên quét nào.' : 'No scan history recorded.'}
+                {t('network.noScanHistory')}
               </Typography>
             ) : (
               <Stack spacing={1.5}>
@@ -1887,7 +1884,7 @@ export default function NetworkMonitorView() {
                     <AccordionSummary expandIcon={<ChevronDown size={18} />}>
                       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ width: 1, pr: 2 }}>
                         <Stack direction="row" spacing={1.5} alignItems="center">
-                          <Tooltip title={session.isPinned ? (lang === 'vi' ? "Bỏ ghim phiên này" : "Unpin this session") : (lang === 'vi' ? "Ghim phiên này" : "Pin this session")}>
+                          <Tooltip title={session.isPinned ? t('network.unpinTooltip') : t('network.pinTooltip')}>
                             <IconButton
                               size="small"
                               onClick={(e) => {
@@ -1912,7 +1909,7 @@ export default function NetworkMonitorView() {
 
                           {session.isPinned && (
                             <Label variant="filled" color="primary" startIcon={<Pin size={11} />}>
-                              {lang === 'vi' ? 'ĐÃ GHIM' : 'PINNED'}
+                              {t('network.pinned')}
                             </Label>
                           )}
 
@@ -1920,7 +1917,7 @@ export default function NetworkMonitorView() {
                             {session.subnet}
                           </Typography>
                           <Label variant="soft" color="primary">
-                            {session.totalDiscovered} {lang === 'vi' ? 'thiết bị' : 'devices'}
+                            {t('network.devicesCount', { count: session.totalDiscovered })}
                           </Label>
                         </Stack>
 
@@ -1928,7 +1925,7 @@ export default function NetworkMonitorView() {
                           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                             {session.scannedAt ? new Date(session.scannedAt).toLocaleString() : '--'}
                           </Typography>
-                          <Tooltip title={lang === 'vi' ? "Xóa phiên lịch sử này" : "Delete this scan session"}>
+                          <Tooltip title={t('network.deleteScanTooltip')}>
                             <IconButton
                               size="small"
                               color="error"
@@ -1950,10 +1947,10 @@ export default function NetworkMonitorView() {
                           <TableHead>
                             <TableRow>
                               <TableCell sx={{ fontWeight: 700 }}>IP</TableCell>
-                              <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Tên / Thiết bị (Có thể đổi tên)' : 'Device Name / Host'}</TableCell>
+                              <TableCell sx={{ fontWeight: 700 }}>{t('network.deviceNameEditable')}</TableCell>
                               <TableCell sx={{ fontWeight: 700 }}>MAC</TableCell>
                               <TableCell sx={{ fontWeight: 700 }}>Latency</TableCell>
-                              <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>{lang === 'vi' ? 'Thao tác' : 'Actions'}</TableCell>
+                              <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>{t('common.actions')}</TableCell>
                             </TableRow>
                           </TableHead>
                           <TableBody>
@@ -1968,11 +1965,11 @@ export default function NetworkMonitorView() {
                                       </Typography>
                                       {res.customName && res.autoName && res.customName !== res.autoName && (
                                         <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', fontSize: '0.7rem' }}>
-                                          {lang === 'vi' ? `Gốc: ${res.autoName}` : `Original: ${res.autoName}`}
+                                          {t('network.originalName', { name: res.autoName })}
                                         </Typography>
                                       )}
                                     </Box>
-                                    <Tooltip title={lang === 'vi' ? "Đổi tên cho IP này" : "Rename this IP"}>
+                                    <Tooltip title={t('network.renameTooltip')}>
                                       <IconButton
                                         size="small"
                                         onClick={() => handleOpenEditIpName(res.ip, res.hostname)}
@@ -1996,7 +1993,7 @@ export default function NetworkMonitorView() {
                                         disabled={wolLoadingMac === res.mac}
                                         onClick={() => handleSendWol(res.mac, res.hostname || res.ip)}
                                       >
-                                        {wolLoadingMac === res.mac ? (lang === 'vi' ? 'Đang gửi...' : 'Sending...') : 'WoL'}
+                                        {wolLoadingMac === res.mac ? t('network.wolSending') : t('network.wolBtn')}
                                       </Button>
                                     )}
                                     <Button
@@ -2006,7 +2003,7 @@ export default function NetworkMonitorView() {
                                       startIcon={<SlidersHorizontal size={14} />}
                                       onClick={() => handleOpenAddQueue(res.ip, res.hostname)}
                                     >
-                                      {lang === 'vi' ? 'Giới hạn' : 'Limit'}
+                                      {t('network.limitBtn')}
                                     </Button>
                                     <Button
                                       size="small"
@@ -2015,7 +2012,7 @@ export default function NetworkMonitorView() {
                                       startIcon={<ArrowUpDown size={14} />}
                                       onClick={() => handleOpenAddNat(res.ip, res.hostname)}
                                     >
-                                      {lang === 'vi' ? 'Mở Cổng' : 'Open Port'}
+                                      {t('network.openPortBtn')}
                                     </Button>
                                     <Button
                                       size="small"
@@ -2023,7 +2020,7 @@ export default function NetworkMonitorView() {
                                       startIcon={<Plus size={14} />}
                                       onClick={() => handleOpenAddTarget(res.ip, res.hostname || `Device (${res.ip})`)}
                                     >
-                                      {lang === 'vi' ? 'Theo dõi' : 'Monitor'}
+                                      {t('network.monitorBtn')}
                                     </Button>
                                   </Stack>
                                 </TableCell>
@@ -2079,7 +2076,7 @@ export default function NetworkMonitorView() {
             {isSuperAdmin && (
               <Stack direction="row" spacing={1} alignItems="center" justifyContent={{ xs: 'center', md: 'flex-end' }} sx={{ width: { xs: '100%', md: 'auto' } }}>
                 {currentGatewayDevice && (
-                  <Tooltip title={lang === 'vi' ? "Chỉnh sửa Gateway này" : "Edit this Gateway"}>
+                  <Tooltip title={t('network.editGatewayTooltip')}>
                     <Button
                       size="small"
                       variant="outlined"
@@ -2088,13 +2085,13 @@ export default function NetworkMonitorView() {
                       onClick={() => handleOpenEditDevice(currentGatewayDevice)}
                       sx={{ fontWeight: 700, fontSize: '0.75rem' }}
                     >
-                      {lang === 'vi' ? 'Sửa' : 'Edit'}
+                      {t('common.edit')}
                     </Button>
                   </Tooltip>
                 )}
 
                 {currentGatewayDevice && (
-                  <Tooltip title={lang === 'vi' ? "Xóa Gateway khỏi quản lý" : "Remove Gateway"}>
+                  <Tooltip title={t('network.removeGatewayTooltip')}>
                     <Button
                       size="small"
                       variant="outlined"
@@ -2103,7 +2100,7 @@ export default function NetworkMonitorView() {
                       onClick={() => setConfirmDeleteDeviceId(currentGatewayDevice.id)}
                       sx={{ fontWeight: 700, fontSize: '0.75rem' }}
                     >
-                      {lang === 'vi' ? 'Xóa' : 'Delete'}
+                      {t('common.delete')}
                     </Button>
                   </Tooltip>
                 )}
@@ -2116,7 +2113,7 @@ export default function NetworkMonitorView() {
                   onClick={() => handleOpenAddDevice('gateway')}
                   sx={{ fontWeight: 700, fontSize: '0.75rem' }}
                 >
-                  {lang === 'vi' ? '+ Thêm Gateway' : '+ Add Gateway'}
+                  {t('network.addGateway')}
                 </Button>
               </Stack>
             )}
@@ -2129,12 +2126,10 @@ export default function NetworkMonitorView() {
                 <Shield size={48} />
               </Box>
               <Typography variant="h6" sx={{ fontWeight: 800, mb: 1 }}>
-                {lang === 'vi' ? 'Chưa có thiết bị Gateway nào được quản lý' : 'No Gateway devices configured'}
+                {t('network.noGatewayTitle')}
               </Typography>
               <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3, maxWidth: 500, mx: 'auto', fontSize: '0.8125rem' }}>
-                {lang === 'vi' 
-                  ? 'Hệ thống chưa kết nối thiết bị Gateway nào. Bạn có thể thêm thiết bị MikroTik RouterOS hoặc OpenWrt/ImmortalWrt Gateway để bắt đầu quản lý băng thông và NAT.'
-                  : 'No Gateway device connected yet. You can add a MikroTik RouterOS or OpenWrt Gateway to manage bandwidth QoS and NAT rules.'}
+                {t('network.noGatewayDesc')}
               </Typography>
               {isSuperAdmin && (
                 <Button
@@ -2144,7 +2139,7 @@ export default function NetworkMonitorView() {
                   onClick={() => handleOpenAddDevice('gateway')}
                   sx={{ fontWeight: 700 }}
                 >
-                  {lang === 'vi' ? 'Thêm Gateway Ngay' : 'Add Gateway Now'}
+                  {t('network.addGatewayNow')}
                 </Button>
               )}
             </Card>
@@ -2158,13 +2153,13 @@ export default function NetworkMonitorView() {
               <Card sx={{ p: 4, textAlign: 'center' }}>
                 <Shield size={48} color={theme.palette.text.disabled} />
                 <Typography variant="h6" sx={{ mt: 2, fontWeight: 700 }}>
-                  {lang === 'vi' ? `Không thể kết nối MikroTik RouterOS (${mikrotikHost})` : `Cannot connect to MikroTik RouterOS (${mikrotikHost})`}
+                  {t('network.cannotConnectMikrotik', { host: mikrotikHost })}
                 </Typography>
                 <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3 }}>
-                  {lang === 'vi' ? 'Vui lòng kiểm tra lại địa chỉ IP, cổng REST API (80/443) và thông tin đăng nhập trong phần Cấu hình.' : 'Please verify the IP address, REST API port (80/443), and credentials in Connection Settings.'}
+                  {t('network.verifyMikrotikHint')}
                 </Typography>
                 <Button variant="contained" startIcon={<Settings size={16} />} onClick={handleOpenMikrotikConfig}>
-                  {lang === 'vi' ? 'Cấu hình kết nối MikroTik' : 'Configure MikroTik Connection'}
+                  {t('network.configureMikrotik')}
                 </Button>
               </Card>
             ) : (
@@ -2206,7 +2201,7 @@ export default function NetworkMonitorView() {
                         onClick={() => setConfirmReconnectPppoeOpen(true)}
                         sx={{ fontWeight: 700, fontSize: '0.75rem', py: 0.5 }}
                       >
-                        {lang === 'vi' ? 'Làm mới IP' : 'Renew IP'}
+                        {t('network.renewIp')}
                       </Button>
                       <Button
                         size="small"
@@ -2226,7 +2221,7 @@ export default function NetworkMonitorView() {
                         onClick={handleOpenMikrotikConfig}
                         sx={{ fontWeight: 700, fontSize: '0.75rem', py: 0.5 }}
                       >
-                        {lang === 'vi' ? 'Cấu hình API' : 'API Config'}
+                        {t('network.apiConfig')}
                       </Button>
                     </Stack>
                   </Stack>
@@ -2253,7 +2248,7 @@ export default function NetworkMonitorView() {
                           User: {showPppoeUser ? (mikrotikStatus.wan?.pppoeUser || '--') : (mikrotikStatus.wan?.pppoeUser ? '••••••••' : '--')}
                         </Typography>
                         {mikrotikStatus.wan?.pppoeUser && (
-                          <Tooltip title={showPppoeUser ? (lang === 'vi' ? "Ẩn tài khoản PPPoE" : "Hide PPPoE account") : (lang === 'vi' ? "Hiện tài khoản PPPoE" : "Show PPPoE account")}>
+                          <Tooltip title={showPppoeUser ? t('network.hidePppoeAccount') : t('network.showPppoeAccount')}>
                             <IconButton
                               size="small"
                               onClick={() => setShowPppoeUser(v => !v)}
@@ -2274,7 +2269,7 @@ export default function NetworkMonitorView() {
                   <Grid item xs={6} sm={6} md={3}>
                     <Card sx={{ p: { xs: 1.25, sm: 2 }, height: '100%', borderRadius: 2 }}>
                       <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, fontSize: { xs: '0.6rem', sm: '0.7rem' } }}>
-                        {lang === 'vi' ? 'BĂNG THÔNG PPPOE' : 'PPPOE BANDWIDTH'}
+                        {t('network.pppoeBandwidth')}
                       </Typography>
                       <Stack direction="row" spacing={1} sx={{ my: 0.25 }}>
                         <Box sx={{ minWidth: 0, flex: 1 }}>
@@ -2296,7 +2291,7 @@ export default function NetworkMonitorView() {
                         </Box>
                       </Stack>
                       <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.65rem', display: 'block' }}>
-                        {lang === 'vi' ? 'Thời gian thực' : 'Real-time'}
+                        {t('network.realtime')}
                       </Typography>
                     </Card>
                   </Grid>
@@ -2305,7 +2300,7 @@ export default function NetworkMonitorView() {
                   <Grid item xs={6} sm={6} md={3}>
                     <Card sx={{ p: { xs: 1.25, sm: 2 }, height: '100%', borderRadius: 2 }}>
                       <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, fontSize: { xs: '0.6rem', sm: '0.7rem' } }}>
-                        {lang === 'vi' ? 'TẢI CPU ROUTER' : 'ROUTER CPU LOAD'}
+                        {t('network.routerCpuLoad')}
                       </Typography>
                       <Typography variant="subtitle1" sx={{ fontWeight: 800, my: 0.25, color: mikrotikStatus.cpu > 80 ? 'error.main' : 'text.primary', fontSize: { xs: '0.875rem', sm: '1.1rem' } }}>
                         {mikrotikStatus.cpu}%
@@ -2320,7 +2315,7 @@ export default function NetworkMonitorView() {
                   <Grid item xs={6} sm={6} md={3}>
                     <Card sx={{ p: { xs: 1.25, sm: 2 }, height: '100%', borderRadius: 2 }}>
                       <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, fontSize: { xs: '0.6rem', sm: '0.7rem' } }}>
-                        {lang === 'vi' ? 'BỘ NHỚ RAM' : 'RAM MEMORY'}
+                        {t('network.ramMemory')}
                       </Typography>
                       <Typography variant="subtitle1" sx={{ fontWeight: 800, my: 0.25, fontSize: { xs: '0.875rem', sm: '1.1rem' } }}>
                         {mikrotikStatus.memory}%
@@ -2353,14 +2348,14 @@ export default function NetworkMonitorView() {
                     />
                     <Tab
                       value="nat"
-                      label={lang === 'vi' ? `NAT (${mikrotikNatRules.length})` : `NAT (${mikrotikNatRules.length})`}
+                      label={`NAT (${mikrotikNatRules.length})`}
                       icon={<ArrowUpDown size={16} />}
                       iconPosition="start"
                       sx={{ fontWeight: 700, minHeight: 40, py: 0.5, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}
                     />
                     <Tab
                       value="queues"
-                      label={lang === 'vi' ? `Bandwidth Limit (${mikrotikQueues.length})` : `Bandwidth Limit (${mikrotikQueues.length})`}
+                      label={`Bandwidth Limit (${mikrotikQueues.length})`}
                       icon={<SlidersHorizontal size={16} />}
                       iconPosition="start"
                       sx={{ fontWeight: 700, minHeight: 40, py: 0.5, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}
@@ -2491,10 +2486,10 @@ export default function NetworkMonitorView() {
                     <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2} sx={{ mb: 2 }}>
                       <Box>
                         <Typography variant="h6" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1, fontSize: { xs: '0.95rem', sm: '1.15rem' } }}>
-                          <Shield size={20} color={theme.palette.primary.main} /> {lang === 'vi' ? 'Bảng Quy Tắc Chuyển Tiếp Cổng (NAT)' : 'Port Forwarding & NAT Rules'}
+                          <Shield size={20} color={theme.palette.primary.main} /> {t('network.natRulesTitle')}
                         </Typography>
                         <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
-                          {lang === 'vi' ? 'Các quy tắc NAT / Firewall trên RouterOS điều phối lưu lượng mạng ra vào' : 'RouterOS NAT & Firewall rules managing incoming/outgoing network traffic'}
+                          {t('network.natRulesSubtitle')}
                         </Typography>
                       </Box>
                       <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
@@ -2506,7 +2501,7 @@ export default function NetworkMonitorView() {
                           onClick={handleOpenNatTemplates}
                           sx={{ fontWeight: 700, fontSize: '0.75rem' }}
                         >
-                          {lang === 'vi' ? 'Mẫu NAT nhanh' : 'NAT Templates'}
+                          {t('network.natTemplatesBtn')}
                         </Button>
                         <Button
                           size="small"
@@ -2529,10 +2524,10 @@ export default function NetworkMonitorView() {
                           }}
                           sx={{ fontWeight: 700, fontSize: '0.75rem' }}
                         >
-                          {lang === 'vi' ? 'Tạo NAT' : 'Add NAT'}
+                          {t('network.addNat')}
                         </Button>
                         <Button size="small" variant="outlined" startIcon={<RefreshCw size={14} />} onClick={() => loadMikrotikNat(false)}>
-                          {lang === 'vi' ? 'Làm mới' : 'Refresh'}
+                          {t('network.refresh')}
                         </Button>
                       </Stack>
                     </Stack>
@@ -2545,18 +2540,18 @@ export default function NetworkMonitorView() {
                           <TableHead>
                             <TableRow>
                               <TableCell sx={{ fontWeight: 700 }}>Chain / Action</TableCell>
-                              <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Giao thức & Cổng đến' : 'Protocol & Port'}</TableCell>
-                              <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Chuyển tiếp đến (To IP:Port)' : 'Forward To (IP:Port)'}</TableCell>
-                              <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Ghi chú' : 'Comment'}</TableCell>
-                              <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Trạng thái' : 'Status'}</TableCell>
-                              <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>{lang === 'vi' ? 'Thao tác' : 'Actions'}</TableCell>
+                              <TableCell sx={{ fontWeight: 700 }}>{t('network.protoPort')}</TableCell>
+                              <TableCell sx={{ fontWeight: 700 }}>{t('network.forwardTo')}</TableCell>
+                              <TableCell sx={{ fontWeight: 700 }}>{t('network.comment')}</TableCell>
+                              <TableCell sx={{ fontWeight: 700 }}>{t('network.status')}</TableCell>
+                              <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>{t('network.actions')}</TableCell>
                             </TableRow>
                           </TableHead>
                           <TableBody>
                             {mikrotikNatRules.length === 0 ? (
                               <TableRow>
                                 <TableCell colSpan={6} sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>
-                                  {lang === 'vi' ? 'Không tìm thấy quy tắc NAT nào trên RouterOS. Nhấn "Mẫu NAT nhanh" để tạo nhanh.' : 'No NAT rules found on RouterOS. Click "NAT Templates" to create presets.'}
+                                  {t('network.noNatRules')}
                                 </TableCell>
                               </TableRow>
                             ) : (
@@ -2689,7 +2684,7 @@ export default function NetworkMonitorView() {
             {isSuperAdmin && (
               <Stack direction="row" spacing={1} alignItems="center">
                 {currentRouterMeshDevice && (
-                  <Tooltip title={lang === 'vi' ? "Chỉnh sửa thiết bị này" : "Edit this device"}>
+                  <Tooltip title={t('network.editRouterTooltip')}>
                     <Button
                       size="small"
                       variant="outlined"
@@ -2698,13 +2693,13 @@ export default function NetworkMonitorView() {
                       onClick={() => handleOpenEditDevice(currentRouterMeshDevice)}
                       sx={{ fontWeight: 700 }}
                     >
-                      {lang === 'vi' ? 'Sửa' : 'Edit'}
+                      {t('common.edit')}
                     </Button>
                   </Tooltip>
                 )}
 
                 {currentRouterMeshDevice && (
-                  <Tooltip title={lang === 'vi' ? "Xóa thiết bị khỏi quản lý" : "Remove device"}>
+                  <Tooltip title={t('network.removeRouterTooltip')}>
                     <Button
                       size="small"
                       variant="outlined"
@@ -2713,7 +2708,7 @@ export default function NetworkMonitorView() {
                       onClick={() => setConfirmDeleteDeviceId(currentRouterMeshDevice.id)}
                       sx={{ fontWeight: 700 }}
                     >
-                      {lang === 'vi' ? 'Xóa' : 'Delete'}
+                      {t('common.delete')}
                     </Button>
                   </Tooltip>
                 )}
@@ -2726,7 +2721,7 @@ export default function NetworkMonitorView() {
                   onClick={() => handleOpenAddDevice('router_mesh')}
                   sx={{ fontWeight: 700 }}
                 >
-                  {lang === 'vi' ? '+ Thêm Router/Mesh' : '+ Add Router/Mesh'}
+                  {t('network.addRouterMesh')}
                 </Button>
               </Stack>
             )}
@@ -2739,12 +2734,10 @@ export default function NetworkMonitorView() {
                 <Wifi size={56} />
               </Box>
               <Typography variant="h5" sx={{ fontWeight: 800, mb: 1 }}>
-                {lang === 'vi' ? 'Chưa có thiết bị Router / Wi-Fi Mesh nào được quản lý' : 'No Router / Wi-Fi Mesh devices managed'}
+                {t('network.noRouterMeshTitle')}
               </Typography>
               <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3, maxWidth: 500, mx: 'auto' }}>
-                {lang === 'vi' 
-                  ? 'Hệ thống chưa kết nối thiết bị Router hoặc Wi-Fi Mesh nào. Bạn có thể thêm thiết bị Xiaomi Mesh, TP-Link Deco, ZTE EasyMesh hoặc Gecoos AP để theo dõi topology và thiết bị kết nối.' 
-                  : 'No Router or Wi-Fi Mesh device connected yet. You can add Xiaomi Mesh, TP-Link Deco, ZTE EasyMesh, or Gecoos AP to monitor topology and connected clients.'}
+                {t('network.noRouterMeshDesc')}
               </Typography>
               {isSuperAdmin && (
                 <Button
@@ -2754,7 +2747,7 @@ export default function NetworkMonitorView() {
                   onClick={() => handleOpenAddDevice('router_mesh')}
                   sx={{ fontWeight: 700 }}
                 >
-                  {lang === 'vi' ? 'Thêm Router/Mesh Ngay' : 'Add Router/Mesh Now'}
+                  {t('network.addRouterMeshNow')}
                 </Button>
               )}
             </Card>
@@ -2800,13 +2793,13 @@ export default function NetworkMonitorView() {
               <Card sx={{ p: 4, textAlign: 'center' }}>
                 <Wifi size={48} color={theme.palette.text.disabled} />
                 <Typography variant="h6" sx={{ mt: 2, fontWeight: 700 }}>
-                  {lang === 'vi' ? `Không thể kết nối AP (${selectedRouterHost})` : `Cannot connect to AP (${selectedRouterHost})`}
+                  {t('network.cannotConnectAp', { host: selectedRouterHost })}
                 </Typography>
                 <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3 }}>
-                  {lang === 'vi' ? 'Kiểm tra lại kết nối mạng và mật khẩu quản trị.' : 'Please verify network connection and admin credentials.'}
+                  {t('network.checkApCredentials')}
                 </Typography>
                 <Button variant="contained" startIcon={<Settings size={16} />} onClick={() => setRouterConfigOpen(true)}>
-                  {lang === 'vi' ? 'Cấu hình kết nối Router AP' : 'Configure Router AP Connection'}
+                  {t('network.configureRouterAp')}
                 </Button>
               </Card>
             ) : (
@@ -2838,7 +2831,7 @@ export default function NetworkMonitorView() {
                         startIcon={<RotateCcw size={16} />}
                         onClick={() => setConfirmWifiRestartTarget({ ip: routerStatus.host, name: routerStatus.routerName })}
                       >
-                        {lang === 'vi' ? 'Khởi động lại Wi-Fi' : 'Restart Wi-Fi'}
+                        {t('network.restartWifi')}
                       </Button>
                       <Button
                         variant="outlined"
@@ -2849,7 +2842,7 @@ export default function NetworkMonitorView() {
                         Reboot AP
                       </Button>
                       <Button variant="contained" color="inherit" startIcon={<Settings size={16} />} onClick={() => setRouterConfigOpen(true)}>
-                        {lang === 'vi' ? 'Cấu hình' : 'Config'}
+                        {t('network.config')}
                       </Button>
                     </Stack>
                   </Stack>
@@ -2860,7 +2853,7 @@ export default function NetworkMonitorView() {
                   <Grid item xs={12} sm={6} md={3}>
                     <Card sx={{ p: 2.5 }}>
                       <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
-                        {lang === 'vi' ? 'TỔNG THIẾT BỊ WI-FI' : 'TOTAL WI-FI CLIENTS'}
+                        {t('network.totalWifiClients')}
                       </Typography>
                       <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5, color: 'primary.main' }}>
                         {routerStatus.wifi?.count || routerStatus.clients?.length || 0}
@@ -2874,7 +2867,7 @@ export default function NetworkMonitorView() {
                   <Grid item xs={12} sm={6} md={3}>
                     <Card sx={{ p: 2.5 }}>
                       <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
-                        {lang === 'vi' ? 'TẢI CPU AP' : 'AP CPU LOAD'}
+                        {t('network.apCpuLoad')}
                       </Typography>
                       <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5 }}>
                         {routerStatus.cpu}%
@@ -2898,13 +2891,13 @@ export default function NetworkMonitorView() {
                   <Grid item xs={12} sm={6} md={3}>
                     <Card sx={{ p: 2.5 }}>
                       <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
-                        {lang === 'vi' ? 'MESH NODES PHỤ' : 'SECONDARY MESH NODES'}
+                        {t('network.secondaryMeshNodes')}
                       </Typography>
                       <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5 }}>
                         {routerStatus.meshNodes?.length || 0}
                       </Typography>
                       <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
-                        {lang === 'vi' ? 'Tự động đồng bộ IP' : 'Auto IP synchronization'}
+                        {t('network.autoIpSync')}
                       </Typography>
                     </Card>
                   </Grid>
@@ -2914,7 +2907,7 @@ export default function NetworkMonitorView() {
                 {routerStatus.meshNodes && routerStatus.meshNodes.length > 0 && (
                   <Box>
                     <Typography variant="h6" sx={{ fontWeight: 800, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Layers size={20} color={theme.palette.primary.main} /> {lang === 'vi' ? `Quản lý các Node Mesh phụ (${routerStatus.meshNodes.length})` : `Secondary Mesh Nodes (${routerStatus.meshNodes.length})`}
+                      <Layers size={20} color={theme.palette.primary.main} /> {t('network.secondaryMeshNodesTitle', { count: routerStatus.meshNodes.length })}
                     </Typography>
 
                     <Grid container spacing={2.5}>
@@ -2927,22 +2920,22 @@ export default function NetworkMonitorView() {
                                   {node.name}
                                 </Typography>
                                 <Typography variant="body2" sx={{ color: 'text.secondary', fontFamily: 'monospace', fontWeight: 600 }}>
-                                  IP: {node.ip || (lang === 'vi' ? 'Chưa nhận IP' : 'No IP assigned')} • {node.hardware} (v{node.version})
+                                  IP: {node.ip || t('network.noIpAssigned')} • {node.hardware} (v{node.version})
                                 </Typography>
                                 <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 700, mt: 0.5, display: 'block' }}>
-                                  {lang === 'vi' ? 'Kết nối:' : 'Backhaul:'} {node.backhaulLabel}
+                                  {t('network.backhaul')} {node.backhaulLabel}
                                 </Typography>
                               </Box>
 
                               <Label variant="soft" color={node.online ? 'success' : 'error'}>
-                                {node.online ? (lang === 'vi' ? 'Trực tuyến' : 'Online') : (lang === 'vi' ? 'Ngoại tuyến' : 'Offline')}
+                                {node.online ? t('common.online') : t('common.offline')}
                               </Label>
                             </Stack>
 
                             <Stack direction="row" spacing={2} sx={{ p: 1.5, borderRadius: 2, bgcolor: alpha(theme.palette.grey[500], 0.06), mb: 2 }}>
                               <Box sx={{ flex: 1 }}>
                                 <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                                  {lang === 'vi' ? 'TẢI CPU' : 'CPU LOAD'}
+                                  {t('network.cpuLoad') || 'TẢI CPU'}
                                 </Typography>
                                 <Typography variant="h6" sx={{ fontWeight: 800 }}>
                                   {node.cpu}%
@@ -2960,7 +2953,7 @@ export default function NetworkMonitorView() {
                               <Divider orientation="vertical" flexItem />
                               <Box sx={{ flex: 1 }}>
                                 <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                                  {lang === 'vi' ? 'THIẾT BỊ WI-FI' : 'WI-FI CLIENTS'}
+                                  {t('network.wifiClients') || 'THIẾT BỊ WI-FI'}
                                 </Typography>
                                 <Typography variant="h6" sx={{ fontWeight: 800, color: 'primary.main' }}>
                                   {node.clientCount}
@@ -2999,17 +2992,17 @@ export default function NetworkMonitorView() {
                 {/* Connected Wi-Fi Devices Table */}
                 <Card sx={{ p: 3 }}>
                   <Typography variant="h6" sx={{ fontWeight: 800, mb: 2 }}>
-                    {lang === 'vi' ? `Danh sách thiết bị kết nối Wi-Fi (${routerStatus.clients?.length || 0})` : `Connected Wi-Fi Clients (${routerStatus.clients?.length || 0})`}
+                    {t('network.connectedWifiClientsTitle', { count: routerStatus.clients?.length || 0 })}
                   </Typography>
                   <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
                     <Table size="small">
                       <TableHead>
                         <TableRow>
-                          <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Tên thiết bị' : 'Device Name'}</TableCell>
-                          <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Địa chỉ IP' : 'IP Address'}</TableCell>
-                          <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Băng tần' : 'Band'}</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>{t('network.deviceName')}</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>{t('network.ipAddress')}</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>{t('network.band')}</TableCell>
                           <TableCell sx={{ fontWeight: 700 }}>MAC Address</TableCell>
-                          <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>{lang === 'vi' ? 'Thao tác' : 'Actions'}</TableCell>
+                          <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>{t('common.actions')}</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -3033,7 +3026,7 @@ export default function NetworkMonitorView() {
                                   disabled={wolLoadingMac === client.mac}
                                   onClick={() => handleSendWol(client.mac, client.name)}
                                 >
-                                  {wolLoadingMac === client.mac ? (lang === 'vi' ? 'Đang gửi...' : 'Sending...') : 'WoL'}
+                                  {wolLoadingMac === client.mac ? t('network.wolSending') : t('network.wolBtn')}
                                 </Button>
                                 <Button
                                   size="small"
@@ -3042,7 +3035,7 @@ export default function NetworkMonitorView() {
                                   startIcon={<SlidersHorizontal size={14} />}
                                   onClick={() => handleOpenAddQueue(client.ip, client.name)}
                                 >
-                                  {lang === 'vi' ? 'Giới hạn' : 'Limit'}
+                                  {t('network.limitBtn')}
                                 </Button>
                                 <Button
                                   size="small"
@@ -3051,7 +3044,7 @@ export default function NetworkMonitorView() {
                                   startIcon={<ArrowUpDown size={14} />}
                                   onClick={() => handleOpenAddNat(client.ip, client.name)}
                                 >
-                                  {lang === 'vi' ? 'Mở Cổng' : 'Open Port'}
+                                  {t('network.openPortBtn')}
                                 </Button>
                                 <Button
                                   size="small"
@@ -3059,7 +3052,7 @@ export default function NetworkMonitorView() {
                                   startIcon={<Plus size={14} />}
                                   onClick={() => handleOpenAddTarget(client.ip, client.name)}
                                 >
-                                  {lang === 'vi' ? 'Theo dõi' : 'Monitor'}
+                                  {t('network.monitorBtn')}
                                 </Button>
                               </Stack>
                             </TableCell>
@@ -3079,20 +3072,20 @@ export default function NetworkMonitorView() {
       <Dialog open={targetDialogOpen} onClose={() => setTargetDialogOpen(false)} maxWidth="sm" fullWidth>
         <form onSubmit={handleSaveTarget}>
           <DialogTitle sx={{ fontWeight: 800 }}>
-            {editingTarget ? (lang === 'vi' ? 'Chỉnh sửa Target' : 'Edit Ping Target') : (lang === 'vi' ? 'Thêm Target Giám sát' : 'Add Monitoring Target')}
+            {editingTarget ? t('network.editTarget') : t('network.addTarget')}
           </DialogTitle>
           <DialogContent>
             <Stack spacing={2.5} sx={{ mt: 1 }}>
               <TextField
-                label={lang === 'vi' ? 'Tên hiển thị' : 'Display Name'}
+                label={t('network.targetDisplayName')}
                 value={targetName}
                 onChange={(e) => setTargetName(e.target.value)}
-                placeholder={lang === 'vi' ? "VD: Gecoos Router, Mesh Node 2, Gateway..." : "e.g. Core Gateway, Server Node 2..."}
+                placeholder="e.g. Core Gateway, Server Node 2..."
                 required
                 fullWidth
               />
               <TextField
-                label={lang === 'vi' ? 'Địa chỉ IP hoặc Hostname' : 'IP Address or Hostname'}
+                label={t('network.targetHost')}
                 value={targetHost}
                 onChange={(e) => setTargetHost(e.target.value)}
                 placeholder="192.168.1.1 / 8.8.8.8"
@@ -3100,27 +3093,27 @@ export default function NetworkMonitorView() {
                 fullWidth
               />
               <TextField
-                label={lang === 'vi' ? 'Nhóm / Tag' : 'Tag / Category'}
+                label={t('network.targetTag')}
                 value={targetTag}
                 onChange={(e) => setTargetTag(e.target.value)}
-                placeholder={lang === 'vi' ? "VD: Router, Mesh, Server, Cloud..." : "e.g. Router, Mesh, Server, Cloud..."}
+                placeholder="e.g. Router, Mesh, Server, Cloud..."
                 fullWidth
               />
               <TextField
-                label={lang === 'vi' ? 'Khoảng thời gian ping (giây)' : 'Ping Interval (seconds)'}
+                label={t('network.targetIntervalSec')}
                 type="number"
                 inputProps={{ min: 1, max: 3600 }}
                 value={targetIntervalSec}
                 onChange={(e) => setTargetIntervalSec(Number(e.target.value))}
-                helperText={lang === 'vi' ? 'Thời gian giữa mỗi lần gửi gói tin ping (mặc định 3 giây)' : 'Interval between ping packets (default 3s)'}
+                helperText={t('network.targetIntervalHelper')}
                 fullWidth
               />
             </Stack>
           </DialogContent>
           <DialogActions sx={{ p: 2.5 }}>
-            <Button onClick={() => setTargetDialogOpen(false)}>{lang === 'vi' ? 'Hủy' : 'Cancel'}</Button>
+            <Button onClick={() => setTargetDialogOpen(false)}>{t('common.cancel')}</Button>
             <Button type="submit" variant="contained" color="primary" sx={{ fontWeight: 700 }}>
-              {editingTarget ? (lang === 'vi' ? 'Cập nhật Target' : 'Save Changes') : (lang === 'vi' ? 'Lưu Target' : 'Add Target')}
+              {editingTarget ? t('network.saveTarget') : t('network.addTarget')}
             </Button>
           </DialogActions>
         </form>
@@ -3129,18 +3122,18 @@ export default function NetworkMonitorView() {
       {/* Router Config Dialog (Xiaomi / Gecoos) */}
       <Dialog open={routerConfigOpen} onClose={() => setRouterConfigOpen(false)} maxWidth="xs" fullWidth>
         <form onSubmit={handleSaveRouterConfig}>
-          <DialogTitle sx={{ fontWeight: 800 }}>{lang === 'vi' ? `Cấu hình Router AP (${selectedRouterType.toUpperCase()})` : `Configure Router AP (${selectedRouterType.toUpperCase()})`}</DialogTitle>
+          <DialogTitle sx={{ fontWeight: 800 }}>{t('network.routerConfigTitle', { type: selectedRouterType.toUpperCase() })}</DialogTitle>
           <DialogContent>
             <Stack spacing={2.5} sx={{ mt: 1 }}>
               <TextField
-                label={lang === 'vi' ? "Địa chỉ IP AP" : "AP IP Address"}
+                label={t('network.apIpAddress')}
                 value={routerHost}
                 onChange={(e) => setRouterHost(e.target.value)}
                 required
                 fullWidth
               />
               <TextField
-                label={lang === 'vi' ? "Mật khẩu quản trị" : "Admin Password"}
+                label={t('network.adminPassword')}
                 type="password"
                 value={routerPassword}
                 onChange={(e) => setRouterPassword(e.target.value)}
@@ -3150,9 +3143,9 @@ export default function NetworkMonitorView() {
             </Stack>
           </DialogContent>
           <DialogActions sx={{ p: 2.5 }}>
-            <Button onClick={() => setRouterConfigOpen(false)}>{lang === 'vi' ? 'Hủy' : 'Cancel'}</Button>
+            <Button onClick={() => setRouterConfigOpen(false)}>{t('common.cancel')}</Button>
             <Button type="submit" variant="contained" color="primary">
-              {lang === 'vi' ? 'Lưu cấu hình' : 'Save Config'}
+              {t('network.saveConfig')}
             </Button>
           </DialogActions>
         </form>
@@ -3162,18 +3155,16 @@ export default function NetworkMonitorView() {
       <Dialog open={mikrotikConfigOpen} onClose={() => setMikrotikConfigOpen(false)} maxWidth="xs" fullWidth>
         <form onSubmit={handleSaveMikrotikConfig}>
           <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Shield size={22} color={theme.palette.primary.main} /> {lang === 'vi' ? 'Cấu hình MikroTik RouterOS API' : 'MikroTik RouterOS API Settings'}
+            <Shield size={22} color={theme.palette.primary.main} /> {t('network.mikrotikConfigTitle')}
           </DialogTitle>
           <DialogContent>
             <Stack spacing={2} sx={{ mt: 1 }}>
               <Alert severity="info" sx={{ py: 0.5, fontSize: '0.78rem' }}>
-                {lang === 'vi' 
-                  ? 'Hỗ trợ trực tiếp cổng RouterOS API (8728 / 8729) mặc định không cần mở Web WWW, hoặc cổng REST API (8080 / 8443 / 80 / 443).'
-                  : 'Directly supports native RouterOS API ports (8728 / 8729) or REST API ports (8080 / 8443 / 80 / 443).'}
+                {t('network.mikrotikApiAlert')}
               </Alert>
 
               <TextField
-                label={lang === 'vi' ? "Địa chỉ IP MikroTik" : "MikroTik IP Address"}
+                label={t('network.mikrotikIpAddress')}
                 value={mikrotikHost}
                 onChange={(e) => setMikrotikHost(e.target.value)}
                 placeholder="192.168.1.1"
@@ -3183,7 +3174,7 @@ export default function NetworkMonitorView() {
 
               <Box>
                 <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, mb: 1, display: 'block' }}>
-                  {lang === 'vi' ? 'CHỌN NHANH CỔNG DỊCH VỤ (PORT PRESETS)' : 'SERVICE PORT PRESETS'}
+                  {t('network.servicePortPresets')}
                 </Typography>
                 <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
                   <Button
@@ -3222,7 +3213,7 @@ export default function NetworkMonitorView() {
               </Box>
 
               <TextField
-                label={lang === 'vi' ? "Cổng dịch vụ (Port)" : "Service Port"}
+                label={t('network.servicePort')}
                 type="number"
                 value={mikrotikPort}
                 onChange={(e) => setMikrotikPort(e.target.value)}
@@ -3231,7 +3222,7 @@ export default function NetworkMonitorView() {
                 fullWidth
               />
               <TextField
-                label={lang === 'vi' ? "Tên đăng nhập (Username)" : "Username"}
+                label={t('network.username') || "Username"}
                 value={mikrotikUsername}
                 onChange={(e) => setMikrotikUsername(e.target.value)}
                 placeholder="admin"
@@ -3239,19 +3230,19 @@ export default function NetworkMonitorView() {
                 fullWidth
               />
               <TextField
-                label={lang === 'vi' ? "Mật khẩu (Password)" : "Password"}
+                label={t('network.password')}
                 type="password"
                 value={mikrotikPassword}
                 onChange={(e) => setMikrotikPassword(e.target.value)}
-                placeholder={lang === 'vi' ? "Để trống nếu không đặt" : "Leave blank if not set"}
+                placeholder={t('network.passwordOptional')}
                 fullWidth
               />
               <TextField
-                label={lang === 'vi' ? "Tên Interface PPPoE Client" : "PPPoE Client Interface"}
+                label={t('network.pppoeInterface')}
                 value={mikrotikPppoeInterface}
                 onChange={(e) => setMikrotikPppoeInterface(e.target.value)}
                 placeholder="pppoe-out1"
-                helperText={lang === 'vi' ? "Tên cổng quay số PPPoE trên MikroTik (Mặc định: pppoe-out1)" : "PPPoE interface name on MikroTik (Default: pppoe-out1)"}
+                helperText={t('network.pppoeInterfaceHelper')}
                 fullWidth
               />
               <FormControlLabel
@@ -3267,14 +3258,14 @@ export default function NetworkMonitorView() {
                     }}
                   />
                 }
-                label={lang === 'vi' ? "Sử dụng kết nối bảo mật SSL / TLS" : "Use SSL / TLS secure connection"}
+                label={t('network.useSslTls') || "Sử dụng kết nối bảo mật SSL / TLS"}
               />
             </Stack>
           </DialogContent>
           <DialogActions sx={{ p: 2.5 }}>
-            <Button onClick={() => setMikrotikConfigOpen(false)}>{lang === 'vi' ? 'Hủy' : 'Cancel'}</Button>
+            <Button onClick={() => setMikrotikConfigOpen(false)}>{t('common.cancel')}</Button>
             <Button type="submit" variant="contained" color="primary" sx={{ fontWeight: 700 }}>
-              {lang === 'vi' ? 'Lưu & Kết nối' : 'Save & Connect'}
+              {t('network.saveAndConnect')}
             </Button>
           </DialogActions>
         </form>
@@ -3283,8 +3274,8 @@ export default function NetworkMonitorView() {
       {/* Delete Target Confirm Dialog */}
       <ConfirmDialog
         open={Boolean(confirmDeleteId)}
-        title={lang === 'vi' ? "Xóa Target giám sát?" : "Delete Monitoring Target?"}
-        message={lang === 'vi' ? "Bạn có chắc chắn muốn xóa target này khỏi danh sách theo dõi?" : "Are you sure you want to remove this target from network monitoring?"}
+        title={t('network.deleteTargetTitle')}
+        message={t('network.deleteTargetConfirm')}
         onConfirm={handleDeleteTarget}
         onClose={() => setConfirmDeleteId(null)}
       />
@@ -3292,8 +3283,8 @@ export default function NetworkMonitorView() {
       {/* Reconnect PPPoE Confirm Dialog */}
       <ConfirmDialog
         open={confirmReconnectPppoeOpen}
-        title={lang === 'vi' ? "Làm mới IP PPPoE (Re-dial WAN)?" : "Renew PPPoE IP (Re-dial WAN)?"}
-        message={lang === 'vi' ? "Thao tác này sẽ ngắt và quay lại phiên PPPoE trên MikroTik để nhận IP Public mới từ nhà mạng ISP. Toàn bộ mạng Internet sẽ gián đoạn trong 3-5 giây." : "This will disconnect and reconnect the PPPoE session on MikroTik to acquire a new Public IP. Internet access will pause for 3-5 seconds."}
+        title={t('network.reconnectPppoeTitle')}
+        message={t('network.reconnectPppoeMessage')}
         onConfirm={handleReconnectPppoe}
         onClose={() => setConfirmReconnectPppoeOpen(false)}
       />
@@ -3301,8 +3292,8 @@ export default function NetworkMonitorView() {
       {/* MikroTik Reboot Confirm Dialog */}
       <ConfirmDialog
         open={confirmMikrotikRebootOpen}
-        title={lang === 'vi' ? "Khởi động lại MikroTik RouterOS?" : "Reboot MikroTik RouterOS?"}
-        message={lang === 'vi' ? "Bạn có chắc chắn muốn Reboot Router MikroTik? Toàn bộ kết nối mạng nội bộ và Internet sẽ tạm ngắt trong 1 phút." : "Are you sure you want to reboot MikroTik Router? Internal LAN and Internet traffic will restart for ~1 minute."}
+        title={t('network.rebootMikrotikTitle')}
+        message={t('network.rebootMikrotikMessage')}
         onConfirm={handleRebootMikrotik}
         onClose={() => setConfirmMikrotikRebootOpen(false)}
       />
@@ -3310,8 +3301,8 @@ export default function NetworkMonitorView() {
       {/* Reboot Confirm Dialog (Xiaomi / Gecoos) */}
       <ConfirmDialog
         open={Boolean(confirmRebootTarget)}
-        title={lang === 'vi' ? `Khởi động lại ${confirmRebootTarget?.name || 'Router'}?` : `Reboot ${confirmRebootTarget?.name || 'Router'}?`}
-        message={lang === 'vi' ? `Thao tác này sẽ khởi động lại thiết bị tại địa chỉ ${confirmRebootTarget?.ip}. Kết nối mạng LAN/Wi-Fi qua node này sẽ tạm thời gián đoạn trong 1-2 phút.` : `This will reboot the device at ${confirmRebootTarget?.ip}. Connected Wi-Fi/LAN clients will temporarily disconnect.`}
+        title={t('network.rebootDeviceTitle', { name: confirmRebootTarget?.name || 'Router' })}
+        message={t('network.rebootDeviceMessage', { ip: confirmRebootTarget?.ip })}
         onConfirm={handleReboot}
         onClose={() => setConfirmRebootTarget(null)}
       />
@@ -3320,12 +3311,12 @@ export default function NetworkMonitorView() {
       <Dialog open={queueDialogOpen} onClose={() => setQueueDialogOpen(false)} maxWidth="sm" fullWidth>
         <form onSubmit={handleSaveQueue}>
           <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Sliders size={20} color={theme.palette.primary.main} /> {queueForm.id ? (lang === 'vi' ? 'Sửa Giới Hạn Băng Thông' : 'Edit Bandwidth Queue') : (lang === 'vi' ? 'Thêm Giới Hạn Băng Thông (Simple Queue)' : 'Add Bandwidth Limit (Simple Queue)')}
+            <Sliders size={20} color={theme.palette.primary.main} /> {queueForm.id ? t('network.queueLimitTitleEdit') : t('network.queueLimitTitleAdd')}
           </DialogTitle>
           <DialogContent>
             <Stack spacing={2.5} sx={{ mt: 1 }}>
               <TextField
-                label={lang === 'vi' ? "Tên quy tắc (Name)" : "Queue Name"}
+                label={t('network.queueName')}
                 value={queueForm.name}
                 onChange={(e) => setQueueForm(prev => ({ ...prev, name: e.target.value }))}
                 placeholder="limit_camera, limit_guest"
@@ -3333,27 +3324,27 @@ export default function NetworkMonitorView() {
                 fullWidth
               />
               <TextField
-                label={lang === 'vi' ? "Địa chỉ IP Mục tiêu (Target IP hoặc Subnet)" : "Target IP or Subnet"}
+                label={t('network.targetIpSubnet')}
                 value={queueForm.target}
                 onChange={(e) => setQueueForm(prev => ({ ...prev, target: e.target.value }))}
                 placeholder="192.168.1.50 / 192.168.1.0/24"
-                helperText={lang === 'vi' ? "IP của thiết bị cần bóp băng thông hoặc cả dải mạng" : "IP of the device or subnet CIDR to limit"}
+                helperText={t('network.targetIpSubnetHelper')}
                 required
                 fullWidth
               />
 
               <Box>
                 <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', display: 'block', mb: 1 }}>
-                  {lang === 'vi' ? 'CHỌN MỨC GIỚI HẠN NHANH (PRESET)' : 'BANDWIDTH PRESETS'}
+                  {t('network.bandwidthPresets')}
                 </Typography>
                 <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
                   {[
-                    { label: lang === 'vi' ? '2M / 5M (Tiết kiệm)' : '2M / 5M (Economy)', up: '2M', down: '5M' },
-                    { label: lang === 'vi' ? '5M / 10M (Cơ bản)' : '5M / 10M (Basic)', up: '5M', down: '10M' },
-                    { label: lang === 'vi' ? '10M / 20M (Chuẩn)' : '10M / 20M (Standard)', up: '10M', down: '20M' },
-                    { label: lang === 'vi' ? '20M / 50M (Cao)' : '20M / 50M (High)', up: '20M', down: '50M' },
-                    { label: lang === 'vi' ? '50M / 100M (Rất cao)' : '50M / 100M (Ultra)', up: '50M', down: '100M' },
-                    { label: lang === 'vi' ? '0 / 0 (Không giới hạn)' : '0 / 0 (Unlimited)', up: '0', down: '0' }
+                    { label: '2M / 5M', up: '2M', down: '5M' },
+                    { label: '5M / 10M', up: '5M', down: '10M' },
+                    { label: '10M / 20M', up: '10M', down: '20M' },
+                    { label: '20M / 50M', up: '20M', down: '50M' },
+                    { label: '50M / 100M', up: '50M', down: '100M' },
+                    { label: '0 / 0 (Unlimited)', up: '0', down: '0' }
                   ].map((p, idx) => (
                     <Button
                       key={idx}
@@ -3371,28 +3362,28 @@ export default function NetworkMonitorView() {
               <Grid container spacing={2}>
                 <Grid item xs={6}>
                   <TextField
-                    label={lang === 'vi' ? "Giới hạn Upload tối đa" : "Max Upload Limit"}
+                    label={t('network.maxUploadLimit')}
                     value={queueForm.uploadLimit}
                     onChange={(e) => setQueueForm(prev => ({ ...prev, uploadLimit: e.target.value }))}
                     placeholder="10M / 512k"
-                    helperText={lang === 'vi' ? "VD: 5M, 10M (0 là không giới hạn)" : "e.g. 5M, 10M (0 for unlimited)"}
+                    helperText={t('network.limitHelperUp')}
                     fullWidth
                   />
                 </Grid>
                 <Grid item xs={6}>
                   <TextField
-                    label={lang === 'vi' ? "Giới hạn Download tối đa" : "Max Download Limit"}
+                    label={t('network.maxDownloadLimit')}
                     value={queueForm.downloadLimit}
                     onChange={(e) => setQueueForm(prev => ({ ...prev, downloadLimit: e.target.value }))}
                     placeholder="20M / 2M"
-                    helperText={lang === 'vi' ? "VD: 10M, 20M (0 là không giới hạn)" : "e.g. 10M, 20M (0 for unlimited)"}
+                    helperText={t('network.limitHelperDown')}
                     fullWidth
                   />
                 </Grid>
               </Grid>
 
               <TextField
-                label={lang === 'vi' ? "Ghi chú / Comment" : "Comment"}
+                label={t('network.comment')}
                 value={queueForm.comment}
                 onChange={(e) => setQueueForm(prev => ({ ...prev, comment: e.target.value }))}
                 placeholder="Limit guest bandwidth"
@@ -3401,9 +3392,9 @@ export default function NetworkMonitorView() {
             </Stack>
           </DialogContent>
           <DialogActions sx={{ p: 2.5 }}>
-            <Button onClick={() => setQueueDialogOpen(false)}>{lang === 'vi' ? 'Hủy' : 'Cancel'}</Button>
+            <Button onClick={() => setQueueDialogOpen(false)}>{t('common.cancel')}</Button>
             <Button type="submit" variant="contained" color="primary" sx={{ fontWeight: 700 }}>
-              {queueForm.id ? (lang === 'vi' ? 'Cập nhật giới hạn' : 'Update Limit') : (lang === 'vi' ? 'Áp dụng giới hạn' : 'Apply Limit')}
+              {queueForm.id ? t('network.applyLimit') : t('network.applyLimit')}
             </Button>
           </DialogActions>
         </form>
@@ -3412,8 +3403,8 @@ export default function NetworkMonitorView() {
       {/* Delete Queue Confirm Dialog */}
       <ConfirmDialog
         open={Boolean(confirmDeleteQueueId)}
-        title={lang === 'vi' ? "Xóa quy tắc Giới hạn Băng thông?" : "Delete Bandwidth Limit Rule?"}
-        message={lang === 'vi' ? "Bạn có chắc muốn gỡ bỏ mức giới hạn tốc độ này trên MikroTik? Thiết bị sẽ trở về tốc độ mạng tối đa không giới hạn." : "Are you sure you want to remove this bandwidth limit from MikroTik? Device will return to uncapped speeds."}
+        title={t('network.deleteQueueTitle')}
+        message={t('network.deleteQueueMessage')}
         onConfirm={() => handleDeleteQueue(confirmDeleteQueueId)}
         onClose={() => setConfirmDeleteQueueId(null)}
       />
@@ -3422,18 +3413,18 @@ export default function NetworkMonitorView() {
       <Dialog open={editNameDialog.open} onClose={() => setEditNameDialog(prev => ({ ...prev, open: false }))} maxWidth="xs" fullWidth>
         <form onSubmit={handleSaveCustomName}>
           <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Edit2 size={20} color={theme.palette.primary.main} /> {lang === 'vi' ? `Đổi tên cho IP ${editNameDialog.ip}` : `Custom Name for IP ${editNameDialog.ip}`}
+            <Edit2 size={20} color={theme.palette.primary.main} /> {t('network.customIpNameTitle', { ip: editNameDialog.ip })}
           </DialogTitle>
           <DialogContent>
             <Stack spacing={2} sx={{ mt: 1 }}>
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                {lang === 'vi' ? 'Tên tùy chỉnh này sẽ được lưu cố định và hiển thị ưu tiên trên toàn bộ kết quả quét mạng và lịch sử.' : 'This custom name will be saved permanently and used across network scans and history.'}
+                {t('network.customIpNameDesc')}
               </Typography>
               <TextField
-                label={lang === 'vi' ? "Tên tùy chỉnh / Gợi nhớ" : "Custom Name / Label"}
+                label={t('network.customNameLabel')}
                 value={editNameDialog.newName}
                 onChange={(e) => setEditNameDialog(prev => ({ ...prev, newName: e.target.value }))}
-                placeholder={lang === 'vi' ? "VD: Smart TV Phòng Khách, Camera Sân Thượng..." : "e.g. Living Room TV, Rooftop Camera..."}
+                placeholder="VD: Smart TV, Camera..."
                 autoFocus
                 fullWidth
               />
@@ -3442,15 +3433,15 @@ export default function NetworkMonitorView() {
           <DialogActions sx={{ p: 2.5, justifyContent: 'space-between' }}>
             {customNames[editNameDialog.ip] ? (
               <Button color="error" size="small" onClick={handleClearCustomName}>
-                {lang === 'vi' ? 'Xóa tên tùy chỉnh' : 'Reset Name'}
+                {t('network.resetName')}
               </Button>
             ) : <Box />}
             <Stack direction="row" spacing={1}>
               <Button onClick={() => setEditNameDialog(prev => ({ ...prev, open: false }))}>
-                {lang === 'vi' ? 'Hủy' : 'Cancel'}
+                {t('common.cancel')}
               </Button>
               <Button type="submit" variant="contained" color="primary">
-                {lang === 'vi' ? 'Lưu tên' : 'Save Name'}
+                {t('network.saveName')}
               </Button>
             </Stack>
           </DialogActions>
@@ -3459,11 +3450,11 @@ export default function NetworkMonitorView() {
       {/* NAT Templates Dialog */}
       <Dialog open={natTemplateDialogOpen} onClose={() => setNatTemplateDialogOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Layers size={20} color={theme.palette.primary.main} /> {lang === 'vi' ? 'Tập Lệnh Mẫu NAT / Port Forwarding Cơ Bản' : 'NAT / Port Forwarding Presets & Templates'}
+          <Layers size={20} color={theme.palette.primary.main} /> {t('network.natTemplatesTitle')}
         </DialogTitle>
         <DialogContent>
           <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2.5 }}>
-            {lang === 'vi' ? 'Chọn mẫu cấu hình NAT thường dùng bên dưới để tạo quy tắc chuyển tiếp cổng chỉ với 1 click.' : 'Select common NAT forwarding templates below to apply port forwarding with 1 click.'}
+            {t('network.natTemplatesDesc')}
           </Typography>
           <Grid container spacing={2}>
             {natTemplates.map((tpl) => (
@@ -3496,7 +3487,7 @@ export default function NetworkMonitorView() {
                     </Typography>
                   </Box>
                   <Button size="small" variant="contained" color="primary" sx={{ alignSelf: 'flex-start', fontWeight: 700 }}>
-                    {lang === 'vi' ? 'Sử dụng mẫu này' : 'Apply Template'}
+                    {t('network.applyTemplate')}
                   </Button>
                 </Card>
               </Grid>
@@ -3504,7 +3495,7 @@ export default function NetworkMonitorView() {
           </Grid>
         </DialogContent>
         <DialogActions sx={{ p: 2.5 }}>
-          <Button onClick={() => setNatTemplateDialogOpen(false)}>{lang === 'vi' ? 'Đóng' : 'Close'}</Button>
+          <Button onClick={() => setNatTemplateDialogOpen(false)}>{t('common.close')}</Button>
         </DialogActions>
       </Dialog>
 
@@ -3512,7 +3503,7 @@ export default function NetworkMonitorView() {
       <Dialog open={natFormDialogOpen} onClose={() => setNatFormDialogOpen(false)} maxWidth="sm" fullWidth>
         <form onSubmit={handleSaveNatRule}>
           <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Shield size={20} color={theme.palette.primary.main} /> {lang === 'vi' ? 'Cấu Hình Quy Tắc NAT / Port Forwarding' : 'Custom NAT & Port Forwarding Rule'}
+            <Shield size={20} color={theme.palette.primary.main} /> {t('network.customNatRuleTitle')}
           </DialogTitle>
           <DialogContent>
             <Stack spacing={2} sx={{ mt: 1 }}>
@@ -3525,8 +3516,8 @@ export default function NetworkMonitorView() {
                       label="Chain"
                       onChange={(e) => setNatForm(prev => ({ ...prev, chain: e.target.value }))}
                     >
-                      <MenuItem value="dstnat">{lang === 'vi' ? 'dstnat (Chuyển tiếp cổng)' : 'dstnat (Port Forwarding)'}</MenuItem>
-                      <MenuItem value="srcnat">{lang === 'vi' ? 'srcnat (Masquerade / Loopback)' : 'srcnat (Masquerade / Loopback)'}</MenuItem>
+                      <MenuItem value="dstnat">{t('network.dstNatPortForward')}</MenuItem>
+                      <MenuItem value="srcnat">{t('network.srcNatMasquerade')}</MenuItem>
                     </Select>
                   </FormControl>
                 </Grid>
@@ -3552,22 +3543,22 @@ export default function NetworkMonitorView() {
                   <Grid container spacing={2}>
                     <Grid item xs={6}>
                       <FormControl fullWidth size="small">
-                        <InputLabel>{lang === 'vi' ? 'Giao thức (Protocol)' : 'Protocol'}</InputLabel>
+                        <InputLabel>{t('network.protocol')}</InputLabel>
                         <Select
                           value={natForm.protocol}
-                          label={lang === 'vi' ? 'Giao thức (Protocol)' : 'Protocol'}
+                          label={t('network.protocol')}
                           onChange={(e) => setNatForm(prev => ({ ...prev, protocol: e.target.value }))}
                         >
                           <MenuItem value="tcp">TCP</MenuItem>
                           <MenuItem value="udp">UDP</MenuItem>
-                          <MenuItem value="all">{lang === 'vi' ? 'Tất cả' : 'All'}</MenuItem>
+                          <MenuItem value="all">{t('network.all')}</MenuItem>
                         </Select>
                       </FormControl>
                     </Grid>
                     <Grid item xs={6}>
                       <TextField
                         size="small"
-                        label={lang === 'vi' ? "Cổng đến ngoài WAN (Dst. Port)" : "WAN Inbound Port (Dst. Port)"}
+                        label={t('network.wanInboundPort') || "WAN Inbound Port (Dst. Port)"}
                         value={natForm.dstPort}
                         onChange={(e) => setNatForm(prev => ({ ...prev, dstPort: e.target.value }))}
                         placeholder="80, 443, 3389"
@@ -3580,7 +3571,7 @@ export default function NetworkMonitorView() {
                     <Grid item xs={7}>
                       <TextField
                         size="small"
-                        label={lang === 'vi' ? "IP đích trong LAN (To Addresses)" : "Internal LAN IP (To Addresses)"}
+                        label={t('network.internalLanIp')}
                         value={natForm.toAddresses}
                         onChange={(e) => setNatForm(prev => ({ ...prev, toAddresses: e.target.value }))}
                         placeholder="192.168.1.50"
@@ -3591,7 +3582,7 @@ export default function NetworkMonitorView() {
                     <Grid item xs={5}>
                       <TextField
                         size="small"
-                        label={lang === 'vi' ? "Cổng đích LAN (To Ports)" : "Internal LAN Port (To Ports)"}
+                        label={t('network.internalLanPort')}
                         value={natForm.toPorts}
                         onChange={(e) => setNatForm(prev => ({ ...prev, toPorts: e.target.value }))}
                         placeholder="8080"
@@ -3605,18 +3596,18 @@ export default function NetworkMonitorView() {
               {natForm.chain === 'srcnat' && (
                 <TextField
                   size="small"
-                  label={lang === 'vi' ? "Cổng mạng xuất (Out Interface)" : "Outbound Interface"}
+                  label={t('network.outboundInterface')}
                   value={natForm.outInterface}
                   onChange={(e) => setNatForm(prev => ({ ...prev, outInterface: e.target.value }))}
                   placeholder="pppoe-out1 / ether1"
-                  helperText={lang === 'vi' ? "Để trống nếu muốn áp dụng cho toàn bộ interfaces" : "Leave blank to apply for all interfaces"}
+                  helperText={t('network.outboundInterfaceHelper')}
                   fullWidth
                 />
               )}
 
               <TextField
                 size="small"
-                label={lang === 'vi' ? "Ghi chú / Comment" : "Comment"}
+                label={t('network.comment')}
                 value={natForm.comment}
                 onChange={(e) => setNatForm(prev => ({ ...prev, comment: e.target.value }))}
                 placeholder="Forward Web Server, RDP Desktop..."
@@ -3625,9 +3616,9 @@ export default function NetworkMonitorView() {
             </Stack>
           </DialogContent>
           <DialogActions sx={{ p: 2.5 }}>
-            <Button onClick={() => setNatFormDialogOpen(false)}>{lang === 'vi' ? 'Hủy' : 'Cancel'}</Button>
+            <Button onClick={() => setNatFormDialogOpen(false)}>{t('common.cancel')}</Button>
             <Button type="submit" variant="contained" color="primary" sx={{ fontWeight: 700 }}>
-              {lang === 'vi' ? 'Áp dụng quy tắc' : 'Apply Rule'}
+              {t('network.applyRule')}
             </Button>
           </DialogActions>
         </form>
@@ -3636,8 +3627,8 @@ export default function NetworkMonitorView() {
       {/* Delete NAT Rule Confirm Dialog */}
       <ConfirmDialog
         open={Boolean(confirmDeleteNatId)}
-        title={lang === 'vi' ? "Xóa quy tắc NAT / Firewall?" : "Delete NAT / Firewall Rule?"}
-        message={lang === 'vi' ? "Bạn có chắc muốn xóa quy tắc chuyển tiếp cổng NAT này khỏi MikroTik RouterOS?" : "Are you sure you want to remove this NAT port forwarding rule from MikroTik?"}
+        title={t('network.deleteNatRuleTitle')}
+        message={t('network.deleteNatRuleMessage')}
         onConfirm={() => handleDeleteNatRule(confirmDeleteNatId)}
         onClose={() => setConfirmDeleteNatId(null)}
       />
@@ -3654,8 +3645,8 @@ export default function NetworkMonitorView() {
       {/* Delete Managed Device Confirm Dialog */}
       <ConfirmDialog
         open={Boolean(confirmDeleteDeviceId)}
-        title={lang === 'vi' ? "Xóa thiết bị mạng khỏi hệ thống?" : "Delete Network Device?"}
-        message={lang === 'vi' ? "Bạn có chắc muốn xóa thiết bị này khỏi danh sách quản lý và giám sát tập trung?" : "Are you sure you want to remove this device from centralized management?"}
+        title={t('network.deleteDeviceTitle')}
+        message={t('network.deleteDeviceMessage')}
         onConfirm={() => handleDeleteDevice(confirmDeleteDeviceId)}
         onClose={() => setConfirmDeleteDeviceId(null)}
       />

@@ -41,11 +41,11 @@ import Label from '../components/common/Label';
 import Chart from '../components/chart/Chart';
 
 const TIME_RANGES = [
-  { value: '60m', labelVi: '60 phút', labelEn: '60m', ms: 60 * 60 * 1000, limit: 120, format: 'time' },
-  { value: '8h', labelVi: '8 tiếng', labelEn: '8h', ms: 8 * 60 * 60 * 1000, limit: 500, format: 'time' },
-  { value: '24h', labelVi: '1 ngày', labelEn: '24h', ms: 24 * 60 * 60 * 1000, limit: 1000, format: 'dateTimeShort' },
-  { value: '7d', labelVi: '1 tuần', labelEn: '7d', ms: 7 * 24 * 60 * 60 * 1000, limit: 2000, format: 'dateTimeShort' },
-  { value: '30d', labelVi: '1 tháng', labelEn: '30d', ms: 30 * 24 * 60 * 60 * 1000, limit: 3000, format: 'date' }
+  { value: '60m', key: 'dashboard.range60m', ms: 60 * 60 * 1000, limit: 120, format: 'time' },
+  { value: '8h', key: 'dashboard.range8h', ms: 8 * 60 * 60 * 1000, limit: 500, format: 'time' },
+  { value: '24h', key: 'dashboard.range24h', ms: 24 * 60 * 60 * 1000, limit: 1000, format: 'dateTimeShort' },
+  { value: '7d', key: 'dashboard.range7d', ms: 7 * 24 * 60 * 60 * 1000, limit: 2000, format: 'dateTimeShort' },
+  { value: '30d', key: 'dashboard.range30d', ms: 30 * 24 * 60 * 60 * 1000, limit: 3000, format: 'date' }
 ];
 
 export default function DashboardView() {
@@ -246,20 +246,20 @@ export default function DashboardView() {
       return cleanPower(rawVal).toFixed(1);
     });
     return [
-      { name: 'Công suất Max (W)', data: maxData },
-      { name: 'Công suất Min (W)', data: minData }
+      { name: t('dashboard.powerMax'), data: maxData },
+      { name: t('dashboard.powerMin'), data: minData }
     ];
-  }, [chartPoints]);
+  }, [chartPoints, t]);
 
   const chartCpuSeries = useMemo(() => [
-    { name: 'CPU Max (Đỉnh %)', data: chartPoints.map((item) => Number(item.cpu?.max ?? item.cpu?.usage ?? 0).toFixed(1)) },
-    { name: 'CPU Min (Đáy %)', data: chartPoints.map((item) => Number(item.cpu?.min ?? item.cpu?.usage ?? 0).toFixed(1)) }
-  ], [chartPoints]);
+    { name: t('dashboard.cpuMax'), data: chartPoints.map((item) => Number(item.cpu?.max ?? item.cpu?.usage ?? 0).toFixed(1)) },
+    { name: t('dashboard.cpuMin'), data: chartPoints.map((item) => Number(item.cpu?.min ?? item.cpu?.usage ?? 0).toFixed(1)) }
+  ], [chartPoints, t]);
 
   const chartMemSeries = useMemo(() => [
-    { name: 'RAM Max (Đỉnh %)', data: chartPoints.map((item) => Number(item.memory?.max ?? item.memory?.percent ?? 0).toFixed(1)) },
-    { name: 'RAM Min (Đáy %)', data: chartPoints.map((item) => Number(item.memory?.min ?? item.memory?.percent ?? 0).toFixed(1)) }
-  ], [chartPoints]);
+    { name: t('dashboard.ramMax'), data: chartPoints.map((item) => Number(item.memory?.max ?? item.memory?.percent ?? 0).toFixed(1)) },
+    { name: t('dashboard.ramMin'), data: chartPoints.map((item) => Number(item.memory?.min ?? item.memory?.percent ?? 0).toFixed(1)) }
+  ], [chartPoints, t]);
 
   const cpuChartOptions = useMemo(() => ({
     colors: [theme.palette.primary.main, theme.palette.info.main],
@@ -495,7 +495,7 @@ export default function DashboardView() {
             <Activity size={18} color={theme.palette.primary.main} /> {t('dashboard.trends') || 'Biểu đồ tài nguyên'}
           </Typography>
           <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
-            {loadingHistory ? 'Đang tải dữ liệu lịch sử...' : `Khoảng thời gian: ${lang === 'vi' ? currentRangeObj.labelVi : currentRangeObj.labelEn} (${chartPoints.length} điểm mẫu)`}
+            {loadingHistory ? t('dashboard.loadingHistory') : t('dashboard.sampleRange', { range: currentRangeObj?.key ? t(currentRangeObj.key) : timeRange, points: chartPoints.length })}
           </Typography>
         </Box>
 
@@ -518,7 +518,7 @@ export default function DashboardView() {
                   minWidth: 'auto'
                 }}
               >
-                {lang === 'vi' ? range.labelVi : range.labelEn}
+                {t(range.key)}
               </Button>
             );
           })}
@@ -532,7 +532,7 @@ export default function DashboardView() {
           <Card>
             <CardHeader
               title={t('dashboard.cpuTrend')}
-              subheader={lang === 'vi' ? `Khoảng thời gian: ${currentRangeObj.labelVi}` : `Range: ${currentRangeObj.labelEn}`}
+              subheader={t('dashboard.rangeHeader', { range: currentRangeObj?.key ? t(currentRangeObj.key) : timeRange })}
               titleTypographyProps={{ typography: 'subtitle1', fontWeight: 700 }}
               action={
                 <Label variant="soft" color="primary">
@@ -551,7 +551,7 @@ export default function DashboardView() {
           <Card>
             <CardHeader
               title={t('dashboard.memoryTrend')}
-              subheader={lang === 'vi' ? `Khoảng thời gian: ${currentRangeObj.labelVi}` : `Range: ${currentRangeObj.labelEn}`}
+              subheader={t('dashboard.rangeHeader', { range: currentRangeObj?.key ? t(currentRangeObj.key) : timeRange })}
               titleTypographyProps={{ typography: 'subtitle1', fontWeight: 700 }}
               action={
                 <Label variant="soft" color="info">
@@ -570,8 +570,8 @@ export default function DashboardView() {
           <Grid item xs={12} md={6} key={tempChart.id}>
             <Card>
               <CardHeader
-                title={tempChart.name.includes('CPU') ? tempChart.name : `Nhiệt độ ${tempChart.name}`}
-                subheader={lang === 'vi' ? `Khoảng thời gian: ${currentRangeObj.labelVi}` : `Range: ${currentRangeObj.labelEn}`}
+                title={tempChart.name.includes('CPU') ? tempChart.name : t('dashboard.tempFor', { name: tempChart.name })}
+                subheader={t('dashboard.rangeHeader', { range: currentRangeObj?.key ? t(currentRangeObj.key) : timeRange })}
                 titleTypographyProps={{ typography: 'subtitle1', fontWeight: 700 }}
                 action={
                   <Label variant="soft" color={tempChart.currentCelsius > 75 ? 'error' : tempChart.currentCelsius > 60 ? 'warning' : 'success'}>
@@ -592,7 +592,7 @@ export default function DashboardView() {
             <Card>
               <CardHeader
                 title={t('dashboard.powerTrend')}
-                subheader={lang === 'vi' ? `Khoảng thời gian: ${currentRangeObj.labelVi}` : `Range: ${currentRangeObj.labelEn}`}
+                subheader={t('dashboard.rangeHeader', { range: currentRangeObj?.key ? t(currentRangeObj.key) : timeRange })}
                 titleTypographyProps={{ typography: 'subtitle1', fontWeight: 700 }}
                 action={
                   <Label variant="soft" color="error">
@@ -636,7 +636,7 @@ export default function DashboardView() {
                       <Box key={idx}>
                         <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.75 }}>
                           <Typography variant="subtitle2" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Database size={15} /> Ổ đĩa {disk.drive || disk.mount || disk.device || `#${idx + 1}`}
+                            <Database size={15} /> {t('dashboard.diskDrive', { drive: disk.drive || disk.mount || disk.device || `#${idx + 1}` })}
                           </Typography>
                           <Typography variant="caption" sx={{ fontWeight: 700 }}>
                             {usedStr} / {totalStr} ({percent}%)

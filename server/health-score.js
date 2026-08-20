@@ -305,6 +305,7 @@ function calculateHealthScore(db, mikrotikStatus = null, networkTargets = [], re
   // Add default positive recommendation if no active issues
   if (activeIssues.length === 0) {
     recommendations.push({
+      key: 'health.allOptimal',
       title: 'Hệ thống đang hoạt động tối ưu. Toàn bộ máy trạm, kết nối mạng và Gateway ổn định.',
       actionType: 'info'
     });

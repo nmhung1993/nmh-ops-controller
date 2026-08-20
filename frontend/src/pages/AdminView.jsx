@@ -83,12 +83,12 @@ export default function AdminView() {
   const [brandForm, setBrandForm] = useState({
     appName: 'NMH Ops Controller',
     appSubtitle: 'Unified Fleet & LAN Controller',
-    tagline: 'Quản trị tập trung toàn bộ hạ tầng Máy trạm, Mạng LAN & Container Docker',
+    tagline: 'Unified Fleet & LAN Controller',
     logoText: 'NMH',
     logoUrl: '',
     ownerSignature: '@nmhung1993',
     timezone: 'Asia/Ho_Chi_Minh',
-    environmentLabel: 'LAN tin cậy',
+    environmentLabel: 'Production LAN',
     primaryColor: '#10B981',
     defaultThemeMode: 'dark',
     restrictPowerMetrics: false
@@ -99,12 +99,12 @@ export default function AdminView() {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('Vui lòng chọn tệp hình ảnh (PNG, JPG, SVG, WebP)');
+      alert(t('admin.logoUploadImageOnly'));
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      alert('Kích thước logo không được vượt quá 5MB');
+      alert(t('admin.logoSizeLimit'));
       return;
     }
 
@@ -123,10 +123,10 @@ export default function AdminView() {
           });
           if (res?.logoUrl) {
             setBrandForm(prev => ({ ...prev, logoUrl: res.logoUrl }));
-            setToastMessage('Đã tải lên logo mới thành công');
+            setToastMessage(t('admin.logoUploadedSuccess'));
           }
         } catch (err) {
-          alert(`Lỗi khi tải logo: ${err.message}`);
+          alert(t('admin.logoUploadError', { error: err.message }));
         } finally {
           setUploadingLogo(false);
         }
@@ -139,11 +139,11 @@ export default function AdminView() {
   };
 
   const handleRemoveLogo = async () => {
-    if (!window.confirm('Bạn có chắc muốn xóa logo tùy biến và trở về ký tự mặc định?')) return;
+    if (!window.confirm(t('admin.confirmRemoveLogo'))) return;
     try {
       await apiRequest('/api/v1/system/logo', { method: 'DELETE' });
       setBrandForm(prev => ({ ...prev, logoUrl: '' }));
-      setToastMessage('Đã xóa logo tùy biến');
+      setToastMessage(t('admin.logoRemovedSuccess'));
     } catch (err) {
       alert(err.message);
     }
@@ -159,7 +159,7 @@ export default function AdminView() {
         logoUrl: systemSettings.logoUrl || '',
         ownerSignature: systemSettings.ownerSignature || '@nmhung1993',
         timezone: systemSettings.timezone || 'Asia/Ho_Chi_Minh',
-        environmentLabel: systemSettings.environmentLabel || 'LAN tin cậy',
+        environmentLabel: systemSettings.environmentLabel || 'Production LAN',
         primaryColor: systemSettings.primaryColor || '#10B981',
         defaultThemeMode: systemSettings.defaultThemeMode || 'dark',
         restrictPowerMetrics: Boolean(systemSettings.restrictPowerMetrics)
@@ -273,7 +273,7 @@ export default function AdminView() {
         method: 'PUT',
         body: JSON.stringify(alertConfig)
       });
-      setToastMessage('Đã lưu cấu hình cảnh báo thành công');
+      setToastMessage(t('admin.alertConfigSaved'));
     } catch (err) {
       alert(err.message);
     } finally {
@@ -285,7 +285,7 @@ export default function AdminView() {
     setTestingAlerts(true);
     try {
       await apiRequest('/api/v1/alerts/test', { method: 'POST' });
-      setToastMessage('Đã gửi thông báo kiểm tra đến Telegram/Discord');
+      setToastMessage(t('admin.testNotificationSent'));
     } catch (err) {
       alert(err.message);
     } finally {
@@ -370,7 +370,7 @@ export default function AdminView() {
       await apiRequest(`/api/v1/agents/${deletingAgent.id}`, {
         method: 'DELETE'
       });
-      setToastMessage('Đã xóa vĩnh viễn máy trạm khỏi hệ thống');
+      setToastMessage(t('admin.agentDeletedSuccess'));
       setDeletingAgent(null);
       fetchAdminData();
       refreshHosts();
@@ -436,7 +436,7 @@ export default function AdminView() {
         setToastMessage(t('user.updated'));
       } else {
         if (!formPassword || formPassword.length < 10) {
-          throw new Error('Mật khẩu tối thiểu phải 10 ký tự');
+          throw new Error(t('admin.passwordMinLength'));
         }
         await apiRequest('/api/v1/users', {
           method: 'POST',
@@ -495,9 +495,9 @@ export default function AdminView() {
       await updateSettings(brandForm);
       if (brandForm.primaryColor) setThemeColor(brandForm.primaryColor);
       if (brandForm.defaultThemeMode) setThemeMode(brandForm.defaultThemeMode);
-      setToastMessage('Đã lưu cấu hình thương hiệu, giao diện và màu sắc thành công');
+      setToastMessage(t('admin.brandSettingsSaved'));
     } catch (err) {
-      alert(`Lỗi khi lưu cấu hình: ${err.message}`);
+      alert(t('admin.saveSettingsError', { error: err.message }));
     } finally {
       setSavingBrand(false);
     }
@@ -534,7 +534,7 @@ export default function AdminView() {
                 titleTypographyProps={{ typography: 'h6', fontWeight: 800, color: 'warning.main' }}
                 action={
                   <Label variant="filled" color="warning">
-                    {pendingAgents.length} Chờ duyệt
+                    {t('admin.pendingCount', { count: pendingAgents.length })}
                   </Label>
                 }
               />
@@ -621,19 +621,19 @@ export default function AdminView() {
                             </Typography>
                             {agent.notes && (
                               <Typography variant="caption" sx={{ color: 'text.disabled', fontStyle: 'italic', display: 'block', mt: 0.5 }}>
-                                Ghi chú: {agent.notes}
+                                {t('admin.notes', { notes: agent.notes })}
                               </Typography>
                             )}
                           </Box>
 
                           <Stack direction="row" spacing={0.75} alignItems="center">
-                            <Tooltip title="Chỉnh sửa thông tin">
+                            <Tooltip title={t('admin.editAgentTooltip')}>
                               <IconButton size="small" onClick={() => handleOpenEditAgent(agent)}>
                                 <Edit2 size={16} />
                               </IconButton>
                             </Tooltip>
                             {agent.status === 'approved' && (
-                              <Tooltip title="Thu hồi quyền kết nối (Revoke)">
+                              <Tooltip title={t('admin.revokeTooltip')}>
                                 <IconButton size="small" color="warning" onClick={() => setRevokingAgent(agent)}>
                                   <ShieldCheck size={16} />
                                 </IconButton>
@@ -641,12 +641,12 @@ export default function AdminView() {
                             )}
                             {agent.status === 'revoked' && (
                               <>
-                                <Tooltip title="Phê duyệt lại (Re-approve)">
+                                <Tooltip title={t('admin.reapproveTooltip')}>
                                   <IconButton size="small" color="success" onClick={() => handleOpenApprove(agent)}>
                                     <CheckCircle2 size={16} />
                                   </IconButton>
                                 </Tooltip>
-                                <Tooltip title="Xóa vĩnh viễn khỏi hệ thống">
+                                <Tooltip title={t('admin.deletePermanentTooltip')}>
                                   <IconButton size="small" color="error" onClick={() => setDeletingAgent(agent)}>
                                     <Trash2 size={16} />
                                   </IconButton>
@@ -700,7 +700,7 @@ export default function AdminView() {
                             </Label>
                           </Stack>
                           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                            {u.role === 'super_admin' ? 'Tất cả máy trạm' : `${u.hostIds?.length || 0} máy được phân quyền`}
+                            {u.role === 'super_admin' ? t('admin.allHosts') : t('admin.hostsAssigned', { count: u.hostIds?.length || 0 })}
                           </Typography>
                         </Box>
 
@@ -727,8 +727,8 @@ export default function AdminView() {
         <Grid item xs={12}>
           <Card>
             <CardHeader
-              title="Cấu hình Hệ thống, Giao diện & Màu sắc"
-              subheader="Tùy biến tên hệ thống, logo, chế độ Sáng/Tối, tông màu chủ đạo và múi giờ hiển thị toàn cục"
+              title={t('admin.brandCardTitle')}
+              subheader={t('admin.brandCardSubheader')}
               titleTypographyProps={{ typography: 'h6', fontWeight: 700 }}
               action={<Palette size={22} color={theme.palette.text.secondary} />}
             />
@@ -738,7 +738,7 @@ export default function AdminView() {
                 <Grid container spacing={2.5}>
                   <Grid item xs={12} sm={6} md={3}>
                     <TextField
-                      label="Tên hệ thống (App Name)"
+                      label={t('admin.appName')}
                       value={brandForm.appName}
                       onChange={(e) => setBrandForm({ ...brandForm, appName: e.target.value })}
                       required
@@ -747,7 +747,7 @@ export default function AdminView() {
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
                     <TextField
-                      label="Phụ đề / Vai trò (Subtitle)"
+                      label={t('admin.appSubtitle')}
                       value={brandForm.appSubtitle}
                       onChange={(e) => setBrandForm({ ...brandForm, appSubtitle: e.target.value })}
                       fullWidth
@@ -755,25 +755,25 @@ export default function AdminView() {
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
                     <TextField
-                      label="Ký tự Logo Badge"
+                      label={t('admin.logoText')}
                       value={brandForm.logoText}
                       onChange={(e) => setBrandForm({ ...brandForm, logoText: e.target.value })}
-                      helperText="Ví dụ: NMH, OPS, LAB"
+                      helperText={t('admin.logoTextHelper')}
                       fullWidth
                     />
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
                     <TextField
-                      label="Chữ ký Footer / Owner"
+                      label={t('admin.ownerSignature')}
                       value={brandForm.ownerSignature}
                       onChange={(e) => setBrandForm({ ...brandForm, ownerSignature: e.target.value })}
-                      helperText="Ví dụ: @nmhung1993"
+                      helperText={t('admin.ownerSignatureHelper')}
                       fullWidth
                     />
                   </Grid>
                   <Grid item xs={12} sm={6} md={4}>
                     <TextField
-                      label="Slogan / Tagline (Hero Title)"
+                      label={t('admin.tagline')}
                       value={brandForm.tagline}
                       onChange={(e) => setBrandForm({ ...brandForm, tagline: e.target.value })}
                       fullWidth
@@ -783,7 +783,7 @@ export default function AdminView() {
                   <Grid item xs={12} sm={6} md={4}>
                     <Box sx={{ p: 2, borderRadius: 2, border: `1px dashed ${theme.palette.divider}`, bgcolor: alpha(theme.palette.background.default, 0.5) }}>
                       <Typography variant="caption" sx={{ fontWeight: 700, textTransform: 'uppercase', color: 'text.secondary', display: 'block', mb: 1 }}>
-                        Logo Hệ Thống
+                        {t('admin.systemLogo')}
                       </Typography>
 
                       <Stack direction="row" spacing={2} alignItems="center">
@@ -820,7 +820,7 @@ export default function AdminView() {
                             disabled={uploadingLogo}
                             sx={{ fontWeight: 700, fontSize: '0.75rem' }}
                           >
-                            {uploadingLogo ? 'Đang tải...' : 'Tải lên Logo'}
+                            {uploadingLogo ? t('admin.uploadingLogo') : t('admin.uploadLogo')}
                             <input
                               type="file"
                               hidden
@@ -838,7 +838,7 @@ export default function AdminView() {
                               onClick={handleRemoveLogo}
                               sx={{ fontSize: '0.72rem', p: 0 }}
                             >
-                              Xóa logo tùy biến
+                              {t('admin.removeCustomLogo')}
                             </Button>
                           )}
                         </Stack>
@@ -848,11 +848,11 @@ export default function AdminView() {
 
                   <Grid item xs={12} sm={6} md={4}>
                     <TextField
-                      label="Đường dẫn ảnh Logo URL (Tùy chọn)"
+                      label={t('admin.logoUrlLabel')}
                       value={brandForm.logoUrl}
                       onChange={(e) => setBrandForm({ ...brandForm, logoUrl: e.target.value })}
-                      placeholder="https://... hoặc data:image/..."
-                      helperText="Nhập link trực tiếp hoặc dùng nút Tải lên ở trên"
+                      placeholder="https://... / data:image/..."
+                      helperText={t('admin.logoUrlHelper')}
                       fullWidth
                     />
                   </Grid>
@@ -860,13 +860,13 @@ export default function AdminView() {
                   {/* Múi giờ */}
                   <Grid item xs={12} sm={6} md={4}>
                     <FormControl fullWidth>
-                      <InputLabel>Múi giờ hiển thị (Timezone)</InputLabel>
+                      <InputLabel>{t('admin.timezone')}</InputLabel>
                       <Select
                         value={brandForm.timezone}
-                        label="Múi giờ hiển thị (Timezone)"
+                        label={t('admin.timezone')}
                         onChange={(e) => setBrandForm({ ...brandForm, timezone: e.target.value })}
                       >
-                        <MenuItem value="Asia/Ho_Chi_Minh">🇻🇳 Asia/Ho_Chi_Minh (GMT+7 - Mặc định)</MenuItem>
+                        <MenuItem value="Asia/Ho_Chi_Minh">🇻🇳 Asia/Ho_Chi_Minh (GMT+7)</MenuItem>
                         <MenuItem value="Asia/Bangkok">🇹🇭 Asia/Bangkok (GMT+7)</MenuItem>
                         <MenuItem value="Asia/Tokyo">🇯🇵 Asia/Tokyo (GMT+9)</MenuItem>
                         <MenuItem value="Asia/Singapore">🇸🇬 Asia/Singapore (GMT+8)</MenuItem>
@@ -885,10 +885,10 @@ export default function AdminView() {
                   <Grid item xs={12} md={6}>
                     <Box sx={{ p: 2.5, borderRadius: 2, bgcolor: alpha(theme.palette.background.default, 0.6), border: `1px solid ${theme.palette.divider}` }}>
                       <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Sun size={18} /> Chế Độ Giao Diện Mặc Định
+                        <Sun size={18} /> {t('admin.defaultThemeMode')}
                       </Typography>
                       <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 2 }}>
-                        Chế độ hiển thị sáng/tối mặc định cho toàn bộ người dùng khi truy cập hệ thống.
+                        {t('admin.defaultThemeModeDesc')}
                       </Typography>
 
                       <Stack direction="row" spacing={2}>
@@ -901,7 +901,7 @@ export default function AdminView() {
                           }}
                           sx={{ flex: 1, py: 1.25, fontWeight: 700, borderRadius: 2 }}
                         >
-                          Sáng (Light)
+                          {t('admin.lightTheme')}
                         </Button>
                         <Button
                           variant={brandForm.defaultThemeMode === 'dark' ? 'contained' : 'outlined'}
@@ -912,7 +912,7 @@ export default function AdminView() {
                           }}
                           sx={{ flex: 1, py: 1.25, fontWeight: 700, borderRadius: 2 }}
                         >
-                          Tối (Dark)
+                          {t('admin.darkTheme')}
                         </Button>
                       </Stack>
                     </Box>
@@ -921,10 +921,10 @@ export default function AdminView() {
                   <Grid item xs={12} md={6}>
                     <Box sx={{ p: 2.5, borderRadius: 2, bgcolor: alpha(theme.palette.background.default, 0.6), border: `1px solid ${theme.palette.divider}` }}>
                       <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Palette size={18} /> Tông Màu Chủ Đạo Hệ Thống
+                        <Palette size={18} /> {t('admin.primaryAccentColor')}
                       </Typography>
                       <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1.5 }}>
-                        Chọn bảng màu hoặc nhập mã HEX tùy biến cho nút bấm, badge, biểu đồ và hiệu ứng glow.
+                        {t('admin.primaryAccentColorDesc')}
                       </Typography>
 
                       {/* Presets Grid */}
@@ -979,7 +979,7 @@ export default function AdminView() {
                         />
                         <TextField
                           size="small"
-                          label="Mã màu HEX tùy biến"
+                          label={t('admin.customHexColor')}
                           value={brandForm.primaryColor}
                           onChange={(e) => {
                             setBrandForm({ ...brandForm, primaryColor: e.target.value });
@@ -1003,7 +1003,7 @@ export default function AdminView() {
                     disabled={savingBrand}
                     sx={{ minWidth: 160, fontWeight: 700 }}
                   >
-                    {savingBrand ? 'Đang lưu...' : 'Lưu cấu hình hệ thống'}
+                    {savingBrand ? t('common.saving') : t('admin.saveSystemConfig')}
                   </Button>
                 </Box>
               </form>
@@ -1015,8 +1015,8 @@ export default function AdminView() {
         <Grid item xs={12}>
           <Card>
             <CardHeader
-              title="Cảnh báo Thông minh & Tích hợp Đa kênh (Telegram, Discord, Webhook)"
-              subheader="Đặt ngưỡng cảnh báo tự động cho CPU, RAM, Nhiệt độ và Ping rớt gói"
+              title={t('admin.smartAlertsTitle')}
+              subheader={t('admin.smartAlertsSubheader')}
               titleTypographyProps={{ typography: 'h6', fontWeight: 700 }}
               action={<Bell size={22} color={theme.palette.text.secondary} />}
             />
@@ -1031,11 +1031,11 @@ export default function AdminView() {
                         onChange={(e) => setAlertConfig({ ...alertConfig, enabled: e.target.checked })}
                       />
                     }
-                    label={<Typography sx={{ fontWeight: 700 }}>Kích hoạt cảnh báo tự động toàn hệ thống</Typography>}
+                    label={<Typography sx={{ fontWeight: 700 }}>{t('admin.enableSystemAlerts')}</Typography>}
                   />
 
                   <TextField
-                    label="Thời gian chờ chống Spam (Phút)"
+                    label={t('admin.alertCooldown')}
                     type="number"
                     size="small"
                     value={alertConfig.cooldownMinutes || 10}
@@ -1048,7 +1048,7 @@ export default function AdminView() {
 
                 {/* Notification Channels */}
                 <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 2, color: 'primary.main' }}>
-                  1. CẤU HÌNH KÊNH THÔNG BÁO
+                  {t('admin.notificationChannelsHeader')}
                 </Typography>
 
                 <Grid container spacing={2.5} sx={{ mb: 3 }}>
@@ -1069,11 +1069,11 @@ export default function AdminView() {
                               })}
                             />
                           }
-                          label={<Typography sx={{ fontWeight: 700 }}>✈️ Telegram Bot Channel</Typography>}
+                          label={<Typography sx={{ fontWeight: 700 }}>{t('admin.telegramBotChannel')}</Typography>}
                         />
                         <TextField
-                          label="Telegram Bot Token"
-                          placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ..."
+                          label={t('admin.telegramBotToken')}
+                          placeholder={t('admin.telegramBotTokenPlaceholder')}
                           size="small"
                           value={alertConfig.channels?.telegram?.botToken || ''}
                           onChange={(e) => setAlertConfig({
@@ -1086,8 +1086,8 @@ export default function AdminView() {
                           fullWidth
                         />
                         <TextField
-                          label="Telegram Chat ID (User / Group ID)"
-                          placeholder="-1001234567890 hoặc 987654321"
+                          label={t('admin.telegramChatId')}
+                          placeholder={t('admin.telegramChatIdPlaceholder')}
                           size="small"
                           value={alertConfig.channels?.telegram?.chatId || ''}
                           onChange={(e) => setAlertConfig({
@@ -1100,8 +1100,8 @@ export default function AdminView() {
                           fullWidth
                         />
                         <TextField
-                          label="Telegram Topic ID (Tùy chọn cho Supergroup Topics)"
-                          placeholder="Ví dụ: 123 (Để trống nếu gửi vào chat chung)"
+                          label={t('admin.telegramTopicId')}
+                          placeholder={t('admin.telegramTopicIdPlaceholder')}
                           size="small"
                           value={alertConfig.channels?.telegram?.topicId || ''}
                           onChange={(e) => setAlertConfig({
@@ -1134,10 +1134,10 @@ export default function AdminView() {
                               })}
                             />
                           }
-                          label={<Typography sx={{ fontWeight: 700 }}>💬 Discord Webhook Channel</Typography>}
+                          label={<Typography sx={{ fontWeight: 700 }}>{t('admin.discordChannel')}</Typography>}
                         />
                         <TextField
-                          label="Discord Webhook URL"
+                          label={t('admin.discordWebhookUrl')}
                           placeholder="https://discord.com/api/webhooks/..."
                           size="small"
                           value={alertConfig.channels?.discord?.webhookUrl || discordWebhook}
@@ -1154,7 +1154,7 @@ export default function AdminView() {
                           fullWidth
                         />
                         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                          Gửi rich embed có gắn màu mức độ cảnh báo đến kênh Discord được chỉ định.
+                          {t('admin.discordWebhookHint')}
                         </Typography>
                       </Stack>
                     </Card>
@@ -1165,13 +1165,13 @@ export default function AdminView() {
 
                 {/* Threshold Configuration */}
                 <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 2, color: 'primary.main' }}>
-                  2. CẤU HÌNH NGƯỠNG KÍCH HOẠT CẢNH BÁO
+                  {t('admin.thresholdsHeader')}
                 </Typography>
 
                 <Grid container spacing={2.5}>
                   <Grid item xs={6} sm={3}>
                     <TextField
-                      label="Ngưỡng CPU (%)"
+                      label={t('admin.cpuThreshold')}
                       type="number"
                       size="small"
                       value={alertConfig.thresholds?.cpuPercent || 90}
@@ -1184,7 +1184,7 @@ export default function AdminView() {
                   </Grid>
                   <Grid item xs={6} sm={3}>
                     <TextField
-                      label="Ngưỡng RAM (%)"
+                      label={t('admin.memoryThreshold')}
                       type="number"
                       size="small"
                       value={alertConfig.thresholds?.memoryPercent || 90}
@@ -1197,7 +1197,7 @@ export default function AdminView() {
                   </Grid>
                   <Grid item xs={6} sm={3}>
                     <TextField
-                      label="Nhiệt độ CPU (°C)"
+                      label={t('admin.tempThreshold')}
                       type="number"
                       size="small"
                       value={alertConfig.thresholds?.tempCelsius || 80}
@@ -1210,7 +1210,7 @@ export default function AdminView() {
                   </Grid>
                   <Grid item xs={6} sm={3}>
                     <TextField
-                      label="Rớt gói Ping (%)"
+                      label={t('admin.pingLossThreshold')}
                       type="number"
                       size="small"
                       value={alertConfig.thresholds?.pingLossPercent || 20}
@@ -1231,7 +1231,7 @@ export default function AdminView() {
                     onClick={handleTestAlert}
                     disabled={testingAlerts}
                   >
-                    {testingAlerts ? 'Đang gửi...' : '🔔 Gửi thử cảnh báo'}
+                    {testingAlerts ? t('admin.sendingAlert') : t('admin.sendTestAlert')}
                   </Button>
                   <Button
                     type="submit"
@@ -1240,7 +1240,7 @@ export default function AdminView() {
                     disabled={savingAlerts}
                     sx={{ minWidth: 160, fontWeight: 700 }}
                   >
-                    {savingAlerts ? 'Đang lưu...' : 'Lưu cấu hình cảnh báo'}
+                    {savingAlerts ? t('common.saving') : t('admin.saveAlertConfig')}
                   </Button>
                 </Stack>
               </form>
@@ -1279,10 +1279,10 @@ export default function AdminView() {
                       color="primary"
                     />
                   }
-                  label="Bao gồm trong Điểm Sức Khỏe Hạ Tầng (Health Score)"
+                  label={t('admin.includeHealthScore')}
                 />
                 <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
-                  Tắt tùy chọn này nếu đây là máy tính cá nhân bật/tắt liên tục để không bị trừ điểm hạ tầng khi máy ngoại tuyến.
+                  {t('admin.includeHealthScoreHint')}
                 </Typography>
               </Box>
             </Stack>
@@ -1343,9 +1343,9 @@ export default function AdminView() {
       {deletingAgent && (
         <ConfirmDialog
           open={Boolean(deletingAgent)}
-          title="Xác nhận xóa vĩnh viễn máy trạm"
-          content={`Bạn có chắc muốn xóa vĩnh viễn máy trạm ${deletingAgent.displayName || deletingAgent.hostname} (${deletingAgent.id})? Toàn bộ lịch sử telemetry, sự kiện, kịch bản và cấu hình sẽ bị xóa sạch khỏi cơ sở dữ liệu.`}
-          confirmText="Xóa Vĩnh Viễn"
+          title={t('admin.deletePermanentTitle')}
+          content={t('admin.deletePermanentConfirm', { host: deletingAgent.displayName || deletingAgent.hostname, id: deletingAgent.id })}
+          confirmText={t('admin.deletePermanentBtn')}
           color="error"
           onConfirm={handleDeleteAgent}
           onClose={() => setDeletingAgent(null)}
@@ -1432,23 +1432,23 @@ export default function AdminView() {
                   {/* Page Navigation Permissions */}
                   <Box>
                     <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
-                      2. Phân quyền Xem / Ẩn Menu & Trang
+                      {t('admin.pagePermissionsHeader')}
                     </Typography>
                     <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1.5 }}>
-                      Cho phép tài khoản này truy cập các trang nào trên thanh Menu:
+                      {t('admin.pagePermissionsHint')}
                     </Typography>
 
                     <Card variant="outlined" sx={{ p: 1.5 }}>
                       <Grid container spacing={1}>
                         {[
-                          { id: 'network', label: '🌐 Mạng & Gateway (Network)' },
-                          { id: 'docker', label: '📦 Container Docker (Docker)' },
-                          { id: 'fleet', label: '🖥️ Quản lý Máy trạm (Fleet)' },
-                          { id: 'dashboard', label: '📊 Bảng Tổng quan (Dashboard)' },
-                          { id: 'processes', label: '📈 Giám sát Tiến trình (Processes)' },
-                          { id: 'watchdog', label: '🛡️ Giám sát Watchdog (Watchdog)' },
-                          { id: 'scripts', label: '💻 Kho Kịch bản (Script Hub)' },
-                          { id: 'activity', label: '📜 Nhật ký hoạt động (Activity)' }
+                          { id: 'network', label: t('admin.permNetwork') },
+                          { id: 'docker', label: t('admin.permDocker') },
+                          { id: 'fleet', label: t('admin.permFleet') },
+                          { id: 'dashboard', label: t('admin.permDashboard') },
+                          { id: 'processes', label: t('admin.permProcesses') },
+                          { id: 'watchdog', label: t('admin.permWatchdog') },
+                          { id: 'scripts', label: t('admin.permScripts') },
+                          { id: 'activity', label: t('admin.permActivity') }
                         ].map((item) => (
                           <Grid item xs={12} sm={6} key={item.id}>
                             <FormControlLabel
@@ -1475,20 +1475,20 @@ export default function AdminView() {
                   {/* Metrics Visibility in Fleet & Dashboard */}
                   <Box>
                     <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
-                      3. Phân quyền Chỉ số Giám sát (Fleet & Dashboard)
+                      {t('admin.metricPermissionsHeader')}
                     </Typography>
                     <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1.5 }}>
-                      Tích chọn các chỉ số cho phép tài khoản này xem trong trang Máy trạm và Dashboard:
+                      {t('admin.metricPermissionsHint')}
                     </Typography>
 
                     <Card variant="outlined" sx={{ p: 1.5 }}>
                       <Grid container spacing={1}>
                         {[
-                          { id: 'power', label: '⚡ Công suất tiêu thụ (Power / W)' },
-                          { id: 'temperature', label: '🌡️ Nhiệt độ linh kiện (Temp °C)' },
-                          { id: 'health', label: '🛡️ Điểm sức khỏe (Health Score)' },
-                          { id: 'gpu', label: '🎮 GPU & Đồ họa (GPU Usage)' },
-                          { id: 'smart', label: '💾 S.M.A.R.T & Chi tiết Ổ đĩa' }
+                          { id: 'power', label: t('admin.permMetricPower') },
+                          { id: 'temperature', label: t('admin.permMetricTemp') },
+                          { id: 'health', label: t('admin.permMetricHealth') },
+                          { id: 'gpu', label: t('admin.permMetricGpu') },
+                          { id: 'smart', label: t('admin.permMetricSmart') }
                         ].map((item) => (
                           <Grid item xs={12} sm={6} key={item.id}>
                             <FormControlLabel
