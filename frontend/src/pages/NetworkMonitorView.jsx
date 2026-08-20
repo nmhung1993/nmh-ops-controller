@@ -1965,14 +1965,46 @@ export default function NetworkMonitorView() {
                                 <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{res.mac || 'N/A'}</TableCell>
                                 <TableCell>{res.latency} ms</TableCell>
                                 <TableCell sx={{ textAlign: 'right' }}>
-                                  <Button
-                                    size="small"
-                                    variant="text"
-                                    startIcon={<Plus size={14} />}
-                                    onClick={() => handleOpenAddTarget(res.ip, res.hostname || `Device (${res.ip})`)}
-                                  >
-                                    Thêm
-                                  </Button>
+                                  <Stack direction="row" spacing={1} justifyContent="flex-end">
+                                    {res.mac && res.mac !== 'N/A' && (
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        color="primary"
+                                        startIcon={<Zap size={14} />}
+                                        disabled={wolLoadingMac === res.mac}
+                                        onClick={() => handleSendWol(res.mac, res.hostname || res.ip)}
+                                      >
+                                        {wolLoadingMac === res.mac ? 'Đang gửi...' : 'WoL'}
+                                      </Button>
+                                    )}
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      color="inherit"
+                                      startIcon={<SlidersHorizontal size={14} />}
+                                      onClick={() => handleOpenAddQueue(res.ip, res.hostname)}
+                                    >
+                                      Bóp Bandwidth
+                                    </Button>
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      color="info"
+                                      startIcon={<ArrowUpDown size={14} />}
+                                      onClick={() => handleOpenAddNat(res.ip, res.hostname)}
+                                    >
+                                      Mở Cổng
+                                    </Button>
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      startIcon={<Plus size={14} />}
+                                      onClick={() => handleOpenAddTarget(res.ip, res.hostname || `Device (${res.ip})`)}
+                                    >
+                                      Theo dõi
+                                    </Button>
+                                  </Stack>
                                 </TableCell>
                               </TableRow>
                             ))}
@@ -2649,6 +2681,10 @@ export default function NetworkMonitorView() {
               onReboot={handleOpenwrtReboot}
               onOpenConfig={() => handleOpenEditDevice(currentGatewayDevice || { role: 'gateway', type: 'openwrt', host: '192.168.1.1', port: 80 })}
               onOpenAddTarget={handleOpenAddTarget}
+              onSendWol={handleSendWol}
+              onOpenAddQueue={handleOpenAddQueue}
+              onOpenAddNat={handleOpenAddNat}
+              wolLoadingMac={wolLoadingMac}
             />
           )}
         </Stack>

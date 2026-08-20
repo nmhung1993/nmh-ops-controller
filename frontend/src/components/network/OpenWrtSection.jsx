@@ -30,7 +30,9 @@ import {
   Clock,
   Zap,
   Activity,
-  Plus
+  Plus,
+  SlidersHorizontal,
+  ArrowUpDown
 } from 'lucide-react';
 import Label from '../common/Label';
 
@@ -40,7 +42,11 @@ export default function OpenWrtSection({
   onRestartNetwork,
   onReboot,
   onOpenConfig,
-  onOpenAddTarget
+  onOpenAddTarget,
+  onSendWol,
+  onOpenAddQueue,
+  onOpenAddNat,
+  wolLoadingMac
 }) {
   const theme = useTheme();
 
@@ -229,14 +235,50 @@ export default function OpenWrtSection({
                     </Label>
                   </TableCell>
                   <TableCell sx={{ textAlign: 'right' }}>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<Plus size={14} />}
-                      onClick={() => onOpenAddTarget(lease.ip, lease.hostname)}
-                    >
-                      Theo dõi
-                    </Button>
+                    <Stack direction="row" spacing={1} justifyContent="flex-end">
+                      {onSendWol && (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="primary"
+                          startIcon={<Zap size={14} />}
+                          disabled={wolLoadingMac === lease.mac}
+                          onClick={() => onSendWol(lease.mac, lease.hostname)}
+                        >
+                          {wolLoadingMac === lease.mac ? 'Đang gửi...' : 'WoL'}
+                        </Button>
+                      )}
+                      {onOpenAddQueue && (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="inherit"
+                          startIcon={<SlidersHorizontal size={14} />}
+                          onClick={() => onOpenAddQueue(lease.ip, lease.hostname)}
+                        >
+                          Bóp Bandwidth
+                        </Button>
+                      )}
+                      {onOpenAddNat && (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="info"
+                          startIcon={<ArrowUpDown size={14} />}
+                          onClick={() => onOpenAddNat(lease.ip, lease.hostname)}
+                        >
+                          Mở Cổng
+                        </Button>
+                      )}
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<Plus size={14} />}
+                        onClick={() => onOpenAddTarget(lease.ip, lease.hostname)}
+                      >
+                        Theo dõi
+                      </Button>
+                    </Stack>
                   </TableCell>
                 </TableRow>
               ))}
