@@ -1,3 +1,5 @@
+const API_BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+
 export async function apiRequest(path, optionsOrMethod = {}, body = null, extraHeaders = {}) {
   let reqOptions = {};
   if (typeof optionsOrMethod === 'string') {
@@ -17,10 +19,15 @@ export async function apiRequest(path, optionsOrMethod = {}, body = null, extraH
     ...(reqOptions.headers || {})
   };
 
-  const response = await fetch(path, {
+  const targetUrl = path.startsWith('http')
+    ? path
+    : `${API_BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`;
+
+  const response = await fetch(targetUrl, {
     ...reqOptions,
     headers
   });
+
 
   if (response.status === 401) {
     if (localStorage.getItem('wc_token')) {

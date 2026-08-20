@@ -1,5 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from './AuthContext';
+import { apiRequest } from '../utils/api';
+
+const API_BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
 const WebSocketContext = createContext({
   status: 'disconnected', // 'connecting' | 'connected' | 'reconnecting' | 'disconnected'
@@ -71,11 +74,8 @@ export function WebSocketProvider({ children }) {
   const refreshHosts = useCallback(async () => {
     if (!token) return;
     try {
-      const response = await fetch('/api/v1/hosts', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (response.ok) {
-        const data = await response.json();
+      const data = await apiRequest('/api/v1/hosts');
+      if (Array.isArray(data)) {
         setHosts(data);
 
         // Update telemetryMap with existing telemetry from hosts
@@ -144,9 +144,21 @@ export function WebSocketProvider({ children }) {
 
     setStatus((prev) => (prev === 'connected' ? 'reconnecting' : 'connecting'));
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    const wsUrl = `${protocol}//${host}/ws/ui?token=${encodeURIComponent(token)}`;
+    let wsUrl;
+    if (API_BASE_URL) {
+      try {
+        const parsed = new URL(API_BASE_URL);
+        const wsProtocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
+        wsUrl = `${wsProtocol}//${parsed.host}/ws/ui?token=${encodeURIComponent(token)}`;
+      } catch {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        wsUrl = `${protocol}//${window.location.host}/ws/ui?token=${encodeURIComponent(token)}`;
+      }
+    } else {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.host;
+      wsUrl = `${protocol}//${host}/ws/ui?token=${encodeURIComponent(token)}`;
+    }
 
     const ws = new WebSocket(wsUrl);
     socketRef.current = ws;
