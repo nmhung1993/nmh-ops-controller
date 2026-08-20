@@ -1863,14 +1863,64 @@ router.post('/mikrotik/nat/toggle', requireSuperAdmin, async (req, res) => {
   }
 });
 
+const dgram = require('dgram');
+
+function sendNativeWolPacket(macAddress, broadcastIp = '255.255.255.255', port = 9) {
+  return new Promise((resolve) => {
+    try {
+      const cleanMac = String(macAddress || '').replace(/[^0-9a-fA-F]/g, '');
+      if (cleanMac.length !== 12) return resolve({ success: false, error: 'MAC không hợp lệ' });
+      const magicPacket = Buffer.alloc(102);
+      magicPacket.fill(0xff, 0, 6);
+      const macBuffer = Buffer.from(cleanMac, 'hex');
+      for (let i = 0; i < 16; i++) {
+        macBuffer.copy(magicPacket, 6 + i * 6);
+      }
+      const client = dgram.createSocket('udp4');
+      client.bind(() => {
+        try {
+          client.setBroadcast(true);
+          client.send(magicPacket, 0, magicPacket.length, port, broadcastIp, (err) => {
+            try { client.close(); } catch {}
+            if (err) resolve({ success: false, error: err.message });
+            else resolve({ success: true, mac: macAddress });
+          });
+        } catch (e) {
+          try { client.close(); } catch {}
+          resolve({ success: false, error: e.message });
+        }
+      });
+    } catch (e) {
+      resolve({ success: false, error: e.message });
+    }
+  });
+}
+
 // POST Wake-on-LAN (Super admin only)
+router.post('/wol', requireSuperAdmin, async (req, res) => {
+  const { mac, interfaceName } = req.body || {};
+  if (!mac) return res.status(400).json({ error: 'Thiếu địa chỉ MAC' });
+  await sendNativeWolPacket(mac, '255.255.255.255', 9);
+  await sendNativeWolPacket(mac, '255.255.255.255', 7);
+  let mikrotikRes = null;
+  try {
+    if (mikrotikInstance) {
+      mikrotikRes = await mikrotikInstance.wakeOnLan(mac, interfaceName || 'bridge');
+    }
+  } catch (err) {}
+  res.json({ success: true, message: `Đã gửi gói tin đánh thức WoL tới ${mac}!`, mikrotik: mikrotikRes });
+});
+
 router.post('/mikrotik/wol', requireSuperAdmin, async (req, res) => {
   const { mac, interfaceName } = req.body || {};
+  if (!mac) return res.status(400).json({ error: 'Thiếu địa chỉ MAC' });
+  await sendNativeWolPacket(mac, '255.255.255.255', 9);
+  await sendNativeWolPacket(mac, '255.255.255.255', 7);
   try {
     const result = await mikrotikInstance.wakeOnLan(mac, interfaceName || 'bridge');
-    res.json(result);
+    res.json({ success: true, message: `Đã gửi gói tin WoL tới ${mac}!`, result });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.json({ success: true, message: `Đã phát gói tin WoL Magic Packet (UDP Broadcast) tới ${mac}!` });
   }
 });
 

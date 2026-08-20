@@ -28,7 +28,10 @@ import {
   Cpu,
   Layers,
   Activity,
-  Plus
+  Plus,
+  Zap,
+  SlidersHorizontal,
+  ArrowUpDown
 } from 'lucide-react';
 import Label from '../common/Label';
 
@@ -38,7 +41,11 @@ export default function TPLinkDecoSection({
   onRestartWifi,
   onReboot,
   onOpenConfig,
-  onOpenAddTarget
+  onOpenAddTarget,
+  onSendWol,
+  onOpenAddQueue,
+  onOpenAddNat,
+  wolLoadingMac
 }) {
   const theme = useTheme();
 
@@ -286,14 +293,50 @@ export default function TPLinkDecoSection({
                   </TableCell>
                   <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{client.mac}</TableCell>
                   <TableCell sx={{ textAlign: 'right' }}>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<Plus size={14} />}
-                      onClick={() => onOpenAddTarget(client.ip, client.name)}
-                    >
-                      Theo dõi
-                    </Button>
+                    <Stack direction="row" spacing={1} justifyContent="flex-end">
+                      {onSendWol && (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="primary"
+                          startIcon={<Zap size={14} />}
+                          disabled={wolLoadingMac === client.mac}
+                          onClick={() => onSendWol(client.mac, client.name)}
+                        >
+                          {wolLoadingMac === client.mac ? 'Đang gửi...' : 'WoL'}
+                        </Button>
+                      )}
+                      {onOpenAddQueue && (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="inherit"
+                          startIcon={<SlidersHorizontal size={14} />}
+                          onClick={() => onOpenAddQueue(client.ip, client.name)}
+                        >
+                          Bóp Bandwidth
+                        </Button>
+                      )}
+                      {onOpenAddNat && (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="info"
+                          startIcon={<ArrowUpDown size={14} />}
+                          onClick={() => onOpenAddNat(client.ip, client.name)}
+                        >
+                          Mở Cổng
+                        </Button>
+                      )}
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<Plus size={14} />}
+                        onClick={() => onOpenAddTarget(client.ip, client.name)}
+                      >
+                        Theo dõi
+                      </Button>
+                    </Stack>
                   </TableCell>
                 </TableRow>
               ))}

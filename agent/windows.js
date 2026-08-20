@@ -84,15 +84,29 @@ async function getDisks() {
         $hours = if ($rel -and $rel.PowerOnHours -ne $null) { [int]$rel.PowerOnHours } else { $null }
         $readErr = if ($rel -and $rel.ReadErrorsTotal -ne $null) { [int]$rel.ReadErrorsTotal } else { 0 }
         $writeErr = if ($rel -and $rel.WriteErrorsTotal -ne $null) { [int]$rel.WriteErrorsTotal } else { 0 }
-        $healthPercent = if ($wear -ne $null) { [Math]::Max(0, 100 - $wear) } else { if ($disk.HealthStatus -eq 'Healthy') { 100 } elseif ($disk.HealthStatus -eq 'Warning') { 60 } else { 0 } }
+        
+        $healthStatus = if ($disk.HealthStatus) { $disk.HealthStatus } else { 'Healthy' }
+        $opStatus = if ($disk.OperationalStatus) { $disk.OperationalStatus } else { 'OK' }
+
+        # Health % is the physical integrity of the drive (100% when healthy with 0 errors)
+        $healthPercent = 100
+        if ($healthStatus -eq 'Unhealthy') {
+          $healthPercent = 20
+        } elseif ($healthStatus -eq 'Warning' -or $opStatus -ne 'OK') {
+          $healthPercent = 60
+        } elseif ($readErr -gt 0 -or $writeErr -gt 0) {
+          $healthPercent = [Math]::Max(50, 100 - ($readErr + $writeErr) * 5)
+        }
+
         [PSCustomObject]@{
           DeviceId = $disk.DeviceId
           FriendlyName = $disk.FriendlyName
           MediaType = $disk.MediaType
           BusType = $disk.BusType
-          OperationalStatus = $disk.OperationalStatus
-          HealthStatus = $disk.HealthStatus
+          OperationalStatus = $opStatus
+          HealthStatus = $healthStatus
           HealthPercent = $healthPercent
+          WearPercent = $wear
           Temperature = $temp
           PowerOnHours = $hours
           ReadErrorsTotal = $readErr
@@ -129,6 +143,7 @@ async function getDisks() {
       busType: disk.BusType || 'NVMe',
       healthStatus: disk.HealthStatus || 'Healthy',
       healthPercent: typeof disk.HealthPercent === 'number' ? Math.max(0, Math.min(100, disk.HealthPercent)) : 100,
+      wearPercent: typeof disk.WearPercent === 'number' ? disk.WearPercent : null,
       temperature: typeof disk.Temperature === 'number' ? disk.Temperature : null,
       powerOnHours: typeof disk.PowerOnHours === 'number' ? disk.PowerOnHours : null,
       readErrorsTotal: Number(disk.ReadErrorsTotal || 0),

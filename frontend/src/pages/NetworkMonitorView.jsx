@@ -521,7 +521,7 @@ export default function NetworkMonitorView() {
   const handleWakeOnLan = async (mac, hostname) => {
     setWolLoadingMac(mac);
     try {
-      const res = await apiRequest('/api/v1/network/mikrotik/wol', {
+      const res = await apiRequest('/api/v1/network/wol', {
         method: 'POST',
         body: JSON.stringify({ mac, interfaceName: 'bridge' })
       });
@@ -531,6 +531,23 @@ export default function NetworkMonitorView() {
     } finally {
       setWolLoadingMac(null);
     }
+  };
+
+  const handleSendWol = handleWakeOnLan;
+  const handleOpenAddQueue = handleOpenQueueLimit;
+  const handleOpenAddNat = (targetIp = '', hostname = '') => {
+    setNatForm({
+      id: '',
+      chain: 'dstnat',
+      action: 'dst-nat',
+      protocol: 'tcp',
+      dstPort: '80',
+      toAddresses: targetIp || '',
+      toPorts: '80',
+      outInterface: '',
+      comment: hostname ? `Port forward ${hostname}` : `Port forward ${targetIp}`
+    });
+    setNatFormDialogOpen(true);
   };
 
   // Fetch router status (supports Xiaomi and Gecoos)
@@ -2760,6 +2777,10 @@ export default function NetworkMonitorView() {
               onReboot={handleDecoReboot}
               onOpenConfig={() => handleOpenEditDevice(currentRouterMeshDevice || { role: 'router_mesh', type: 'tplink_deco', host: '192.168.1.1', port: 80 })}
               onOpenAddTarget={handleOpenAddTarget}
+              onSendWol={handleSendWol}
+              onOpenAddQueue={handleOpenAddQueue}
+              onOpenAddNat={handleOpenAddNat}
+              wolLoadingMac={wolLoadingMac}
             />
           )}
 
@@ -2772,6 +2793,10 @@ export default function NetworkMonitorView() {
               onReboot={handleZteReboot}
               onOpenConfig={() => handleOpenEditDevice(currentRouterMeshDevice || { role: 'router_mesh', type: 'zte', host: '192.168.1.1', port: 80 })}
               onOpenAddTarget={handleOpenAddTarget}
+              onSendWol={handleSendWol}
+              onOpenAddQueue={handleOpenAddQueue}
+              onOpenAddNat={handleOpenAddNat}
+              wolLoadingMac={wolLoadingMac}
             />
           )}
 
@@ -3007,14 +3032,44 @@ export default function NetworkMonitorView() {
                             </TableCell>
                             <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{client.mac}</TableCell>
                             <TableCell sx={{ textAlign: 'right' }}>
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                startIcon={<Plus size={14} />}
-                                onClick={() => handleOpenAddTarget(client.ip, client.name)}
-                              >
-                                Theo dõi
-                              </Button>
+                              <Stack direction="row" spacing={1} justifyContent="flex-end">
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  color="primary"
+                                  startIcon={<Zap size={14} />}
+                                  disabled={wolLoadingMac === client.mac}
+                                  onClick={() => handleSendWol(client.mac, client.name)}
+                                >
+                                  {wolLoadingMac === client.mac ? 'Đang gửi...' : 'WoL'}
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  color="inherit"
+                                  startIcon={<SlidersHorizontal size={14} />}
+                                  onClick={() => handleOpenAddQueue(client.ip, client.name)}
+                                >
+                                  Bóp Bandwidth
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  color="info"
+                                  startIcon={<ArrowUpDown size={14} />}
+                                  onClick={() => handleOpenAddNat(client.ip, client.name)}
+                                >
+                                  Mở Cổng
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  startIcon={<Plus size={14} />}
+                                  onClick={() => handleOpenAddTarget(client.ip, client.name)}
+                                >
+                                  Theo dõi
+                                </Button>
+                              </Stack>
                             </TableCell>
                           </TableRow>
                         ))}

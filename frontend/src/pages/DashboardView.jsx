@@ -683,6 +683,7 @@ export default function DashboardView() {
                                     {pDisk.mediaType || 'Disk'} • {pDisk.busType || 'NVMe/SATA'} • {formatBytes(pDisk.size)}
                                     {pDisk.temperature ? ` • 🌡️ ${pDisk.temperature}°C` : ''}
                                     {pDisk.powerOnHours ? ` • ⏱️ ${pDisk.powerOnHours.toLocaleString()}h chạy` : ''}
+                                    {typeof pDisk.wearPercent === 'number' ? ` • Hao mòn ghi: ${pDisk.wearPercent}%` : ''}
                                   </Typography>
                                 </Box>
                                 <Label color={healthColor} sx={{ fontWeight: 800 }}>
