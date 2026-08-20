@@ -2373,11 +2373,11 @@ export default function NetworkMonitorView() {
                   <Card sx={{ p: { xs: 1.5, sm: 3 }, borderRadius: 2 }}>
                     <Stack direction={{ xs: 'column', sm: 'row' }} alignItems="center" justifyContent="space-between" spacing={2} sx={{ mb: 2 }}>
                       <Typography variant="h6" sx={{ fontWeight: 800, fontSize: { xs: '0.95rem', sm: '1.15rem' } }}>
-                        {lang === 'vi' ? `Danh sách cấp phát IP DHCP (${filteredLeases.length})` : `DHCP IP Leases (${filteredLeases.length})`}
+                        {t('network.dhcpLeasesTitle', { count: filteredLeases.length })}
                       </Typography>
                       <TextField
                         size="small"
-                        placeholder={lang === 'vi' ? "Tìm kiếm IP, hostname, MAC..." : "Search IP, hostname, MAC..."}
+                        placeholder={t('network.searchDhcpPlaceholder')}
                         value={leaseSearch}
                         onChange={(e) => setLeaseSearch(e.target.value)}
                         sx={{ minWidth: { xs: '100%', sm: 260 } }}
@@ -2388,11 +2388,11 @@ export default function NetworkMonitorView() {
                       <Table size="small">
                         <TableHead>
                           <TableRow>
-                            <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Địa chỉ IP' : 'IP Address'}</TableCell>
-                            <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Tên thiết bị (Host)' : 'Hostname'}</TableCell>
-                            <TableCell sx={{ fontWeight: 700 }}>MAC Address</TableCell>
-                            <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Trạng thái' : 'Status'}</TableCell>
-                            <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>{lang === 'vi' ? 'Thao tác' : 'Actions'}</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>{t('network.ipAddress')}</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>{t('network.hostnameCol')}</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>{t('network.macAddress')}</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>{t('network.status')}</TableCell>
+                            <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>{t('network.actions')}</TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
@@ -2403,7 +2403,7 @@ export default function NetworkMonitorView() {
                               </TableCell>
                               <TableCell>
                                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                  {lease.hostname || lease.comment || (lang === 'vi' ? 'Thiết bị LAN' : 'LAN Device')}
+                                  {lease.hostname || lease.comment || t('network.lanDevice')}
                                 </Typography>
                                 {lease.comment && lease.hostname && (
                                   <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
@@ -2431,7 +2431,7 @@ export default function NetworkMonitorView() {
                                     onClick={() => handleSendWol(lease.mac, lease.hostname || lease.comment)}
                                     sx={{ py: 0.25, px: 1, fontSize: '0.72rem' }}
                                   >
-                                    {wolLoadingMac === lease.mac ? (lang === 'vi' ? 'Đang gửi...' : 'Sending...') : 'WoL'}
+                                    {wolLoadingMac === lease.mac ? t('network.sending') : t('network.wol')}
                                   </Button>
                                   {/* Fast Create Simple Queue Button */}
                                   <Button
@@ -2452,7 +2452,28 @@ export default function NetworkMonitorView() {
                                     }}
                                     sx={{ py: 0.25, px: 1, fontSize: '0.72rem' }}
                                   >
-                                    {lang === 'vi' ? 'Giới hạn' : 'Limit'}
+                                    {t('network.limit')}
+                                  </Button>
+                                  {/* Quick NAT Port Forward Button */}
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    color="info"
+                                    startIcon={<ArrowUpDown size={13} />}
+                                    onClick={() => handleOpenAddNat(lease.ip, lease.hostname || lease.comment)}
+                                    sx={{ py: 0.25, px: 1, fontSize: '0.72rem' }}
+                                  >
+                                    {t('network.openPort')}
+                                  </Button>
+                                  {/* Monitor Target Button */}
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    startIcon={<Plus size={13} />}
+                                    onClick={() => handleOpenAddTarget(lease.ip, lease.hostname || lease.comment || `DHCP (${lease.ip})`)}
+                                    sx={{ py: 0.25, px: 1, fontSize: '0.72rem' }}
+                                  >
+                                    {t('network.monitor')}
                                   </Button>
                                 </Stack>
                               </TableCell>
