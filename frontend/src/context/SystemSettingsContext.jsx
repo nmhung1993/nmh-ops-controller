@@ -25,14 +25,35 @@ export function SystemSettingsProvider({ children }) {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
 
+  const applyPwaBranding = (data) => {
+    if (!data) return;
+    if (data.appName) {
+      document.title = `${data.appName} - ${data.tagline || 'Unified Fleet & LAN Controller'}`;
+      const appNameMeta = document.querySelector('meta[name="application-name"]');
+      if (appNameMeta) appNameMeta.setAttribute('content', data.appName);
+      const appleTitleMeta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+      if (appleTitleMeta) appleTitleMeta.setAttribute('content', data.appName);
+    }
+
+    const iconSrc = data.logoUrl ? data.logoUrl : '/icons/icon-192.png';
+    const favicons = document.querySelectorAll("link[rel*='icon']");
+    favicons.forEach(el => el.setAttribute('href', iconSrc));
+
+    const appleIcons = document.querySelectorAll("link[rel*='apple-touch-icon']");
+    appleIcons.forEach(el => el.setAttribute('href', iconSrc));
+
+    const manifestLink = document.querySelector("link[rel='manifest']");
+    if (manifestLink) {
+      manifestLink.setAttribute('href', `/manifest.webmanifest?v=${Date.now()}`);
+    }
+  };
+
   const fetchSettings = useCallback(async () => {
     try {
       const data = await apiRequest('/api/v1/system/settings');
       if (data && typeof data === 'object') {
         setSettings((prev) => ({ ...prev, ...data }));
-        if (data.appName) {
-          document.title = `${data.appName} - ${data.tagline || 'Unified Fleet & LAN Controller'}`;
-        }
+        applyPwaBranding(data);
       }
     } catch (err) {
       console.warn('Could not load system settings, using defaults:', err.message);
@@ -52,12 +73,11 @@ export function SystemSettingsProvider({ children }) {
     });
     if (res?.settings) {
       setSettings((prev) => ({ ...prev, ...res.settings }));
-      if (res.settings.appName) {
-        document.title = `${res.settings.appName} - ${res.settings.tagline || 'Unified Fleet & LAN Controller'}`;
-      }
+      applyPwaBranding(res.settings);
     }
     return res;
   };
+
 
   return (
     <SystemSettingsContext.Provider

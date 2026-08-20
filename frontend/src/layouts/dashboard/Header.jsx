@@ -40,9 +40,9 @@ import { useWebSocket } from '../../context/WebSocketContext';
 import Label from '../../components/common/Label';
 import PwaInstallButton from '../../components/common/PwaInstallButton';
 
-export const HEADER_MOBILE = 64;
+export const HEADER_MOBILE = 54;
 
-export const HEADER_DESKTOP = 72;
+export const HEADER_DESKTOP = 68;
 export const NAV_WIDTH = 280;
 export const NAV_COLLAPSED_WIDTH = 88;
 
@@ -89,7 +89,7 @@ export default function Header({ onOpenNav, currentPage, onOpenPasswordDialog, o
         zIndex: theme.zIndex.appBar + 1,
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
-        backgroundColor: alpha(theme.palette.background.default, 0.8),
+        backgroundColor: alpha(theme.palette.background.default, 0.85),
         transition: theme.transitions.create(['height', 'background-color', 'width'], {
           duration: theme.transitions.duration.shorter
         }),
@@ -101,11 +101,12 @@ export default function Header({ onOpenNav, currentPage, onOpenPasswordDialog, o
         disableGutters
         sx={{
           height: 1,
-          px: { xs: 2, md: 3 },
+          px: { xs: 1, sm: 2.5 },
           display: 'flex',
           justifyContent: 'space-between'
         }}
       >
+
         {/* Left Side: Mobile Menu Button & Page Title */}
         <Stack direction="row" alignItems="center" spacing={{ xs: 1, sm: 1.5 }} sx={{ minWidth: 0 }}>
           <IconButton

@@ -611,76 +611,75 @@ export default function DockerView() {
         </Alert>
       )}
 
-      {/* Consolidated Docker Hero Metrics Bar */}
-      <Card sx={{ borderRadius: 2.5, mb: 3, p: 2, bgcolor: alpha(theme.palette.background.paper, 0.8), backdropFilter: 'blur(8px)', border: `1px solid ${theme.palette.divider}` }}>
-        <Grid container spacing={2} alignItems="center">
+      {/* Consolidated Docker Hero Metrics Bar (2x2 on Mobile, 4x1 on Desktop) */}
+      <Card sx={{ borderRadius: 2.5, mb: 2, p: { xs: 1.25, sm: 2 }, bgcolor: alpha(theme.palette.background.paper, 0.8), backdropFilter: 'blur(8px)', border: `1px solid ${theme.palette.divider}` }}>
+        <Grid container spacing={{ xs: 1, sm: 2 }} alignItems="center">
           {/* Total Containers */}
-          <Grid item xs={12} sm={6} md={3}>
-            <Stack direction="row" spacing={1.75} alignItems="center">
-              <Box sx={{ p: 1.25, borderRadius: 2, bgcolor: alpha(theme.palette.primary.main, 0.12), color: 'primary.main', display: 'flex' }}>
-                <Boxes size={22} />
+          <Grid item xs={6} sm={6} md={3}>
+            <Stack direction="row" spacing={{ xs: 1, sm: 1.75 }} alignItems="center">
+              <Box sx={{ p: { xs: 0.75, sm: 1.25 }, borderRadius: 1.5, bgcolor: alpha(theme.palette.primary.main, 0.12), color: 'primary.main', display: 'flex', flexShrink: 0 }}>
+                <Boxes size={18} />
               </Box>
               <Box sx={{ minWidth: 0 }}>
-                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.6875rem' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.625rem', display: 'block', noWrap: true }}>
                   {t('docker.kpi.totalContainers')}
                 </Typography>
-                <Stack direction="row" spacing={0.75} alignItems="baseline">
-                  <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                <Stack direction="row" spacing={0.5} alignItems="baseline" sx={{ flexWrap: 'wrap' }}>
+                  <Typography variant="h6" sx={{ fontWeight: 800, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                     {containers.length}
                   </Typography>
-                  <Chip label={`${runningCount} chạy`} size="small" color="success" sx={{ height: 18, fontSize: 10, fontWeight: 700 }} />
-                  {stoppedCount > 0 && <Chip label={`${stoppedCount} dừng`} size="small" variant="outlined" sx={{ height: 18, fontSize: 10 }} />}
+                  <Chip label={`${runningCount} chạy`} size="small" color="success" sx={{ height: 16, fontSize: 9, fontWeight: 700, px: 0.25 }} />
                 </Stack>
               </Box>
             </Stack>
           </Grid>
 
           {/* Stacks */}
-          <Grid item xs={12} sm={6} md={3}>
-            <Stack direction="row" spacing={1.75} alignItems="center">
-              <Box sx={{ p: 1.25, borderRadius: 2, bgcolor: alpha(theme.palette.info.main, 0.12), color: 'info.main', display: 'flex' }}>
-                <Layers size={22} />
+          <Grid item xs={6} sm={6} md={3}>
+            <Stack direction="row" spacing={{ xs: 1, sm: 1.75 }} alignItems="center">
+              <Box sx={{ p: { xs: 0.75, sm: 1.25 }, borderRadius: 1.5, bgcolor: alpha(theme.palette.info.main, 0.12), color: 'info.main', display: 'flex', flexShrink: 0 }}>
+                <Layers size={18} />
               </Box>
               <Box sx={{ minWidth: 0 }}>
-                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.6875rem' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.625rem', display: 'block', noWrap: true }}>
                   {t('docker.kpi.stacks')}
                 </Typography>
-                <Typography variant="h5" sx={{ fontWeight: 800 }}>
-                  {stacks.length} <Typography component="span" variant="caption" color="text.secondary">Compose</Typography>
+                <Typography variant="h6" sx={{ fontWeight: 800, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                  {stacks.length} <Typography component="span" variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>Compose</Typography>
                 </Typography>
               </Box>
             </Stack>
           </Grid>
 
           {/* Images */}
-          <Grid item xs={12} sm={6} md={3}>
-            <Stack direction="row" spacing={1.75} alignItems="center">
-              <Box sx={{ p: 1.25, borderRadius: 2, bgcolor: alpha(theme.palette.secondary.main, 0.12), color: 'secondary.main', display: 'flex' }}>
-                <Server size={22} />
+          <Grid item xs={6} sm={6} md={3}>
+            <Stack direction="row" spacing={{ xs: 1, sm: 1.75 }} alignItems="center">
+              <Box sx={{ p: { xs: 0.75, sm: 1.25 }, borderRadius: 1.5, bgcolor: alpha(theme.palette.secondary.main, 0.12), color: 'secondary.main', display: 'flex', flexShrink: 0 }}>
+                <Server size={18} />
               </Box>
               <Box sx={{ minWidth: 0 }}>
-                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.6875rem' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.625rem', display: 'block', noWrap: true }}>
                   {t('docker.kpi.images')}
                 </Typography>
-                <Typography variant="h5" sx={{ fontWeight: 800 }}>
-                  {images.length} <Typography component="span" variant="caption" color="text.secondary">Images</Typography>
+                <Typography variant="h6" sx={{ fontWeight: 800, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                  {images.length} <Typography component="span" variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>Images</Typography>
                 </Typography>
               </Box>
             </Stack>
           </Grid>
 
           {/* Volumes */}
-          <Grid item xs={12} sm={6} md={3}>
-            <Stack direction="row" spacing={1.75} alignItems="center">
-              <Box sx={{ p: 1.25, borderRadius: 2, bgcolor: alpha(theme.palette.warning.main, 0.12), color: 'warning.main', display: 'flex' }}>
-                <HardDrive size={22} />
+          <Grid item xs={6} sm={6} md={3}>
+            <Stack direction="row" spacing={{ xs: 1, sm: 1.75 }} alignItems="center">
+              <Box sx={{ p: { xs: 0.75, sm: 1.25 }, borderRadius: 1.5, bgcolor: alpha(theme.palette.warning.main, 0.12), color: 'warning.main', display: 'flex', flexShrink: 0 }}>
+                <HardDrive size={18} />
               </Box>
               <Box sx={{ minWidth: 0 }}>
-                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.6875rem' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.625rem', display: 'block', noWrap: true }}>
                   {t('docker.kpi.volumes')}
                 </Typography>
-                <Typography variant="h5" sx={{ fontWeight: 800 }}>
-                  {volumes.length} <Typography component="span" variant="caption" color="text.secondary">Volumes</Typography>
+                <Typography variant="h6" sx={{ fontWeight: 800, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                  {volumes.length} <Typography component="span" variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>Volumes</Typography>
                 </Typography>
               </Box>
             </Stack>
@@ -689,41 +688,45 @@ export default function DockerView() {
       </Card>
 
       {/* Main Tabs */}
-      <Card sx={{ borderRadius: 3, overflow: 'hidden', boxShadow: theme.shadows[1] }}>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 2.5, pt: 1.5 }}>
+      <Card sx={{ borderRadius: 2.5, overflow: 'hidden', boxShadow: theme.shadows[1] }}>
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', px: { xs: 1, sm: 2.5 }, pt: { xs: 0.5, sm: 1 } }}>
           <Tabs
             value={currentTab}
             onChange={(e, val) => setCurrentTab(val)}
             textColor="primary"
             indicatorColor="primary"
+            variant="scrollable"
+            scrollButtons="auto"
+            allowScrollButtonsMobile
+            sx={{ minHeight: 44 }}
           >
             <Tab
               value="containers"
               label={`${t('docker.tabs.containers')} (${containers.length})`}
-              icon={<Boxes size={18} />}
+              icon={<Boxes size={16} />}
               iconPosition="start"
-              sx={{ fontWeight: 700 }}
+              sx={{ fontWeight: 700, minHeight: 44, py: 0.5, fontSize: { xs: '0.78rem', sm: '0.875rem' } }}
             />
             <Tab
               value="stacks"
               label={`${t('docker.tabs.stacks')} (${stacks.length})`}
-              icon={<Layers size={18} />}
+              icon={<Layers size={16} />}
               iconPosition="start"
-              sx={{ fontWeight: 700 }}
+              sx={{ fontWeight: 700, minHeight: 44, py: 0.5, fontSize: { xs: '0.78rem', sm: '0.875rem' } }}
             />
             <Tab
               value="images"
               label={`${t('docker.tabs.images')} (${images.length})`}
-              icon={<Server size={18} />}
+              icon={<Server size={16} />}
               iconPosition="start"
-              sx={{ fontWeight: 700 }}
+              sx={{ fontWeight: 700, minHeight: 44, py: 0.5, fontSize: { xs: '0.78rem', sm: '0.875rem' } }}
             />
             <Tab
               value="volumes"
               label={`${t('docker.tabs.volumes')} (${volumes.length})`}
-              icon={<HardDrive size={18} />}
+              icon={<HardDrive size={16} />}
               iconPosition="start"
-              sx={{ fontWeight: 700 }}
+              sx={{ fontWeight: 700, minHeight: 44, py: 0.5, fontSize: { xs: '0.78rem', sm: '0.875rem' } }}
             />
           </Tabs>
         </Box>
@@ -732,131 +735,110 @@ export default function DockerView() {
         {/* Tab 1: Containers (Grouped & Flat Views)    */}
         {/* ========================================== */}
         {currentTab === 'containers' && (
-          <Box sx={{ p: 2.5 }}>
+          <Box sx={{ p: { xs: 1, sm: 2 } }}>
             {/* Control & Sorting Toolbar */}
-            <Stack
-              direction={{ xs: 'column', lg: 'row' }}
-              spacing={2}
-              justifyContent="space-between"
-              alignItems={{ xs: 'stretch', lg: 'center' }}
-              sx={{ mb: 2.5 }}
-            >
-              {/* Search & Status Filters */}
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems="center">
-                <TextField
-                  size="small"
-                  placeholder={t('docker.searchPlaceholder')}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  sx={{ width: { xs: '100%', sm: 260 } }}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Search size={18} />
-                      </InputAdornment>
-                    )
-                  }}
-                />
+            <Stack spacing={1.25} sx={{ mb: 1.5 }}>
+              {/* Search Bar */}
+              <TextField
+                size="small"
+                placeholder={t('docker.searchPlaceholder')}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                fullWidth
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Search size={16} />
+                    </InputAdornment>
+                  )
+                }}
+              />
 
-                <Stack direction="row" spacing={1}>
-                  <Button
+              {/* Status Filters + View Controls Row */}
+              <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+                {/* Status Filter Buttons */}
+                <Stack direction="row" spacing={0.75} sx={{ overflowX: 'auto', pb: { xs: 0.5, sm: 0 } }}>
+                  <Chip
+                    label={`${t('docker.filter.all')} (${containers.length})`}
                     size="small"
-                    variant={statusFilter === 'all' ? 'contained' : 'outlined'}
+                    color={statusFilter === 'all' ? 'primary' : 'default'}
+                    variant={statusFilter === 'all' ? 'filled' : 'outlined'}
                     onClick={() => setStatusFilter('all')}
-                    sx={{ borderRadius: 2, textTransform: 'none' }}
-                  >
-                    {t('docker.filter.all')} ({containers.length})
-                  </Button>
-                  <Button
+                    sx={{ fontWeight: 700, fontSize: 11, cursor: 'pointer' }}
+                  />
+                  <Chip
+                    label={`${t('docker.filter.running')} (${runningCount})`}
                     size="small"
-                    variant={statusFilter === 'running' ? 'contained' : 'outlined'}
                     color="success"
+                    variant={statusFilter === 'running' ? 'filled' : 'outlined'}
                     onClick={() => setStatusFilter('running')}
-                    sx={{ borderRadius: 2, textTransform: 'none' }}
-                  >
-                    {t('docker.filter.running')} ({runningCount})
-                  </Button>
-                  <Button
+                    sx={{ fontWeight: 700, fontSize: 11, cursor: 'pointer' }}
+                  />
+                  <Chip
+                    label={`${t('docker.filter.stopped')} (${stoppedCount})`}
                     size="small"
-                    variant={statusFilter === 'stopped' ? 'contained' : 'outlined'}
-                    color="inherit"
+                    color="default"
+                    variant={statusFilter === 'stopped' ? 'filled' : 'outlined'}
                     onClick={() => setStatusFilter('stopped')}
-                    sx={{ borderRadius: 2, textTransform: 'none' }}
-                  >
-                    {t('docker.filter.stopped')} ({stoppedCount})
-                  </Button>
+                    sx={{ fontWeight: 700, fontSize: 11, cursor: 'pointer' }}
+                  />
                 </Stack>
-              </Stack>
 
-              {/* Sorting & Stack Controls */}
-              <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
-                {/* View Mode Toggle */}
-                <ToggleButtonGroup
-                  size="small"
-                  value={viewMode}
-                  exclusive
-                  onChange={(e, val) => val && setViewMode(val)}
-                  sx={{ height: 36 }}
-                >
-                  <ToggleButton value="grouped">
-                    <Tooltip title={t('docker.viewMode.grouped')}>
-                      <Stack direction="row" spacing={0.5} alignItems="center">
-                        <Layers size={15} />
-                        <Typography variant="caption" sx={{ ml: 0.5, fontWeight: 600 }}>{t('docker.viewMode.grouped')}</Typography>
-                      </Stack>
-                    </Tooltip>
-                  </ToggleButton>
-                  <ToggleButton value="flat">
-                    <Tooltip title={t('docker.viewMode.flat')}>
-                      <Stack direction="row" spacing={0.5} alignItems="center">
-                        <ListIcon size={15} />
-                        <Typography variant="caption" sx={{ ml: 0.5, fontWeight: 600 }}>{t('docker.viewMode.flat')}</Typography>
-                      </Stack>
-                    </Tooltip>
-                  </ToggleButton>
-                </ToggleButtonGroup>
-
-                {/* Sort Selector */}
-                <FormControl size="small" sx={{ minWidth: 160 }}>
-                  <InputLabel>{t('docker.sort.label')}</InputLabel>
-                  <Select
-                    value={sortBy}
-                    label={t('docker.sort.label')}
-                    onChange={(e) => setSortBy(e.target.value)}
+                {/* Right Controls: View Mode & Sort */}
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ flexGrow: { xs: 1, sm: 0 }, justifyContent: 'flex-end' }}>
+                  <ToggleButtonGroup
+                    size="small"
+                    value={viewMode}
+                    exclusive
+                    onChange={(e, val) => val && setViewMode(val)}
+                    sx={{ height: 32 }}
                   >
-                    <MenuItem value="name">{t('docker.sort.name')}</MenuItem>
-                    <MenuItem value="cpu">{t('docker.sort.cpu')}</MenuItem>
-                    <MenuItem value="memory">{t('docker.sort.memory')}</MenuItem>
-                    <MenuItem value="status">{t('docker.sort.status')}</MenuItem>
-                  </Select>
-                </FormControl>
+                    <ToggleButton value="grouped" sx={{ px: 1, py: 0.25 }}>
+                      <Layers size={14} />
+                    </ToggleButton>
+                    <ToggleButton value="flat" sx={{ px: 1, py: 0.25 }}>
+                      <ListIcon size={14} />
+                    </ToggleButton>
+                  </ToggleButtonGroup>
 
-                {/* Sort Order Direction Toggle */}
-                <IconButton
-                  size="small"
-                  onClick={() => setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
-                  sx={{ border: `1px solid ${theme.palette.divider}`, borderRadius: 2 }}
-                >
-                  {sortOrder === 'asc' ? <ArrowUp size={18} /> : <ArrowDown size={18} />}
-                </IconButton>
+                  <FormControl size="small" sx={{ minWidth: { xs: 105, sm: 140 } }}>
+                    <Select
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value)}
+                      sx={{ height: 32, fontSize: '0.75rem' }}
+                    >
+                      <MenuItem value="name">{t('docker.sort.name')}</MenuItem>
+                      <MenuItem value="cpu">{t('docker.sort.cpu')}</MenuItem>
+                      <MenuItem value="memory">{t('docker.sort.memory')}</MenuItem>
+                      <MenuItem value="status">{t('docker.sort.status')}</MenuItem>
+                    </Select>
+                  </FormControl>
 
-                {/* Expand / Collapse All in Grouped Mode */}
-                {viewMode === 'grouped' && (
-                  <Stack direction="row" spacing={0.5}>
-                    <Button size="small" variant="text" onClick={handleExpandAllStacks} sx={{ textTransform: 'none', fontSize: 12 }}>
-                      {t('docker.expandAll')}
-                    </Button>
-                    <Button size="small" variant="text" onClick={handleCollapseAllStacks} sx={{ textTransform: 'none', fontSize: 12 }}>
-                      {t('docker.collapseAll')}
-                    </Button>
-                  </Stack>
-                )}
+                  <IconButton
+                    size="small"
+                    onClick={() => setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                    sx={{ border: `1px solid ${theme.palette.divider}`, borderRadius: 1.5, width: 32, height: 32 }}
+                  >
+                    {sortOrder === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
+                  </IconButton>
+
+                  {viewMode === 'grouped' && (
+                    <Stack direction="row" spacing={0.5} sx={{ display: { xs: 'none', sm: 'flex' } }}>
+                      <Button size="small" variant="text" onClick={handleExpandAllStacks} sx={{ textTransform: 'none', fontSize: 11, p: 0.5 }}>
+                        {t('docker.expandAll')}
+                      </Button>
+                      <Button size="small" variant="text" onClick={handleCollapseAllStacks} sx={{ textTransform: 'none', fontSize: 11, p: 0.5 }}>
+                        {t('docker.collapseAll')}
+                      </Button>
+                    </Stack>
+                  )}
+                </Stack>
               </Stack>
             </Stack>
 
             {/* Content: Grouped by Stack View */}
             {viewMode === 'grouped' ? (
-              <Stack spacing={2.5}>
+              <Stack spacing={{ xs: 1.25, sm: 2 }}>
                 {groupedStacks.map((st) => {
                   const isExpanded = expandedStacks.has(st.name);
                   const isAllRunning = st.runningCount === st.totalCount && st.totalCount > 0;
@@ -866,7 +848,7 @@ export default function DockerView() {
                       key={st.name}
                       variant="outlined"
                       sx={{
-                        borderRadius: 2.5,
+                        borderRadius: 2,
                         borderColor: alpha(theme.palette.divider, 0.8),
                         overflow: 'hidden'
                       }}
@@ -875,71 +857,65 @@ export default function DockerView() {
                       <Box
                         onClick={() => toggleStackCollapse(st.name)}
                         sx={{
-                          px: 2.5,
-                          py: 1.75,
+                          px: { xs: 1.25, sm: 2 },
+                          py: { xs: 1, sm: 1.25 },
                           bgcolor: alpha(theme.palette.primary.main, 0.04),
                           cursor: 'pointer',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
+                          flexWrap: 'wrap',
+                          gap: 1,
                           '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.08) }
                         }}
                       >
-                        <Stack direction="row" spacing={1.5} alignItems="center">
-                          <IconButton size="small" sx={{ p: 0.5 }}>
-                            {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                        <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0, flexGrow: 1 }}>
+                          <IconButton size="small" sx={{ p: 0.25 }}>
+                            {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                           </IconButton>
-                          <Box sx={{ p: 0.75, borderRadius: 1.5, bgcolor: alpha(theme.palette.primary.main, 0.1) }}>
-                            <Layers size={18} color={theme.palette.primary.main} />
+                          <Box sx={{ p: 0.5, borderRadius: 1.25, bgcolor: alpha(theme.palette.primary.main, 0.1), display: 'flex', flexShrink: 0 }}>
+                            <Layers size={15} color={theme.palette.primary.main} />
                           </Box>
-                          <Box>
-                            <Stack direction="row" spacing={1} alignItems="center">
-                              <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
-                                {st.isStandalone ? t('docker.standalone') : st.name}
-                              </Typography>
-                              <Chip
-                                label={`${st.runningCount}/${st.totalCount} Running`}
-                                size="small"
-                                color={isAllRunning ? 'success' : st.runningCount > 0 ? 'warning' : 'default'}
-                                sx={{ height: 20, fontSize: 11, fontWeight: 700 }}
-                              />
-                            </Stack>
-                          </Box>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 800, fontSize: { xs: '0.8125rem', sm: '0.9rem' } }} noWrap>
+                            {st.isStandalone ? t('docker.standalone') : st.name}
+                          </Typography>
+                          <Chip
+                            label={`${st.runningCount}/${st.totalCount}`}
+                            size="small"
+                            color={isAllRunning ? 'success' : st.runningCount > 0 ? 'warning' : 'default'}
+                            sx={{ height: 18, fontSize: 10, fontWeight: 800, px: 0.25 }}
+                          />
                         </Stack>
 
                         {/* Stack Aggregate Telemetry & Actions */}
-                        <Stack direction="row" spacing={2} alignItems="center">
+                        <Stack direction="row" spacing={1} alignItems="center">
                           {/* Aggregate CPU */}
-                          <Tooltip title="Tổng CPU sử dụng bởi toàn bộ stack">
-                            <Chip
-                              icon={<Cpu size={14} />}
-                              label={`${st.totalCpuPercent.toFixed(1)}% CPU`}
-                              size="small"
-                              variant="outlined"
-                              sx={{
-                                height: 24,
-                                fontSize: 11,
-                                fontWeight: 700,
-                                borderColor: alpha(theme.palette.primary.main, 0.3)
-                              }}
-                            />
-                          </Tooltip>
+                          <Chip
+                            icon={<Cpu size={12} />}
+                            label={`${st.totalCpuPercent.toFixed(1)}%`}
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                              height: 20,
+                              fontSize: 10,
+                              fontWeight: 700,
+                              borderColor: alpha(theme.palette.primary.main, 0.3)
+                            }}
+                          />
 
                           {/* Aggregate Memory */}
-                          <Tooltip title="Tổng RAM sử dụng bởi toàn bộ stack">
-                            <Chip
-                              icon={<HardDrive size={14} />}
-                              label={`${formatBytes(st.totalMemUsageBytes)} RAM`}
-                              size="small"
-                              variant="outlined"
-                              sx={{
-                                height: 24,
-                                fontSize: 11,
-                                fontWeight: 700,
-                                borderColor: alpha(theme.palette.info.main, 0.3)
-                              }}
-                            />
-                          </Tooltip>
+                          <Chip
+                            icon={<HardDrive size={12} />}
+                            label={formatBytes(st.totalMemUsageBytes)}
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                              height: 20,
+                              fontSize: 10,
+                              fontWeight: 700,
+                              borderColor: alpha(theme.palette.info.main, 0.3)
+                            }}
+                          />
 
                           {!st.isStandalone && (
                             <Tooltip title="Khởi động lại toàn bộ Stack">
@@ -947,18 +923,36 @@ export default function DockerView() {
                                 size="small"
                                 color="primary"
                                 onClick={(e) => handleStackAction(e, st, 'restart')}
+                                sx={{ p: 0.5 }}
                               >
-                                <RotateCw size={16} />
+                                <RotateCw size={15} />
                               </IconButton>
                             </Tooltip>
                           )}
                         </Stack>
                       </Box>
 
-                      {/* Stack Containers Table */}
+                      {/* Stack Containers Table / Mobile Cards */}
                       <Collapse in={isExpanded}>
                         <Divider />
-                        <Table size="small">
+
+                        {/* Mobile Cards (Visible on xs, hidden on md) */}
+                        <Box sx={{ display: { xs: 'block', md: 'none' } }}>
+                          {st.containers.map((c) => (
+                            <MobileContainerCard
+                              key={c.id}
+                              container={c}
+                              actionLoading={actionLoading}
+                              onAction={handleContainerAction}
+                              onRowClick={() => handleOpenContainerDetail(c, 'overview')}
+                              onOpenLogs={() => handleOpenContainerDetail(c, 'logs')}
+                              onOpenTerminal={() => handleOpenContainerDetail(c, 'terminal')}
+                            />
+                          ))}
+                        </Box>
+
+                        {/* Desktop Table (Hidden on xs, visible on md) */}
+                        <Table size="small" sx={{ display: { xs: 'none', md: 'table' } }}>
                           <TableHead sx={{ bgcolor: 'background.paper' }}>
                             <TableRow>
                               <TableCell sx={{ fontWeight: 700, pl: 3 }}>{t('docker.table.container')}</TableCell>
@@ -989,37 +983,56 @@ export default function DockerView() {
                 })}
               </Stack>
             ) : (
-              /* Flat Table View */
-              <TableContainer component={Paper} elevation={0} sx={{ border: `1px solid ${theme.palette.divider}`, borderRadius: 2 }}>
-                <Table size="medium">
-                  <TableHead sx={{ bgcolor: alpha(theme.palette.primary.main, 0.03) }}>
-                    <TableRow>
-                      <TableCell sx={{ fontWeight: 700 }}>{t('docker.table.container')}</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>{t('docker.table.status')}</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>{t('docker.table.cpu')}</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>{t('docker.table.memory')}</TableCell>
-                      <TableCell sx={{ fontWeight: 700 }}>{t('docker.table.ports')}</TableCell>
-                      <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>{t('docker.table.actions')}</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {sortedAndFilteredContainers.map((c) => (
-                      <ContainerTableRow
-                        key={c.id}
-                        container={c}
-                        actionLoading={actionLoading}
-                        onAction={handleContainerAction}
-                        onRowClick={() => handleOpenContainerDetail(c, 'overview')}
-                        onOpenLogs={() => handleOpenContainerDetail(c, 'logs')}
-                        onOpenTerminal={() => handleOpenContainerDetail(c, 'terminal')}
-                      />
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+              /* Flat View */
+              <Box>
+                {/* Mobile Cards (Visible on xs, hidden on md) */}
+                <Box sx={{ display: { xs: 'block', md: 'none' }, border: `1px solid ${theme.palette.divider}`, borderRadius: 2, overflow: 'hidden' }}>
+                  {sortedAndFilteredContainers.map((c) => (
+                    <MobileContainerCard
+                      key={c.id}
+                      container={c}
+                      actionLoading={actionLoading}
+                      onAction={handleContainerAction}
+                      onRowClick={() => handleOpenContainerDetail(c, 'overview')}
+                      onOpenLogs={() => handleOpenContainerDetail(c, 'logs')}
+                      onOpenTerminal={() => handleOpenContainerDetail(c, 'terminal')}
+                    />
+                  ))}
+                </Box>
+
+                {/* Desktop Table (Hidden on xs, visible on md) */}
+                <TableContainer component={Paper} elevation={0} sx={{ display: { xs: 'none', md: 'block' }, border: `1px solid ${theme.palette.divider}`, borderRadius: 2 }}>
+                  <Table size="medium">
+                    <TableHead sx={{ bgcolor: alpha(theme.palette.primary.main, 0.03) }}>
+                      <TableRow>
+                        <TableCell sx={{ fontWeight: 700 }}>{t('docker.table.container')}</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>{t('docker.table.status')}</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>{t('docker.table.cpu')}</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>{t('docker.table.memory')}</TableCell>
+                        <TableCell sx={{ fontWeight: 700 }}>{t('docker.table.ports')}</TableCell>
+                        <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>{t('docker.table.actions')}</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {sortedAndFilteredContainers.map((c) => (
+                        <ContainerTableRow
+                          key={c.id}
+                          container={c}
+                          actionLoading={actionLoading}
+                          onAction={handleContainerAction}
+                          onRowClick={() => handleOpenContainerDetail(c, 'overview')}
+                          onOpenLogs={() => handleOpenContainerDetail(c, 'logs')}
+                          onOpenTerminal={() => handleOpenContainerDetail(c, 'terminal')}
+                        />
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Box>
             )}
           </Box>
         )}
+
 
         {/* Tab 2: Compose Stacks Management */}
         {currentTab === 'stacks' && (
@@ -1459,8 +1472,121 @@ export default function DockerView() {
   );
 }
 
-// Reusable Container Table Row Component
+// Ultra-Dense Mobile Container Card Component
+function MobileContainerCard({
+  container: c,
+  actionLoading,
+  onAction,
+  onRowClick,
+  onOpenLogs,
+  onOpenTerminal
+}) {
+  const isRunning = c.state === 'running';
+  const isPaused = c.state === 'paused';
+  const currentAction = actionLoading[c.id];
+
+  const cpuPercent = c.stats?.cpuPercent || 0;
+  const memUsage = c.stats?.memUsageBytes || 0;
+  const memPercent = c.stats?.memPercent || 0;
+
+  return (
+    <Box
+      onClick={onRowClick}
+      sx={{
+        p: 1.25,
+        borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
+        cursor: 'pointer',
+        '&:last-child': { borderBottom: 0 },
+        '&:hover': { bgcolor: 'action.hover' }
+      }}
+    >
+      {/* Row 1: Status Dot + Name + Status + Actions */}
+      <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ mb: 0.5 }}>
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ minWidth: 0, flexGrow: 1 }}>
+          <Box
+            sx={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              bgcolor: isRunning ? 'success.main' : isPaused ? 'warning.main' : 'text.disabled',
+              flexShrink: 0
+            }}
+          />
+          <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: '0.8125rem' }} noWrap>
+            {c.name}
+          </Typography>
+          <Chip
+            label={c.status}
+            size="small"
+            color={isRunning ? 'success' : isPaused ? 'warning' : 'default'}
+            sx={{ height: 16, fontSize: 9, fontWeight: 700, px: 0.5 }}
+          />
+        </Stack>
+
+        {/* Actions */}
+        <Stack direction="row" spacing={0.25} onClick={(e) => e.stopPropagation()}>
+          <Tooltip title="Logs">
+            <IconButton size="small" onClick={onOpenLogs} sx={{ p: 0.5 }}>
+              <FileText size={14} />
+            </IconButton>
+          </Tooltip>
+          {isRunning && (
+            <Tooltip title="Terminal">
+              <IconButton size="small" color="primary" onClick={onOpenTerminal} sx={{ p: 0.5 }}>
+                <Terminal size={14} />
+              </IconButton>
+            </Tooltip>
+          )}
+          {isRunning ? (
+            <Tooltip title="Restart">
+              <IconButton size="small" color="warning" onClick={(e) => onAction(e, c.id, 'restart', c.name)} disabled={Boolean(currentAction)} sx={{ p: 0.5 }}>
+                <RotateCw size={14} className={currentAction === 'restart' ? 'animate-spin' : ''} />
+              </IconButton>
+            </Tooltip>
+          ) : (
+            <Tooltip title="Start">
+              <IconButton size="small" color="success" onClick={(e) => onAction(e, c.id, 'start', c.name)} disabled={Boolean(currentAction)} sx={{ p: 0.5 }}>
+                <Play size={14} />
+              </IconButton>
+            </Tooltip>
+          )}
+        </Stack>
+      </Stack>
+
+      {/* Row 2: Metrics Bar (CPU / RAM / Image / Port) */}
+      <Stack direction="row" alignItems="center" spacing={1.5} sx={{ fontSize: '0.75rem', color: 'text.secondary', flexWrap: 'wrap', gap: 0.5 }}>
+        {isRunning && (
+          <>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Cpu size={11} color="#10B981" />
+              <Typography variant="caption" sx={{ fontWeight: 700, fontFamily: 'monospace', fontSize: 10 }}>
+                {cpuPercent.toFixed(1)}%
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <HardDrive size={11} color="#0284C7" />
+              <Typography variant="caption" sx={{ fontWeight: 700, fontFamily: 'monospace', fontSize: 10 }}>
+                {formatBytes(memUsage)} ({memPercent.toFixed(0)}%)
+              </Typography>
+            </Box>
+          </>
+        )}
+        <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: 10 }} noWrap>
+          {c.shortId} • {c.image.split(':')[0].split('/').pop()}
+        </Typography>
+        {c.ports?.length > 0 && (
+          <Typography variant="caption" sx={{ bgcolor: 'action.hover', px: 0.5, py: 0.1, borderRadius: 0.75, fontFamily: 'monospace', fontSize: 9.5 }}>
+            {c.ports[0].publicPort ? `:${c.ports[0].publicPort}` : c.ports[0].privatePort}
+          </Typography>
+        )}
+      </Stack>
+    </Box>
+  );
+}
+
+// Reusable Container Table Row Component (Desktop)
 function ContainerTableRow({
+
   container: c,
   actionLoading,
   onAction,

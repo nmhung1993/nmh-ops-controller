@@ -132,8 +132,8 @@ export default function HealthScoreWidget() {
   return (
     <Card
       sx={{
-        p: 2.5,
-        mb: 3,
+        p: { xs: 1.25, sm: 2.5 },
+        mb: { xs: 1.5, sm: 2.5 },
         background: `linear-gradient(135deg, ${scoreBg} 0%, ${theme.palette.background.paper} 100%)`,
         border: `1px solid ${alpha(scoreColor, 0.2)}`,
         borderRadius: 2.5,
@@ -141,21 +141,21 @@ export default function HealthScoreWidget() {
         overflow: 'hidden'
       }}
     >
-      <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} alignItems="center" justifyContent="space-between">
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={{ xs: 1.5, md: 3 }} alignItems={{ xs: 'flex-start', md: 'center' }} justifyContent="space-between">
         {/* Left: Score Gauge & Grade */}
-        <Stack direction="row" spacing={2.5} alignItems="center">
-          <Box sx={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Stack direction="row" spacing={{ xs: 1.5, sm: 2.5 }} alignItems="center">
+          <Box sx={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <CircularProgress
               variant="determinate"
               value={100}
-              size={76}
+              size={56}
               thickness={4.5}
               sx={{ color: theme.palette.action.hover }}
             />
             <CircularProgress
               variant="determinate"
               value={score}
-              size={76}
+              size={56}
               thickness={4.5}
               sx={{
                 color: scoreColor,
@@ -173,49 +173,51 @@ export default function HealthScoreWidget() {
                 justifyContent: 'center'
               }}
             >
-              <Typography variant="h5" sx={{ fontWeight: 900, color: scoreColor, lineHeight: 1 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 900, color: scoreColor, lineHeight: 1, fontSize: '1.1rem' }}>
                 {score}
               </Typography>
-              <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 800, color: 'text.secondary' }}>
+              <Typography variant="caption" sx={{ fontSize: '0.55rem', fontWeight: 800, color: 'text.secondary' }}>
                 {health.grade || 'A+'}
               </Typography>
             </Box>
           </Box>
 
-          <Box>
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap', gap: 0.5 }}>
-              <Typography variant="overline" sx={{ color: scoreColor, fontWeight: 800, letterSpacing: 1.2 }}>
-                ĐIỂM SỨC KHỎE HẠ TẦNG (HEALTH SCORE)
+          <Box sx={{ minWidth: 0 }}>
+            <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+              <Typography variant="overline" sx={{ color: scoreColor, fontWeight: 800, letterSpacing: 0.8, fontSize: '0.625rem' }}>
+                HEALTH SCORE
               </Typography>
               <Label
                 variant="soft"
                 color={health.status === 'excellent' ? 'success' : health.status === 'good' ? 'info' : health.status === 'warning' ? 'warning' : 'error'}
+                sx={{ height: 18, fontSize: '0.65rem', px: 0.5 }}
               >
                 {health.status === 'excellent' ? 'Hoàn Hảo' : health.status === 'good' ? 'Tốt' : health.status === 'warning' ? 'Cần Lưu Ý' : 'Nghiêm Trọng'}
               </Label>
               {resolvedIssues.length > 0 && (
                 <Chip
-                  icon={<CheckCircle2 size={12} />}
+                  icon={<CheckCircle2 size={10} />}
                   label={`Đã xử lý ${resolvedIssues.length}`}
                   size="small"
                   color="success"
                   variant="outlined"
-                  sx={{ height: 20, fontSize: '0.6875rem', fontWeight: 700 }}
+                  sx={{ height: 18, fontSize: '0.625rem', fontWeight: 700 }}
                 />
               )}
             </Stack>
 
-            <Typography variant="h6" sx={{ fontWeight: 800, mt: 0.2 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 800, mt: 0.2, fontSize: { xs: '0.8125rem', sm: '0.9375rem' } }} noWrap>
               {totalActiveIssues === 0
-                ? (resolvedIssues.length > 0 ? 'Tất cả vấn đề đã xử lý xong • Hệ thống hoạt động tối ưu' : 'Toàn bộ máy trạm, kết nối mạng & Gateway hoạt động ổn định')
-                : `Phát hiện ${totalActiveIssues} vấn đề cần lưu ý trong hạ tầng`}
+                ? (resolvedIssues.length > 0 ? 'Tất cả vấn đề đã xử lý xong • Hoạt động tối ưu' : 'Máy trạm, mạng & Gateway hoạt động ổn định')
+                : `Phát hiện ${totalActiveIssues} vấn đề cần lưu ý`}
             </Typography>
 
-            <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.8rem' }}>
-              {health.metrics?.onlineAgents || 0}/{health.metrics?.totalAgents || 0} máy trạm online • {health.metrics?.networkTargetsCount || 0} mục tiêu ping • Gateway: {health.metrics?.gatewayOnline ? 'Online' : 'Offline'}
+            <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.72rem', display: 'block' }} noWrap>
+              {health.metrics?.onlineAgents || 0}/{health.metrics?.totalAgents || 0} máy online • {health.metrics?.networkTargetsCount || 0} ping • GW: {health.metrics?.gatewayOnline ? 'Online' : 'Offline'}
             </Typography>
           </Box>
         </Stack>
+
 
         {/* Middle: Category Scores Bars */}
         <Box sx={{ width: { xs: '100%', md: 260 }, my: { xs: 1, md: 0 } }}>

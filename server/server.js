@@ -121,10 +121,119 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: '12mb' }));
+
+function getCustomLogo() {
+  const logoDir = path.join(DATA_DIR, 'branding');
+  for (const ext of ['.png', '.svg', '.webp', '.jpg', '.jpeg']) {
+    const file = path.join(logoDir, `custom-logo${ext}`);
+    if (fs.existsSync(file)) {
+      const mime = ext === '.svg' ? 'image/svg+xml' : ext === '.webp' ? 'image/webp' : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : 'image/png';
+      return { file, mime, ext };
+    }
+  }
+  return null;
+}
+
+// Dynamic Web App Manifest with Custom Logo & App Name for PWA shortcuts
+app.get(['/manifest.json', '/manifest.webmanifest'], (req, res) => {
+  const customLogo = getCustomLogo();
+  const iconUrl = customLogo ? '/api/v1/system/logo' : '/icons/icon-512.png';
+  const icon192Url = customLogo ? '/api/v1/system/logo' : '/icons/icon-192.png';
+  const iconMime = customLogo ? customLogo.mime : 'image/png';
+
+  const manifest = {
+    id: '/',
+    name: systemSettings.appName || 'MinhHungOps Controller',
+    short_name: systemSettings.logoText || systemSettings.appName || 'NMH Ops',
+    description: systemSettings.tagline || 'Unified Fleet, Docker & LAN Operations Controller',
+    start_url: '/',
+    scope: '/',
+    display: 'standalone',
+    display_override: ['window-controls-overlay', 'standalone', 'minimal-ui'],
+    background_color: '#0B0F17',
+    theme_color: systemSettings.primaryColor || '#10B981',
+    orientation: 'any',
+    lang: 'vi',
+    dir: 'ltr',
+    categories: ['utilities', 'productivity', 'developer'],
+    prefer_related_applications: false,
+    icons: [
+      {
+        src: icon192Url,
+        sizes: '192x192',
+        type: iconMime,
+        purpose: 'any'
+      },
+      {
+        src: iconUrl,
+        sizes: '512x512',
+        type: iconMime,
+        purpose: 'any'
+      },
+      {
+        src: iconUrl,
+        sizes: '512x512',
+        type: iconMime,
+        purpose: 'maskable'
+      }
+    ],
+    shortcuts: [
+      {
+        name: 'Cụm Máy Trạm (Fleet)',
+        short_name: 'Fleet',
+        description: 'Xem tổng quan cụm máy trạm và trạng thái online',
+        url: '/',
+        icons: [{ src: icon192Url, sizes: '192x192', type: iconMime }]
+      },
+      {
+        name: 'Quản Trị Docker',
+        short_name: 'Docker',
+        description: 'Quản trị Docker Stacks và Containers',
+        url: '/',
+        icons: [{ src: icon192Url, sizes: '192x192', type: iconMime }]
+      },
+      {
+        name: 'Trung Tâm Kịch Bản',
+        short_name: 'Scripts',
+        description: 'Thực thi kịch bản vận hành tự động',
+        url: '/',
+        icons: [{ src: icon192Url, sizes: '192x192', type: iconMime }]
+      }
+    ]
+  };
+
+  res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=60');
+  res.json(manifest);
+});
+
+// Serve custom logo for PWA shortcut icons / Apple touch icons / Favicon
+app.get([
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
+  '/icons/icon-512-maskable.png',
+  '/icons/icon-180.png',
+  '/icons/apple-touch-icon.png',
+  '/icons/icon.svg',
+  '/apple-touch-icon.png',
+  '/apple-touch-icon-precomposed.png',
+  '/favicon.png',
+  '/favicon.ico'
+], (req, res, next) => {
+  const customLogo = getCustomLogo();
+  if (customLogo) {
+    res.setHeader('Content-Type', customLogo.mime);
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    return res.sendFile(customLogo.file);
+  }
+  next();
+});
+
 const staticPath = fs.existsSync(path.join(__dirname, '..', 'frontend', 'dist'))
   ? path.join(__dirname, '..', 'frontend', 'dist')
   : path.join(__dirname, '..', 'public');
 app.use(express.static(staticPath));
+
 
 function loadOrCreateSecret(name) {
   const file = path.join(DATA_DIR, name);

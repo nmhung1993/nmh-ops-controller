@@ -309,30 +309,31 @@ export default function DashboardView() {
 
   return (
     <Box sx={{ width: '100%', maxWidth: 1600, mx: 'auto' }}>
-      {/* Hero Identity Banner */}
+      {/* Identity Top Banner */}
       <Card
         sx={{
-          p: { xs: 2.25, sm: 3 },
-          mb: 3,
+          p: { xs: 1.25, sm: 2.5 },
+          mb: { xs: 1.5, sm: 2.5 },
           background: isLight
-            ? `linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, #FFFFFF 100%)`
-            : `linear-gradient(135deg, rgba(16, 185, 129, 0.14) 0%, #111827 100%)`,
+            ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(99, 102, 241, 0.06) 100%)'
+            : 'linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(99, 102, 241, 0.1) 100%)',
+          borderRadius: 2.5,
           border: `1px solid ${isLight ? 'rgba(16, 185, 129, 0.2)' : 'rgba(16, 185, 129, 0.25)'}`
         }}
       >
         <Stack
           direction={{ xs: 'column', md: 'row' }}
-          spacing={2}
+          spacing={{ xs: 1.25, md: 2 }}
           alignItems={{ xs: 'flex-start', md: 'center' }}
           justifyContent="space-between"
         >
           {/* Identity Left */}
-          <Stack direction="row" spacing={2} alignItems="center" sx={{ minWidth: 0 }}>
+          <Stack direction="row" spacing={1.5} alignItems="center" sx={{ minWidth: 0 }}>
             <Box
               sx={{
-                width: { xs: 48, sm: 56 },
-                height: { xs: 48, sm: 56 },
-                borderRadius: 2,
+                width: { xs: 40, sm: 52 },
+                height: { xs: 40, sm: 52 },
+                borderRadius: 1.75,
                 bgcolor: 'primary.main',
                 color: 'primary.contrastText',
                 display: 'flex',
@@ -340,27 +341,27 @@ export default function DashboardView() {
                 justifyContent: 'center',
                 boxShadow: '0 4px 14px rgba(16, 185, 129, 0.3)',
                 fontWeight: 800,
-                fontSize: { xs: '1.2rem', sm: '1.4rem' },
+                fontSize: { xs: '1rem', sm: '1.3rem' },
                 flexShrink: 0
               }}
             >
               {selectedHost.displayName?.slice(0, 2).toUpperCase() || 'WC'}
             </Box>
             <Box sx={{ minWidth: 0 }}>
-              <Typography variant="overline" noWrap sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: '0.08em', display: 'block', fontSize: '0.65rem' }}>
+              <Typography variant="overline" noWrap sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: '0.06em', display: 'block', fontSize: '0.625rem' }}>
                 CONTROLLED HOST / LIVE
               </Typography>
-              <Typography variant="h4" noWrap sx={{ fontWeight: 800, fontSize: { xs: '1.25rem', sm: '1.65rem' }, letterSpacing: '-0.02em' }}>
+              <Typography variant="h5" noWrap sx={{ fontWeight: 800, fontSize: { xs: '1.05rem', sm: '1.5rem' }, letterSpacing: '-0.02em' }}>
                 {selectedHost.displayName || selectedHost.hostname}
               </Typography>
-              <Typography variant="body2" noWrap sx={{ color: 'text.secondary', fontWeight: 600, fontSize: '0.8rem' }}>
+              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 600, fontSize: '0.72rem', display: 'block' }}>
                 {selectedHost.hostname} • {selectedHost.platform || 'Windows'} ({selectedHost.version || 'Agent'})
               </Typography>
             </Box>
           </Stack>
 
           {/* Identity Right: Status & Quick stats */}
-          <Stack direction="row" spacing={1.25} alignItems="center" sx={{ flexShrink: 0, flexWrap: 'wrap', gap: 1 }}>
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0, flexWrap: 'wrap', gap: 0.75 }}>
             <Label
               variant="filled"
               color={selectedHost.online ? 'success' : 'error'}
@@ -368,22 +369,22 @@ export default function DashboardView() {
                 selectedHost.online ? (
                   <Box
                     sx={{
-                      width: 7,
-                      height: 7,
+                      width: 6,
+                      height: 6,
                       borderRadius: '50%',
                       bgcolor: '#FFFFFF',
                       boxShadow: '0 0 0 2px rgba(255,255,255,0.4)'
                     }}
                   />
                 ) : (
-                  <XCircle size={13} />
+                  <XCircle size={12} />
                 )
               }
-              sx={{ py: 0.6, px: 1.25, fontSize: '0.75rem', fontWeight: 700 }}
+              sx={{ py: 0.4, px: 1, fontSize: '0.7rem', fontWeight: 700, height: 22 }}
             >
               {selectedHost.online ? t('common.online') : t('common.offline')}
             </Label>
-            <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, fontSize: '0.75rem' }}>
+            <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, fontSize: '0.7rem' }}>
               {selectedHost.lastSeen ? formatDateTime(selectedHost.lastSeen, lang) : t('dashboard.waiting')}
             </Typography>
           </Stack>
@@ -391,15 +392,15 @@ export default function DashboardView() {
       </Card>
 
       {/* 6 Metric Summary Cards */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
+      <Grid container spacing={{ xs: 1, sm: 2 }} sx={{ mb: { xs: 1.5, sm: 2.5 } }}>
         {/* Metric 1: CPU */}
         <Grid item xs={6} sm={6} md={4} lg={2}>
-          <Card sx={{ p: 2, height: 1, overflow: 'hidden' }}>
-            <Stack spacing={0.6}>
-              <Box sx={{ color: 'primary.main' }}><Cpu size={18} /></Box>
-              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('dashboard.cpuLoad')}</Typography>
-              <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-0.02em' }}>{cpuUsage.toFixed(1)}%</Typography>
-              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
+          <Card sx={{ p: { xs: 1.25, sm: 2 }, height: 1, overflow: 'hidden', borderRadius: 2 }}>
+            <Stack spacing={0.4}>
+              <Box sx={{ color: 'primary.main' }}><Cpu size={16} /></Box>
+              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.625rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('dashboard.cpuLoad')}</Typography>
+              <Typography variant="h6" sx={{ fontWeight: 800, fontSize: { xs: '1.1rem', sm: '1.35rem' }, letterSpacing: '-0.02em' }}>{cpuUsage.toFixed(1)}%</Typography>
+              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontSize: '0.65rem' }}>
                 {telemetry.cpu?.model || t('dashboard.waiting')}
               </Typography>
             </Stack>
@@ -408,12 +409,12 @@ export default function DashboardView() {
 
         {/* Metric 2: Memory */}
         <Grid item xs={6} sm={6} md={4} lg={2}>
-          <Card sx={{ p: 2, height: 1, overflow: 'hidden' }}>
-            <Stack spacing={0.6}>
-              <Box sx={{ color: 'info.main' }}><HardDrive size={18} /></Box>
-              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('dashboard.memory')}</Typography>
-              <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-0.02em' }}>{memPercent.toFixed(1)}%</Typography>
-              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
+          <Card sx={{ p: { xs: 1.25, sm: 2 }, height: 1, overflow: 'hidden', borderRadius: 2 }}>
+            <Stack spacing={0.4}>
+              <Box sx={{ color: 'info.main' }}><HardDrive size={16} /></Box>
+              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.625rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('dashboard.memory')}</Typography>
+              <Typography variant="h6" sx={{ fontWeight: 800, fontSize: { xs: '1.1rem', sm: '1.35rem' }, letterSpacing: '-0.02em' }}>{memPercent.toFixed(1)}%</Typography>
+              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontSize: '0.65rem' }}>
                 {memUsedStr} / {memTotalStr}
               </Typography>
             </Stack>
@@ -422,12 +423,12 @@ export default function DashboardView() {
 
         {/* Metric 3: Uptime */}
         <Grid item xs={6} sm={6} md={4} lg={2}>
-          <Card sx={{ p: 2, height: 1, overflow: 'hidden' }}>
-            <Stack spacing={0.6}>
-              <Box sx={{ color: 'success.main' }}><Clock size={18} /></Box>
-              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('dashboard.uptime')}</Typography>
-              <Typography variant="subtitle1" noWrap sx={{ fontWeight: 800, letterSpacing: '-0.01em' }}>{uptimeStr}</Typography>
-              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
+          <Card sx={{ p: { xs: 1.25, sm: 2 }, height: 1, overflow: 'hidden', borderRadius: 2 }}>
+            <Stack spacing={0.4}>
+              <Box sx={{ color: 'success.main' }}><Clock size={16} /></Box>
+              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.625rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('dashboard.uptime')}</Typography>
+              <Typography variant="subtitle2" noWrap sx={{ fontWeight: 800, fontSize: { xs: '0.9rem', sm: '1rem' } }}>{uptimeStr}</Typography>
+              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontSize: '0.65rem' }}>
                 {osStr}
               </Typography>
             </Stack>
@@ -436,12 +437,12 @@ export default function DashboardView() {
 
         {/* Metric 4: Network */}
         <Grid item xs={6} sm={6} md={4} lg={2}>
-          <Card sx={{ p: 2, height: 1, overflow: 'hidden' }}>
-            <Stack spacing={0.6}>
-              <Box sx={{ color: 'secondary.main' }}><Network size={18} /></Box>
-              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('dashboard.network')}</Typography>
-              <Typography variant="subtitle1" noWrap sx={{ fontWeight: 800, letterSpacing: '-0.01em' }}>↑{netSendStr}/s</Typography>
-              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
+          <Card sx={{ p: { xs: 1.25, sm: 2 }, height: 1, overflow: 'hidden', borderRadius: 2 }}>
+            <Stack spacing={0.4}>
+              <Box sx={{ color: 'secondary.main' }}><Network size={16} /></Box>
+              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.625rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('dashboard.network')}</Typography>
+              <Typography variant="subtitle2" noWrap sx={{ fontWeight: 800, fontSize: { xs: '0.9rem', sm: '1rem' } }}>↑{netSendStr}/s</Typography>
+              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontSize: '0.65rem' }}>
                 ↓{netRecvStr}/s
               </Typography>
             </Stack>
@@ -451,12 +452,12 @@ export default function DashboardView() {
         {/* Metric 5: Temperature (Only if sensor exists and user has permission) */}
         {canViewTemp && Number.isFinite(tempVal) && tempVal > 0 && (
           <Grid item xs={6} sm={6} md={4} lg={2}>
-            <Card sx={{ p: 2, height: 1, overflow: 'hidden' }}>
-              <Stack spacing={0.6}>
-                <Box sx={{ color: 'warning.main' }}><Thermometer size={18} /></Box>
-                <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('dashboard.temperature')}</Typography>
-                <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-0.02em' }}>{formatTemperature(tempVal)}</Typography>
-                <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
+            <Card sx={{ p: { xs: 1.25, sm: 2 }, height: 1, overflow: 'hidden', borderRadius: 2 }}>
+              <Stack spacing={0.4}>
+                <Box sx={{ color: 'warning.main' }}><Thermometer size={16} /></Box>
+                <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.625rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('dashboard.temperature')}</Typography>
+                <Typography variant="subtitle2" noWrap sx={{ fontWeight: 800, fontSize: { xs: '0.9rem', sm: '1rem' } }}>{formatTemperature(tempVal)}</Typography>
+                <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontSize: '0.65rem' }}>
                   {tempSensorName}
                 </Typography>
               </Stack>
@@ -467,13 +468,13 @@ export default function DashboardView() {
         {/* Metric 6: Power (Only if sensor exists and user has permission) */}
         {canViewPower && Number.isFinite(powerWatts) && powerWatts > 0 && (
           <Grid item xs={6} sm={6} md={4} lg={2}>
-            <Card sx={{ p: 2, height: 1, overflow: 'hidden' }}>
-              <Stack spacing={0.6}>
-                <Box sx={{ color: 'error.main' }}><Zap size={18} /></Box>
-                <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.6875rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('dashboard.power')}</Typography>
-                <Typography variant="h5" sx={{ fontWeight: 800, letterSpacing: '-0.02em' }}>{formatWatts(powerWatts)}</Typography>
-                <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
-                  {powerDetailStr}
+            <Card sx={{ p: { xs: 1.25, sm: 2 }, height: 1, overflow: 'hidden', borderRadius: 2 }}>
+              <Stack spacing={0.4}>
+                <Box sx={{ color: 'error.main' }}><Zap size={16} /></Box>
+                <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.625rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('dashboard.power')}</Typography>
+                <Typography variant="subtitle2" noWrap sx={{ fontWeight: 800, fontSize: { xs: '0.9rem', sm: '1rem' } }}>{formatWatts(powerWatts)}</Typography>
+                <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontSize: '0.65rem' }}>
+                  {telemetry.hardware?.power?.model || 'Tổng tiêu thụ'}
                 </Typography>
               </Stack>
             </Card>

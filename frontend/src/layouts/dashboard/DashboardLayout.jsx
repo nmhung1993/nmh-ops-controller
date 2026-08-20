@@ -13,10 +13,10 @@ const Main = styled('main', {
     minHeight: '100vh',
     display: 'flex',
     flexDirection: 'column',
-    paddingTop: HEADER_MOBILE + 20,
-    paddingBottom: theme.spacing(8),
-    paddingLeft: theme.spacing(2),
-    paddingRight: theme.spacing(2),
+    paddingTop: HEADER_MOBILE + 8,
+    paddingBottom: theme.spacing(4),
+    paddingLeft: theme.spacing(1),
+    paddingRight: theme.spacing(1),
     width: '100%',
     minWidth: 0,
     overflowX: 'hidden',
@@ -24,11 +24,13 @@ const Main = styled('main', {
       duration: theme.transitions.duration.shorter
     }),
     [theme.breakpoints.up('sm')]: {
-      paddingLeft: theme.spacing(3),
-      paddingRight: theme.spacing(3)
+      paddingTop: HEADER_MOBILE + 16,
+      paddingLeft: theme.spacing(2.5),
+      paddingRight: theme.spacing(2.5),
+      paddingBottom: theme.spacing(6)
     },
     [theme.breakpoints.up('lg')]: {
-      paddingTop: HEADER_DESKTOP + 20,
+      paddingTop: HEADER_DESKTOP + 16,
       paddingLeft: theme.spacing(3.5),
       paddingRight: theme.spacing(3.5),
       width: `calc(100% - ${currentNavWidth}px)`,
@@ -36,6 +38,7 @@ const Main = styled('main', {
     }
   };
 });
+
 
 export default function DashboardLayout({ children, currentPage, onNavigate, onOpenPasswordDialog }) {
   const [openNav, setOpenNav] = useState(false);

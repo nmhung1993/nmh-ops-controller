@@ -282,16 +282,16 @@ export default function ProcessesView() {
           )}
         </Box>
 
-        <TableContainer sx={{ maxHeight: 'calc(100vh - 310px)', minHeight: 360, overflowY: 'auto', overflowX: 'auto' }}>
-          <Table stickyHeader size="small" sx={{ minWidth: 650, tableLayout: { xs: 'auto', md: 'fixed' } }}>
+        <TableContainer sx={{ maxHeight: 'calc(100vh - 280px)', minHeight: 320, overflowY: 'auto', overflowX: 'auto' }}>
+          <Table stickyHeader size="small" sx={{ minWidth: { xs: '100%', sm: 650 }, tableLayout: 'fixed' }}>
             <TableHead>
               <TableRow>
-                <TableCell sx={{ width: { xs: 160, md: '22%' }, fontWeight: 700 }}>{t('process.name')}</TableCell>
-                <TableCell sx={{ width: { xs: 80, md: '10%' }, fontWeight: 700 }}>{t('process.pid')}</TableCell>
-                <TableCell sx={{ width: { xs: 90, md: '12%' }, fontWeight: 700 }}>{t('process.cpu')}</TableCell>
-                <TableCell sx={{ width: { xs: 110, md: '14%' }, fontWeight: 700 }}>{t('process.memory')}</TableCell>
-                <TableCell sx={{ width: { xs: 200, md: '34%' }, fontWeight: 700 }}>{t('process.path')}</TableCell>
-                {isAdmin && <TableCell align="right" sx={{ width: { xs: 70, md: '8%' }, fontWeight: 700 }}>{t('common.actions')}</TableCell>}
+                <TableCell sx={{ width: { xs: '40%', sm: '22%' }, fontWeight: 700, py: 1 }}>{t('process.name')}</TableCell>
+                <TableCell sx={{ width: { xs: '18%', sm: '10%' }, fontWeight: 700, py: 1 }}>{t('process.pid')}</TableCell>
+                <TableCell sx={{ width: { xs: '20%', sm: '12%' }, fontWeight: 700, py: 1 }}>{t('process.cpu')}</TableCell>
+                <TableCell sx={{ width: { xs: '22%', sm: '14%' }, fontWeight: 700, py: 1 }}>{t('process.memory')}</TableCell>
+                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' }, width: '34%', fontWeight: 700, py: 1 }}>{t('process.path')}</TableCell>
+                {isAdmin && <TableCell align="right" sx={{ width: { xs: 48, sm: '8%' }, fontWeight: 700, py: 1 }}>{t('common.actions')}</TableCell>}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -311,19 +311,19 @@ export default function ProcessesView() {
 
                     return (
                       <TableRow key={proc.pid} hover>
-                        <TableCell sx={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          <Tooltip title={proc.name}>
-                            <span>{proc.name}</span>
+                        <TableCell sx={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', py: 0.75 }}>
+                          <Tooltip title={`${proc.name} ${proc.path ? `(${proc.path})` : ''}`}>
+                            <span style={{ fontSize: '0.8125rem' }}>{proc.name}</span>
                           </Tooltip>
                         </TableCell>
-                        <TableCell sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>{proc.pid}</TableCell>
-                        <TableCell>
-                          <Label variant="soft" color={cpu > 20 ? 'error' : cpu > 5 ? 'warning' : 'default'}>
+                        <TableCell sx={{ fontFamily: 'monospace', color: 'text.secondary', fontSize: '0.75rem', py: 0.75 }}>{proc.pid}</TableCell>
+                        <TableCell sx={{ py: 0.75 }}>
+                          <Label variant="soft" color={cpu > 20 ? 'error' : cpu > 5 ? 'warning' : 'default'} sx={{ height: 20, fontSize: '0.7rem', px: 0.5 }}>
                             {cpu.toFixed(1)}%
                           </Label>
                         </TableCell>
-                        <TableCell sx={{ fontWeight: 600 }}>{formatBytes(mem)}</TableCell>
-                        <TableCell sx={{ color: 'text.secondary', fontSize: '0.8125rem', fontFamily: proc.path ? 'monospace' : 'inherit', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', py: 0.75 }}>{formatBytes(mem)}</TableCell>
+                        <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' }, color: 'text.secondary', fontSize: '0.75rem', fontFamily: proc.path ? 'monospace' : 'inherit', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', py: 0.75 }}>
                           {proc.path ? (
                             <Tooltip title={proc.path} placement="top-start">
                               <span>{proc.path}</span>
@@ -333,15 +333,15 @@ export default function ProcessesView() {
                           )}
                         </TableCell>
                         {isAdmin && (
-                          <TableCell align="right">
+                          <TableCell align="right" sx={{ py: 0.75 }}>
                             <Tooltip title={t('process.kill')}>
                               <IconButton
                                 size="small"
                                 color="error"
                                 onClick={() => setKillTarget(proc)}
-                                sx={{ bgcolor: alpha(theme.palette.error.main, 0.08) }}
+                                sx={{ bgcolor: alpha(theme.palette.error.main, 0.08), p: 0.5 }}
                               >
-                                <Trash2 size={16} />
+                                <Trash2 size={14} />
                               </IconButton>
                             </Tooltip>
                           </TableCell>
@@ -353,6 +353,7 @@ export default function ProcessesView() {
             </TableBody>
           </Table>
         </TableContainer>
+
 
         <TablePagination
           rowsPerPageOptions={[10, 25, 50, 100]}

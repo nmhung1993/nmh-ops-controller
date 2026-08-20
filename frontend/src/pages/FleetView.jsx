@@ -290,21 +290,22 @@ export default function FleetView({ onNavigate }) {
       {/* OTA Center Banner */}
       <Card
         sx={{
-          mb: 3,
-          p: { xs: 2, sm: 2.5 },
+          mb: 2,
+          p: { xs: 1.25, sm: 2 },
           background: isLight
             ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(99, 102, 241, 0.06) 100%)'
             : 'linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(99, 102, 241, 0.1) 100%)',
-          border: `1px solid ${isLight ? 'rgba(16, 185, 129, 0.25)' : 'rgba(16, 185, 129, 0.3)'}`
+          border: `1px solid ${isLight ? 'rgba(16, 185, 129, 0.25)' : 'rgba(16, 185, 129, 0.3)'}`,
+          borderRadius: 2.5
         }}
       >
-        <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ xs: 'flex-start', md: 'center' }} justifyContent="space-between" spacing={2}>
-          <Stack direction="row" spacing={2} alignItems="center">
+        <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ xs: 'flex-start', md: 'center' }} justifyContent="space-between" spacing={1.5}>
+          <Stack direction="row" spacing={1.5} alignItems="center">
             <Box
               sx={{
-                width: 44,
-                height: 44,
-                borderRadius: 2,
+                width: { xs: 36, sm: 40 },
+                height: { xs: 36, sm: 40 },
+                borderRadius: 1.75,
                 bgcolor: 'primary.main',
                 color: '#ffffff',
                 display: 'flex',
@@ -314,37 +315,37 @@ export default function FleetView({ onNavigate }) {
                 boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)'
               }}
             >
-              <Sparkles size={22} />
+              <Sparkles size={18} />
             </Box>
-            <Box>
+            <Box sx={{ minWidth: 0 }}>
               <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.25, flexWrap: 'wrap' }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 800, letterSpacing: '-0.01em' }}>
-                  Trung Tâm Nâng Cấp Tự Động (OTA Center)
+                <Typography variant="subtitle2" sx={{ fontWeight: 800, fontSize: { xs: '0.85rem', sm: '0.9375rem' } }}>
+                  Trung Tâm Nâng Cấp Tự Động (OTA)
                 </Typography>
-                <Label variant="filled" color="primary" sx={{ fontWeight: 800, fontSize: '0.75rem', px: 1 }}>
-                  Bản OTA Server: v{otaStatus.latestAgentVersion}
+                <Label variant="filled" color="primary" sx={{ fontWeight: 800, fontSize: '0.7rem', px: 0.75, height: 20 }}>
+                  Server v{otaStatus.latestAgentVersion}
                 </Label>
               </Stack>
-              <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.8125rem' }}>
-                Phiên bản Agent mới nhất sẵn sàng phát hành qua mạng • Không gián đoạn dịch vụ.
+              <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: { xs: '0.7rem', sm: '0.75rem' }, display: 'block' }} noWrap>
+                Agent mới sẵn sàng phát hành qua mạng • Không gián đoạn.
               </Typography>
             </Box>
           </Stack>
 
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap', gap: 1 }}>
+          <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexWrap: 'wrap', gap: 0.75 }}>
             <Chip
               label={`${hosts.filter(h => h.version === otaStatus.latestAgentVersion).length} máy đã ở v${otaStatus.latestAgentVersion}`}
               color="success"
               variant="outlined"
               size="small"
-              sx={{ fontWeight: 700 }}
+              sx={{ fontWeight: 700, height: 22, fontSize: 10 }}
             />
             {hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length > 0 && (
               <Chip
-                label={`${hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length} máy cần nâng cấp lên v${otaStatus.latestAgentVersion}`}
+                label={`${hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length} máy cần nâng cấp`}
                 color="warning"
                 size="small"
-                sx={{ fontWeight: 800 }}
+                sx={{ fontWeight: 800, height: 22, fontSize: 10 }}
               />
             )}
             {isSuperAdmin && hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length > 0 && (
@@ -353,11 +354,11 @@ export default function FleetView({ onNavigate }) {
                 variant="contained"
                 color="warning"
                 disabled={upgradingAll}
-                startIcon={<UploadCloud size={15} className={upgradingAll ? 'animate-spin' : ''} />}
+                startIcon={<UploadCloud size={14} className={upgradingAll ? 'animate-spin' : ''} />}
                 onClick={handleUpgradeAllFleet}
-                sx={{ fontWeight: 800, boxShadow: '0 4px 12px rgba(245, 158, 11, 0.35)' }}
+                sx={{ fontWeight: 800, height: 26, fontSize: 11, px: 1.25, boxShadow: '0 4px 12px rgba(245, 158, 11, 0.35)' }}
               >
-                Nâng Cấp Toàn Bộ ({hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length})
+                Nâng Cấp ({hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length})
               </Button>
             )}
             {otaTasks.length > 0 && (
@@ -365,11 +366,11 @@ export default function FleetView({ onNavigate }) {
                 size="small"
                 variant="contained"
                 color="info"
-                startIcon={<Activity size={15} />}
+                startIcon={<Activity size={14} />}
                 onClick={() => setOtaProgressOpen(true)}
-                sx={{ fontWeight: 700 }}
+                sx={{ fontWeight: 700, height: 26, fontSize: 11, px: 1.25 }}
               >
-                Xem Tiến Trình ({otaTasks.length})
+                Tiến Trình ({otaTasks.length})
               </Button>
             )}
           </Stack>
@@ -379,21 +380,21 @@ export default function FleetView({ onNavigate }) {
       {/* Infrastructure Health Score Widget */}
       {canViewHealth && <HealthScoreWidget />}
 
-
       {/* Filter & Search Toolbar */}
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
         alignItems={{ xs: 'stretch', sm: 'center' }}
         justifyContent="space-between"
-        spacing={1.5}
-        sx={{ mb: 2.5 }}
+        spacing={1.25}
+        sx={{ mb: 2 }}
       >
         <TextField
           placeholder="Tìm theo tên máy, IP, hostname..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           size="small"
-          sx={{ width: { xs: '100%', sm: 320 } }}
+          fullWidth
+          sx={{ maxWidth: { sm: 320 } }}
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
@@ -403,47 +404,44 @@ export default function FleetView({ onNavigate }) {
           }}
         />
 
-        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.75 }}>
-          <Button
+        <Stack direction="row" spacing={0.75} sx={{ overflowX: 'auto', pb: { xs: 0.5, sm: 0 }, flexWrap: { sm: 'wrap' } }}>
+          <Chip
+            label={`Tất cả (${totalCount})`}
             size="small"
-            variant={filterStatus === 'all' ? 'contained' : 'outlined'}
-            color={filterStatus === 'all' ? 'primary' : 'inherit'}
+            color={filterStatus === 'all' ? 'primary' : 'default'}
+            variant={filterStatus === 'all' ? 'filled' : 'outlined'}
             onClick={() => setFilterStatus('all')}
-            sx={{ px: 1.5, py: 0.6 }}
-          >
-            Tất cả ({totalCount})
-          </Button>
-          <Button
+            sx={{ fontWeight: 700, fontSize: 11, cursor: 'pointer' }}
+          />
+          <Chip
+            label={`Trực tuyến (${onlineCount})`}
             size="small"
-            variant={filterStatus === 'online' ? 'contained' : 'outlined'}
-            color={filterStatus === 'online' ? 'success' : 'inherit'}
+            color={filterStatus === 'online' ? 'success' : 'default'}
+            variant={filterStatus === 'online' ? 'filled' : 'outlined'}
             onClick={() => setFilterStatus('online')}
-            sx={{ px: 1.5, py: 0.6 }}
-          >
-            Trực tuyến ({onlineCount})
-          </Button>
-          <Button
+            sx={{ fontWeight: 700, fontSize: 11, cursor: 'pointer' }}
+          />
+          <Chip
+            label={`Mất kết nối (${hosts.length - onlineCount})`}
             size="small"
-            variant={filterStatus === 'offline' ? 'contained' : 'outlined'}
-            color={filterStatus === 'offline' ? 'warning' : 'inherit'}
+            color={filterStatus === 'offline' ? 'warning' : 'default'}
+            variant={filterStatus === 'offline' ? 'filled' : 'outlined'}
             onClick={() => setFilterStatus('offline')}
-            sx={{ px: 1.5, py: 0.6 }}
-          >
-            Mất kết nối ({hosts.length - onlineCount})
-          </Button>
+            sx={{ fontWeight: 700, fontSize: 11, cursor: 'pointer' }}
+          />
           {attentionHosts.length > 0 && (
-            <Button
+            <Chip
+              label={`Cần chú ý (${attentionHosts.length})`}
               size="small"
-              variant={filterStatus === 'attention' ? 'contained' : 'outlined'}
-              color={filterStatus === 'attention' ? 'error' : 'inherit'}
+              color={filterStatus === 'attention' ? 'error' : 'default'}
+              variant={filterStatus === 'attention' ? 'filled' : 'outlined'}
               onClick={() => setFilterStatus('attention')}
-              sx={{ px: 1.5, py: 0.6 }}
-            >
-              Cần chú ý ({attentionHosts.length})
-            </Button>
+              sx={{ fontWeight: 700, fontSize: 11, cursor: 'pointer' }}
+            />
           )}
         </Stack>
       </Stack>
+
 
       {/* Host Cards Grid */}
       {filteredHosts.length === 0 ? (
@@ -464,7 +462,7 @@ export default function FleetView({ onNavigate }) {
           )}
         </Card>
       ) : (
-        <Grid container spacing={2.5}>
+        <Grid container spacing={{ xs: 1.25, sm: 2.5 }}>
           {filteredHosts.map((host) => {
             const telem = telemetryMap[host.id] || host.telemetry || {};
             const cpuUsage = Number(telem.cpu?.usage ?? 0);
@@ -480,7 +478,7 @@ export default function FleetView({ onNavigate }) {
               <Grid item xs={12} sm={6} lg={4} key={host.id}>
                 <Card
                   sx={{
-                    p: 2.5,
+                    p: { xs: 1.5, sm: 2.5 },
                     height: 1,
                     display: 'flex',
                     flexDirection: 'column',
@@ -488,6 +486,7 @@ export default function FleetView({ onNavigate }) {
                     cursor: 'pointer',
                     position: 'relative',
                     overflow: 'hidden',
+                    borderRadius: 2.5,
                     transition: 'all 200ms cubic-bezier(0.4, 0, 0.2, 1)',
                     '&:hover': {
                       transform: 'translateY(-3px)',
@@ -501,15 +500,16 @@ export default function FleetView({ onNavigate }) {
                 >
                   <Box sx={{ minWidth: 0, width: 1 }}>
                     {/* Card Header: Host Title & Status */}
-                    <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={1.5} sx={{ mb: 2 }}>
+                    <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={1} sx={{ mb: { xs: 1, sm: 2 } }}>
                       <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                        <Typography variant="subtitle1" noWrap sx={{ fontWeight: 800, fontSize: '1rem', letterSpacing: '-0.015em' }}>
+                        <Typography variant="subtitle1" noWrap sx={{ fontWeight: 800, fontSize: { xs: '0.9rem', sm: '1rem' }, letterSpacing: '-0.015em' }}>
                           {getFriendlyHostName(host)}
                         </Typography>
-                        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.5, flexWrap: 'wrap' }}>
-                          <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                        <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.25, flexWrap: 'wrap' }}>
+                          <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 600, fontSize: '0.7rem' }}>
                             {host.ip ? `${host.ip} • ` : ''}{host.platform || 'Windows'}
                           </Typography>
+
                           {host.version === otaStatus.latestAgentVersion ? (
                             <Tooltip title={`Agent đang ở phiên bản mới nhất (v${host.version || otaStatus.latestAgentVersion})`}>
                               <Label

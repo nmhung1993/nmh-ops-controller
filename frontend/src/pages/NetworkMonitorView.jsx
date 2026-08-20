@@ -1307,25 +1307,25 @@ export default function NetworkMonitorView() {
         </Stack>
       </Stack>
 
-      {/* Consolidated Network Hero Metrics Bar */}
-      <Card sx={{ borderRadius: 2.5, mb: 3, p: 2, bgcolor: alpha(theme.palette.background.paper, 0.8), backdropFilter: 'blur(8px)', border: `1px solid ${theme.palette.divider}` }}>
-        <Grid container spacing={2} alignItems="center">
+      {/* Consolidated Network Hero Metrics Bar (2x2 on Mobile, 4x1 on Desktop) */}
+      <Card sx={{ borderRadius: 2.5, mb: 2, p: { xs: 1.25, sm: 2 }, bgcolor: alpha(theme.palette.background.paper, 0.8), backdropFilter: 'blur(8px)', border: `1px solid ${theme.palette.divider}` }}>
+        <Grid container spacing={{ xs: 1, sm: 2 }} alignItems="center">
           {/* Total Targets */}
-          <Grid item xs={12} sm={6} md={3}>
-            <Stack direction="row" spacing={1.75} alignItems="center">
-              <Box sx={{ p: 1.25, borderRadius: 2, bgcolor: alpha(theme.palette.primary.main, 0.12), color: 'primary.main', display: 'flex' }}>
-                <Globe size={22} />
+          <Grid item xs={6} sm={6} md={3}>
+            <Stack direction="row" spacing={{ xs: 1, sm: 1.75 }} alignItems="center">
+              <Box sx={{ p: { xs: 0.75, sm: 1.25 }, borderRadius: 1.5, bgcolor: alpha(theme.palette.primary.main, 0.12), color: 'primary.main', display: 'flex', flexShrink: 0 }}>
+                <Globe size={18} />
               </Box>
               <Box sx={{ minWidth: 0 }}>
-                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.6875rem' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.625rem', display: 'block', noWrap: true }}>
                   Tổng số Target
                 </Typography>
-                <Stack direction="row" spacing={1} alignItems="baseline">
-                  <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                <Stack direction="row" spacing={0.5} alignItems="baseline" sx={{ flexWrap: 'wrap' }}>
+                  <Typography variant="h6" sx={{ fontWeight: 800, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                     {summary.total}
                   </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {summary.paused > 0 ? `(${summary.paused} tạm dừng)` : 'Đang ping'}
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>
+                    {summary.paused > 0 ? `(${summary.paused} dừng)` : 'Ping'}
                   </Typography>
                 </Stack>
               </Box>
@@ -1333,41 +1333,41 @@ export default function NetworkMonitorView() {
           </Grid>
 
           {/* Online / Stable */}
-          <Grid item xs={12} sm={6} md={3}>
-            <Stack direction="row" spacing={1.75} alignItems="center">
-              <Box sx={{ p: 1.25, borderRadius: 2, bgcolor: alpha(theme.palette.success.main, 0.12), color: 'success.main', display: 'flex' }}>
-                <CheckCircle2 size={22} />
+          <Grid item xs={6} sm={6} md={3}>
+            <Stack direction="row" spacing={{ xs: 1, sm: 1.75 }} alignItems="center">
+              <Box sx={{ p: { xs: 0.75, sm: 1.25 }, borderRadius: 1.5, bgcolor: alpha(theme.palette.success.main, 0.12), color: 'success.main', display: 'flex', flexShrink: 0 }}>
+                <CheckCircle2 size={18} />
               </Box>
               <Box sx={{ minWidth: 0 }}>
-                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.6875rem' }}>
-                  Trực tuyến / Ổn định
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.625rem', display: 'block', noWrap: true }}>
+                  Trực tuyến
                 </Typography>
-                <Stack direction="row" spacing={1} alignItems="baseline">
-                  <Typography variant="h5" sx={{ fontWeight: 800, color: 'success.main' }}>
+                <Stack direction="row" spacing={0.5} alignItems="baseline" sx={{ flexWrap: 'wrap' }}>
+                  <Typography variant="h6" sx={{ fontWeight: 800, color: 'success.main', fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                     {summary.online}
                   </Typography>
-                  <Chip label="Độ trễ tốt" size="small" color="success" sx={{ height: 18, fontSize: 10, fontWeight: 700 }} />
+                  <Chip label="Tốt" size="small" color="success" sx={{ height: 16, fontSize: 9, fontWeight: 700, px: 0.25 }} />
                 </Stack>
               </Box>
             </Stack>
           </Grid>
 
           {/* Degraded / Offline */}
-          <Grid item xs={12} sm={6} md={3}>
-            <Stack direction="row" spacing={1.75} alignItems="center">
-              <Box sx={{ p: 1.25, borderRadius: 2, bgcolor: alpha(theme.palette.error.main, 0.12), color: 'error.main', display: 'flex' }}>
-                <AlertTriangle size={22} />
+          <Grid item xs={6} sm={6} md={3}>
+            <Stack direction="row" spacing={{ xs: 1, sm: 1.75 }} alignItems="center">
+              <Box sx={{ p: { xs: 0.75, sm: 1.25 }, borderRadius: 1.5, bgcolor: alpha(theme.palette.error.main, 0.12), color: 'error.main', display: 'flex', flexShrink: 0 }}>
+                <AlertTriangle size={18} />
               </Box>
               <Box sx={{ minWidth: 0 }}>
-                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.6875rem' }}>
-                  Suy giảm / Mất kết nối
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.625rem', display: 'block', noWrap: true }}>
+                  Mất kết nối
                 </Typography>
-                <Stack direction="row" spacing={1} alignItems="baseline">
-                  <Typography variant="h5" sx={{ fontWeight: 800, color: summary.offline > 0 ? 'error.main' : 'text.primary' }}>
+                <Stack direction="row" spacing={0.5} alignItems="baseline" sx={{ flexWrap: 'wrap' }}>
+                  <Typography variant="h6" sx={{ fontWeight: 800, color: summary.offline > 0 ? 'error.main' : 'text.primary', fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                     {summary.degraded + summary.offline}
                   </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {summary.offline} offline • {summary.degraded} trễ cao
+                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>
+                    {summary.offline} off
                   </Typography>
                 </Stack>
               </Box>
@@ -1375,19 +1375,19 @@ export default function NetworkMonitorView() {
           </Grid>
 
           {/* WAN IP & Gateway */}
-          <Grid item xs={12} sm={6} md={3}>
-            <Stack direction="row" spacing={1.75} alignItems="center">
-              <Box sx={{ p: 1.25, borderRadius: 2, bgcolor: alpha(theme.palette.info.main, 0.12), color: 'info.main', display: 'flex' }}>
-                <RouterIcon size={22} />
+          <Grid item xs={6} sm={6} md={3}>
+            <Stack direction="row" spacing={{ xs: 1, sm: 1.75 }} alignItems="center">
+              <Box sx={{ p: { xs: 0.75, sm: 1.25 }, borderRadius: 1.5, bgcolor: alpha(theme.palette.info.main, 0.12), color: 'info.main', display: 'flex', flexShrink: 0 }}>
+                <RouterIcon size={18} />
               </Box>
               <Box sx={{ minWidth: 0 }}>
-                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.6875rem' }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.625rem', display: 'block', noWrap: true }}>
                   WAN & Gateway
                 </Typography>
-                <Typography variant="subtitle2" noWrap sx={{ fontWeight: 800, color: 'primary.main', fontFamily: 'monospace' }}>
+                <Typography variant="body2" noWrap sx={{ fontWeight: 800, color: 'primary.main', fontFamily: 'monospace', fontSize: { xs: '0.75rem', sm: '0.875rem' } }}>
                   {wanIp}
                 </Typography>
-                <Typography variant="caption" noWrap sx={{ color: 'text.secondary', display: 'block', fontSize: '0.7rem' }}>
+                <Typography variant="caption" noWrap sx={{ color: 'text.secondary', display: 'block', fontSize: '0.65rem' }}>
                   GW: {gatewayStr}
                 </Typography>
               </Box>
@@ -1395,6 +1395,7 @@ export default function NetworkMonitorView() {
           </Grid>
         </Grid>
       </Card>
+
 
       {/* Tabs Selector */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
