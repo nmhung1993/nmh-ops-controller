@@ -1470,11 +1470,12 @@ app.get('/api/v1/ota/agent-bundle', (req, res) => {
       if (fs.existsSync(linuxPath)) files['agent.js'] = fs.readFileSync(linuxPath, 'utf8');
       if (fs.existsSync(pkgPath)) files['package.json'] = fs.readFileSync(pkgPath, 'utf8');
     } else if (platform.includes('homeassistant') || platform.includes('home assistant') || platform.includes('hass')) {
-
       const hassPath = path.join(__dirname, '..', 'homeassistant-addon', 'agent.js');
       const pkgPath = path.join(__dirname, '..', 'homeassistant-addon', 'package.json');
+      const runPath = path.join(__dirname, '..', 'homeassistant-addon', 'run.sh');
       if (fs.existsSync(hassPath)) files['agent.js'] = fs.readFileSync(hassPath, 'utf8');
       if (fs.existsSync(pkgPath)) files['package.json'] = fs.readFileSync(pkgPath, 'utf8');
+      if (fs.existsSync(runPath)) files['run.sh'] = fs.readFileSync(runPath, 'utf8');
     } else {
       const agentPath = path.join(__dirname, '..', 'agent', 'agent.js');
       const windowsPath = path.join(__dirname, '..', 'agent', 'windows.js');

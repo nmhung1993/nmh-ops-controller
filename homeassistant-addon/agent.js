@@ -4,8 +4,9 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const WebSocket = require('ws');
+
 
 const VERSION = '2.1.5';
 const CONFIG_FILE = argument('--config') || '/data/options.json';
@@ -104,6 +105,9 @@ function connect() {
           for (const [filename, content] of Object.entries(bundle.files)) {
             const targetPath = path.join(__dirname, filename);
             fs.writeFileSync(targetPath, content, 'utf8');
+            if (filename.endsWith('.sh')) {
+              try { fs.chmodSync(targetPath, 0o755); } catch {}
+            }
           }
           state.version = bundle.version || '2.1.5';
           saveState();
@@ -112,8 +116,19 @@ function connect() {
           send(envelope('agent.event', { eventType: 'agent.ota.restarting', severity: 'info', message: `Add-on upgraded to v${bundle.version || '2.1.5'}. Restarting container...` }));
           setTimeout(() => {
             console.log('[Home Assistant OTA] Restarting Add-on process now...');
+            try {
+              const child = spawn(process.execPath, process.argv.slice(1), {
+                detached: true,
+                stdio: 'inherit',
+                env: process.env
+              });
+              child.unref();
+            } catch (err) {
+              console.error('[Home Assistant OTA] Spawn fallback error:', err.message);
+            }
             process.exit(0);
           }, 1000);
+
         } catch (err) {
           console.error('[Home Assistant OTA] Upgrade failed:', err.message);
           send(envelope('agent.command.result', { commandId, status: 'failed', error: err.message }));
