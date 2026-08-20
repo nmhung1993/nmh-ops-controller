@@ -352,10 +352,10 @@ export default function HealthScoreWidget() {
                     >
                       <Box sx={{ minWidth: 0, flexGrow: 1 }}>
                         <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.8125rem' }}>
-                          {iss.title}
+                          {iss.titleKey ? t(iss.titleKey, iss.titleParams) : iss.title}
                         </Typography>
                         <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 0.25 }}>
-                          {iss.message}
+                          {iss.messageKey ? t(iss.messageKey, iss.messageParams) : iss.message}
                         </Typography>
                       </Box>
                       <Tooltip title={t('health.markResolvedTooltip')}>
@@ -425,10 +425,10 @@ export default function HealthScoreWidget() {
                       >
                         <Box sx={{ minWidth: 0 }}>
                           <Typography variant="caption" noWrap sx={{ fontWeight: 700, display: 'block', color: 'text.primary' }}>
-                            {iss.title}
+                            {iss.titleKey ? t(iss.titleKey, iss.titleParams) : iss.title}
                           </Typography>
                           <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
-                            {iss.message}
+                            {iss.messageKey ? t(iss.messageKey, iss.messageParams) : iss.message}
                           </Typography>
                         </Box>
                         <Button
@@ -468,7 +468,7 @@ export default function HealthScoreWidget() {
                     }}
                   >
                     <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
-                      {rec.key ? t(rec.key, rec.params) : (rec.title === 'Hệ thống đang hoạt động tối ưu. Toàn bộ máy trạm, kết nối mạng và Gateway ổn định.' ? t('health.allOptimal') : rec.title)}
+                      {rec.key ? t(rec.key, rec.params) : (rec.titleKey ? t(rec.titleKey, rec.titleParams) : (rec.title === 'Hệ thống đang hoạt động tối ưu. Toàn bộ máy trạm, kết nối mạng và Gateway ổn định.' ? t('health.allOptimal') : rec.title))}
                     </Typography>
                     {rec.href && (
                       <Button

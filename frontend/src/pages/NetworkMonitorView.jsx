@@ -1156,12 +1156,12 @@ export default function NetworkMonitorView() {
 
   const chartSeries = useMemo(() => {
     return [
-      { name: 'Độ trễ Max', type: 'area', data: latencySeriesData },
-      { name: 'Độ trễ Min', type: 'line', data: minLatencySeriesData },
-      { name: 'Spike (>100ms)', type: 'line', data: spikeSeriesData },
-      { name: 'Drop Timeout', type: 'column', data: dropSeriesData }
+      { name: t('network.latencyMax'), type: 'area', data: latencySeriesData },
+      { name: t('network.latencyMin'), type: 'line', data: minLatencySeriesData },
+      { name: t('network.spikeGt100ms'), type: 'line', data: spikeSeriesData },
+      { name: t('network.dropTimeoutSeries'), type: 'column', data: dropSeriesData }
     ];
-  }, [latencySeriesData, minLatencySeriesData, spikeSeriesData, dropSeriesData]);
+  }, [latencySeriesData, minLatencySeriesData, spikeSeriesData, dropSeriesData, t]);
 
   const totalDrops = useMemo(() => {
     return chartMetrics.reduce((sum, m) => sum + (m.dropCount || (m.isDrop || m.status === 'offline' || m.status === 'degraded' ? 1 : 0)), 0);

@@ -11,7 +11,7 @@ const fs = require('fs');
 function getCleanHostName(agent) {
   if (agent.display_name && !agent.display_name.startsWith('DESKTOP-')) return agent.display_name;
   if (agent.hostname && !agent.hostname.startsWith('DESKTOP-')) return agent.hostname;
-  return `Máy trạm (${agent.id?.slice(0, 8) || 'Agent'})`;
+  return agent.id ? `Agent-${agent.id.slice(0, 6)}` : 'Agent';
 }
 
 function calculateHealthScore(db, mikrotikStatus = null, networkTargets = [], resolvedIssueIds = []) {
@@ -57,12 +57,18 @@ function calculateHealthScore(db, mikrotikStatus = null, networkTargets = [], re
               agentId: agent.id,
               type: 'warning',
               category: 'fleet',
+              titleKey: 'health.issue.cpuHighTitle',
+              titleParams: { host: hostName },
+              messageKey: 'health.issue.cpuHighMsg',
+              messageParams: { cpu: cpuPercent, host: hostName },
               title: `CPU tải cao: ${hostName}`,
               message: `Mức tải CPU đạt ${cpuPercent}% trên máy ${hostName}.`,
               resolved: isResolved
             });
             if (!isResolved) {
               recommendations.push({
+                key: 'health.rec.checkCpu',
+                params: { host: hostName },
                 title: `Kiểm tra tiến trình ngốn CPU trên ${hostName}`,
                 actionType: 'script',
                 scriptId: 'sys_top_cpu',
@@ -80,12 +86,18 @@ function calculateHealthScore(db, mikrotikStatus = null, networkTargets = [], re
               agentId: agent.id,
               type: 'warning',
               category: 'fleet',
+              titleKey: 'health.issue.ramHighTitle',
+              titleParams: { host: hostName },
+              messageKey: 'health.issue.ramHighMsg',
+              messageParams: { ram: memoryPercent, host: hostName },
               title: `RAM gần đầy: ${hostName}`,
               message: `Bộ nhớ RAM sử dụng ${memoryPercent}% trên máy ${hostName}.`,
               resolved: isResolved
             });
             if (!isResolved) {
               recommendations.push({
+                key: 'health.rec.cleanRam',
+                params: { host: hostName },
                 title: `Dọn dẹp file tạm & giải phóng bộ nhớ trên ${hostName}`,
                 actionType: 'script',
                 scriptId: 'sys_clean_temp',
@@ -103,12 +115,18 @@ function calculateHealthScore(db, mikrotikStatus = null, networkTargets = [], re
               agentId: agent.id,
               type: 'error',
               category: 'fleet',
+              titleKey: 'health.issue.diskHighTitle',
+              titleParams: { host: hostName },
+              messageKey: 'health.issue.diskHighMsg',
+              messageParams: { disk: diskPercent, host: hostName },
               title: `Ổ đĩa sắp hết dung lượng: ${hostName}`,
               message: `Dung lượng ổ đĩa đã sử dụng ${diskPercent}% trên máy ${hostName}.`,
               resolved: isResolved
             });
             if (!isResolved) {
               recommendations.push({
+                key: 'health.rec.cleanDisk',
+                params: { host: hostName },
                 title: `Chạy dọn dẹp dung lượng ổ đĩa trên ${hostName}`,
                 actionType: 'script',
                 scriptId: 'sys_clean_temp',
@@ -126,8 +144,12 @@ function calculateHealthScore(db, mikrotikStatus = null, networkTargets = [], re
               agentId: agent.id,
               type: 'warning',
               category: 'fleet',
+              titleKey: 'health.issue.tempHighTitle',
+              titleParams: { host: hostName },
+              messageKey: 'health.issue.tempHighMsg',
+              messageParams: { temp: tempCelsius, host: hostName },
               title: `Nhiệt độ phần cứng cao: ${hostName}`,
-              message: `Nhiệt độ cảm biến ghi nhận ${tempCelsius}°C.`,
+              message: `Nhiệt độ cảm biến ghi nhận ${tempCelsius}°C trên máy ${hostName}.`,
               resolved: isResolved
             });
           }
@@ -142,12 +164,18 @@ function calculateHealthScore(db, mikrotikStatus = null, networkTargets = [], re
           agentId: agent.id,
           type: 'error',
           category: 'fleet',
+          titleKey: 'health.issue.offlineTitle',
+          titleParams: { host: hostName },
+          messageKey: 'health.issue.offlineMsg',
+          messageParams: { host: hostName, ip: agent.ip_address || 'N/A' },
           title: `Máy trạm ngoại tuyến: ${hostName}`,
           message: `Máy trạm ${hostName} (${agent.ip_address || 'N/A'}) đã mất kết nối.`,
           resolved: isResolved
         });
         if (!isResolved) {
           recommendations.push({
+            key: 'health.rec.checkAgentPower',
+            params: { host: hostName },
             title: `Kiểm tra nguồn hoặc dịch vụ agent trên ${hostName}`,
             actionType: 'link',
             href: `/#hosts`
@@ -175,6 +203,10 @@ function calculateHealthScore(db, mikrotikStatus = null, networkTargets = [], re
           id: issId,
           type: 'error',
           category: 'network',
+          titleKey: 'health.issue.netOfflineTitle',
+          titleParams: { target: target.name || target.host },
+          messageKey: 'health.issue.netOfflineMsg',
+          messageParams: { host: target.host },
           title: `Mục tiêu mạng mất kết nối: ${target.name || target.host}`,
           message: `Địa chỉ IP ${target.host} không phản hồi gói tin ping.`,
           resolved: isResolved
@@ -190,6 +222,10 @@ function calculateHealthScore(db, mikrotikStatus = null, networkTargets = [], re
           id: issId,
           type: 'warning',
           category: 'network',
+          titleKey: 'health.issue.netDegradedTitle',
+          titleParams: { target: target.name || target.host },
+          messageKey: 'health.issue.netDegradedMsg',
+          messageParams: { name: target.name || target.host, host: target.host, latency: target.latency || '--', packetLoss: target.packetLoss || 0 },
           title: `Độ trễ hoặc rớt gói cao: ${target.name || target.host}`,
           message: `Mục tiêu ${target.name} (${target.host}) có độ trễ ${target.latency || '--'}ms hoặc mất gói ${target.packetLoss || 0}%.`,
           resolved: isResolved
@@ -199,6 +235,7 @@ function calculateHealthScore(db, mikrotikStatus = null, networkTargets = [], re
 
     if (highLatencyCount > 0 || offlineTargetCount > 0) {
       recommendations.push({
+        key: 'health.rec.checkNetworkTab',
         title: `Kiểm tra hạ tầng mạng trong tab Mạng nội bộ`,
         actionType: 'link',
         href: `/#network`
@@ -216,6 +253,8 @@ function calculateHealthScore(db, mikrotikStatus = null, networkTargets = [], re
         id: issId,
         type: 'error',
         category: 'gateway',
+        titleKey: 'health.issue.gatewayOfflineTitle',
+        messageKey: 'health.issue.gatewayOfflineMsg',
         title: 'Gateway Ngoại Tuyến',
         message: 'Không thể kết nối đến Router Gateway (192.168.1.1).',
         resolved: isResolved
@@ -229,12 +268,15 @@ function calculateHealthScore(db, mikrotikStatus = null, networkTargets = [], re
           id: issId,
           type: 'error',
           category: 'gateway',
+          titleKey: 'health.issue.pppoeDisconnectedTitle',
+          messageKey: 'health.issue.pppoeDisconnectedMsg',
           title: 'PPPoE Internet Mất Kết Nối',
           message: 'Giao diện PPPoE WAN đang ở trạng thái ngắt kết nối.',
           resolved: isResolved
         });
         if (!isResolved) {
           recommendations.push({
+            key: 'health.rec.reconnectPppoe',
             title: 'Quay số lại phiên PPPoE trên Gateway',
             actionType: 'link',
             href: `/#network`
@@ -250,6 +292,9 @@ function calculateHealthScore(db, mikrotikStatus = null, networkTargets = [], re
           id: issId,
           type: 'warning',
           category: 'gateway',
+          titleKey: 'health.issue.gatewayHighCpuTitle',
+          messageKey: 'health.issue.gatewayHighCpuMsg',
+          messageParams: { cpu: mikrotikStatus.cpu },
           title: 'CPU Router Gateway Cao',
           message: `CPU Gateway đang tải ${mikrotikStatus.cpu}%.`,
           resolved: isResolved
@@ -264,6 +309,9 @@ function calculateHealthScore(db, mikrotikStatus = null, networkTargets = [], re
           id: issId,
           type: 'warning',
           category: 'gateway',
+          titleKey: 'health.issue.gatewayHighRamTitle',
+          messageKey: 'health.issue.gatewayHighRamMsg',
+          messageParams: { ram: mikrotikStatus.memory },
           title: 'RAM Router Gateway Sắp Hết',
           message: `Bộ nhớ RAM Gateway sử dụng ${mikrotikStatus.memory}%.`,
           resolved: isResolved

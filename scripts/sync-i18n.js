@@ -138,6 +138,17 @@ const newTranslationsVi = {
   "network.noRouterMeshTitle": "Chưa có thiết bị Router / Wi-Fi Mesh nào được quản lý",
   "network.noRouterMeshDesc": "Hệ thống chưa kết nối thiết bị Router hoặc Wi-Fi Mesh nào. Bạn có thể thêm thiết bị Xiaomi Mesh, TP-Link Deco, ZTE EasyMesh hoặc Gecoos AP để theo dõi topology và thiết bị kết nối.",
   "network.addRouterMeshNow": "Thêm Router/Mesh Ngay",
+  "network.latencyMax": "Độ trễ Max",
+  "network.latencyMin": "Độ trễ Min",
+  "network.spikeGt100ms": "Spike (>100ms)",
+  "network.dropTimeoutSeries": "Drop Timeout",
+
+  // Error Boundary
+  "errorBoundary.title": "Đã xảy ra sự cố hiển thị trang này",
+  "errorBoundary.defaultMessage": "Không thể nạp thành phần giao diện hiện tại.",
+  "errorBoundary.retry": "Thử lại",
+  "errorBoundary.goHome": "Về trang Máy trạm",
+  "errorBoundary.reload": "Tải lại trang",
 
   // Device Dialog Types
   "deviceDialog.typeMikrotik": "MikroTik RouterOS (Gateway)",
@@ -172,6 +183,11 @@ const newTranslationsVi = {
   "docker.daemonUnavailable": "Không thể kết nối đến Docker daemon trên node này. Hãy chắc chắn Docker đang chạy hoặc socket đã được mount.",
   "docker.runningBadge": "{count} chạy",
   "docker.restartStackTooltip": "Khởi động lại toàn bộ Stack",
+  "docker.restartTooltip": "Khởi động lại Container",
+  "docker.stopTooltip": "Dừng Container",
+  "docker.startTooltip": "Bắt đầu Container",
+  "docker.logsTooltip": "Xem Logs",
+  "docker.terminalTooltip": "Web Console / Terminal",
   "docker.loadingDetails": "Đang tải chi tiết cấu hình container...",
   "docker.deleteContainerTooltip": "Xoá Container",
   "docker.confirmDeleteContainer": "Xoá container [{name}] vĩnh viễn?",
@@ -225,6 +241,45 @@ const newTranslationsVi = {
   "health.noRecommendations": "Hệ thống đang hoạt động tối ưu, không có đề xuất cần can thiệp.",
   "health.smartOps": "Khuyến nghị vận hành (Smart Ops)",
   "health.go": "Chuyển",
+
+  // Health Issues & Recommendations
+  "health.issue.cpuHighTitle": "CPU tải cao: {host}",
+  "health.issue.cpuHighMsg": "Mức tải CPU đạt {cpu}% trên máy {host}.",
+  "health.rec.checkCpu": "Kiểm tra tiến trình ngốn CPU trên {host}",
+
+  "health.issue.ramHighTitle": "RAM gần đầy: {host}",
+  "health.issue.ramHighMsg": "Bộ nhớ RAM sử dụng {ram}% trên máy {host}.",
+  "health.rec.cleanRam": "Dọn dẹp file tạm & giải phóng bộ nhớ trên {host}",
+
+  "health.issue.diskHighTitle": "Ổ đĩa sắp hết dung lượng: {host}",
+  "health.issue.diskHighMsg": "Dung lượng ổ đĩa đã sử dụng {disk}% trên máy {host}.",
+  "health.rec.cleanDisk": "Chạy dọn dẹp dung lượng ổ đĩa trên {host}",
+
+  "health.issue.tempHighTitle": "Nhiệt độ phần cứng cao: {host}",
+  "health.issue.tempHighMsg": "Nhiệt độ cảm biến ghi nhận {temp}°C trên máy {host}.",
+
+  "health.issue.offlineTitle": "Máy trạm ngoại tuyến: {host}",
+  "health.issue.offlineMsg": "Máy trạm {host} ({ip}) đã mất kết nối.",
+  "health.rec.checkAgentPower": "Kiểm tra nguồn hoặc dịch vụ agent trên {host}",
+
+  "health.issue.netOfflineTitle": "Mục tiêu mạng mất kết nối: {target}",
+  "health.issue.netOfflineMsg": "Địa chỉ IP {host} không phản hồi gói tin ping.",
+  "health.issue.netDegradedTitle": "Độ trễ hoặc rớt gói cao: {target}",
+  "health.issue.netDegradedMsg": "Mục tiêu {name} ({host}) có độ trễ {latency}ms hoặc mất gói {packetLoss}%.",
+  "health.rec.checkNetworkTab": "Kiểm tra hạ tầng mạng trong tab Mạng nội bộ",
+
+  "health.issue.gatewayOfflineTitle": "Gateway Ngoại Tuyến",
+  "health.issue.gatewayOfflineMsg": "Không thể kết nối đến Router Gateway (192.168.1.1).",
+
+  "health.issue.pppoeDisconnectedTitle": "PPPoE Internet Mất Kết Nối",
+  "health.issue.pppoeDisconnectedMsg": "Giao diện PPPoE WAN đang ở trạng thái ngắt kết nối.",
+  "health.rec.reconnectPppoe": "Quay số lại phiên PPPoE trên Gateway",
+
+  "health.issue.gatewayHighCpuTitle": "CPU Router Gateway Cao",
+  "health.issue.gatewayHighCpuMsg": "CPU Gateway đang tải {cpu}%.",
+
+  "health.issue.gatewayHighRamTitle": "RAM Router Gateway Sắp Hết",
+  "health.issue.gatewayHighRamMsg": "Bộ nhớ RAM Gateway sử dụng {ram}%.",
 
   // Dashboard
   "dashboard.sampleRange": "Khoảng thời gian: {range} ({points} điểm mẫu)",
@@ -670,6 +725,45 @@ const newTranslationsEn = {
   "health.noRecommendations": "System is operating optimally, no action needed.",
   "health.smartOps": "Smart Ops Recommendations",
   "health.go": "Go",
+
+  // Health Issues & Recommendations
+  "health.issue.cpuHighTitle": "High CPU load: {host}",
+  "health.issue.cpuHighMsg": "CPU utilization reached {cpu}% on {host}.",
+  "health.rec.checkCpu": "Check high CPU processes on {host}",
+
+  "health.issue.ramHighTitle": "RAM nearly full: {host}",
+  "health.issue.ramHighMsg": "RAM usage is at {ram}% on {host}.",
+  "health.rec.cleanRam": "Clean temporary files & free memory on {host}",
+
+  "health.issue.diskHighTitle": "Low disk space: {host}",
+  "health.issue.diskHighMsg": "Disk usage reached {disk}% on {host}.",
+  "health.rec.cleanDisk": "Run disk cleanup on {host}",
+
+  "health.issue.tempHighTitle": "High hardware temperature: {host}",
+  "health.issue.tempHighMsg": "Sensor temperature recorded at {temp}°C on {host}.",
+
+  "health.issue.offlineTitle": "Workstation offline: {host}",
+  "health.issue.offlineMsg": "Workstation {host} ({ip}) disconnected.",
+  "health.rec.checkAgentPower": "Check power supply or agent service on {host}",
+
+  "health.issue.netOfflineTitle": "Network target offline: {target}",
+  "health.issue.netOfflineMsg": "IP address {host} is not responding to ping.",
+  "health.issue.netDegradedTitle": "High latency or packet loss: {target}",
+  "health.issue.netDegradedMsg": "Target {name} ({host}) has {latency}ms latency or {packetLoss}% packet loss.",
+  "health.rec.checkNetworkTab": "Check network infrastructure in Network tab",
+
+  "health.issue.gatewayOfflineTitle": "Gateway Offline",
+  "health.issue.gatewayOfflineMsg": "Cannot connect to Router Gateway (192.168.1.1).",
+
+  "health.issue.pppoeDisconnectedTitle": "PPPoE Internet Disconnected",
+  "health.issue.pppoeDisconnectedMsg": "PPPoE WAN interface is disconnected.",
+  "health.rec.reconnectPppoe": "Redial PPPoE session on Gateway",
+
+  "health.issue.gatewayHighCpuTitle": "High Gateway CPU Load",
+  "health.issue.gatewayHighCpuMsg": "Gateway CPU usage is at {cpu}%.",
+
+  "health.issue.gatewayHighRamTitle": "Low Gateway Free RAM",
+  "health.issue.gatewayHighRamMsg": "Gateway RAM usage is at {ram}%.",
 
   // Dashboard
   "dashboard.sampleRange": "Time Range: {range} ({points} samples)",

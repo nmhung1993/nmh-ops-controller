@@ -1481,6 +1481,7 @@ function MobileContainerCard({
   onOpenLogs,
   onOpenTerminal
 }) {
+  const { t } = useLanguage();
   const isRunning = c.state === 'running';
   const isPaused = c.state === 'paused';
   const currentAction = actionLoading[c.id];
@@ -1525,26 +1526,26 @@ function MobileContainerCard({
 
         {/* Actions */}
         <Stack direction="row" spacing={0.25} onClick={(e) => e.stopPropagation()}>
-          <Tooltip title="Logs">
+          <Tooltip title={t('docker.logsTooltip')}>
             <IconButton size="small" onClick={onOpenLogs} sx={{ p: 0.5 }}>
               <FileText size={14} />
             </IconButton>
           </Tooltip>
           {isRunning && (
-            <Tooltip title="Terminal">
+            <Tooltip title={t('docker.terminalTooltip')}>
               <IconButton size="small" color="primary" onClick={onOpenTerminal} sx={{ p: 0.5 }}>
                 <Terminal size={14} />
               </IconButton>
             </Tooltip>
           )}
           {isRunning ? (
-            <Tooltip title="Restart">
+            <Tooltip title={t('docker.restartTooltip')}>
               <IconButton size="small" color="warning" onClick={(e) => onAction(e, c.id, 'restart', c.name)} disabled={Boolean(currentAction)} sx={{ p: 0.5 }}>
                 <RotateCw size={14} className={currentAction === 'restart' ? 'animate-spin' : ''} />
               </IconButton>
             </Tooltip>
           ) : (
-            <Tooltip title="Start">
+            <Tooltip title={t('docker.startTooltip')}>
               <IconButton size="small" color="success" onClick={(e) => onAction(e, c.id, 'start', c.name)} disabled={Boolean(currentAction)} sx={{ p: 0.5 }}>
                 <Play size={14} />
               </IconButton>
@@ -1586,7 +1587,6 @@ function MobileContainerCard({
 
 // Reusable Container Table Row Component (Desktop)
 function ContainerTableRow({
-
   container: c,
   actionLoading,
   onAction,
@@ -1594,6 +1594,7 @@ function ContainerTableRow({
   onOpenLogs,
   onOpenTerminal
 }) {
+  const { t } = useLanguage();
   const isRunning = c.state === 'running';
   const isPaused = c.state === 'paused';
   const currentAction = actionLoading[c.id];
@@ -1712,7 +1713,7 @@ function ContainerTableRow({
         <Stack direction="row" spacing={0.5} justifyContent="flex-end" alignItems="center">
           {isRunning ? (
             <>
-              <Tooltip title="Restart Container">
+              <Tooltip title={t('docker.restartTooltip')}>
                 <IconButton
                   size="small"
                   color="primary"
@@ -1722,7 +1723,7 @@ function ContainerTableRow({
                   <RotateCw size={15} />
                 </IconButton>
               </Tooltip>
-              <Tooltip title="Stop Container">
+              <Tooltip title={t('docker.stopTooltip')}>
                 <IconButton
                   size="small"
                   color="warning"
@@ -1734,7 +1735,7 @@ function ContainerTableRow({
               </Tooltip>
             </>
           ) : (
-            <Tooltip title="Start Container">
+            <Tooltip title={t('docker.startTooltip')}>
               <IconButton
                 size="small"
                 color="success"
@@ -1746,7 +1747,7 @@ function ContainerTableRow({
             </Tooltip>
           )}
 
-          <Tooltip title="Live Logs">
+          <Tooltip title={t('docker.logsTooltip')}>
             <IconButton
               size="small"
               color="info"
@@ -1760,7 +1761,7 @@ function ContainerTableRow({
           </Tooltip>
 
           {isRunning && (
-            <Tooltip title="Web Console / Terminal">
+            <Tooltip title={t('docker.terminalTooltip')}>
               <IconButton
                 size="small"
                 color="secondary"
