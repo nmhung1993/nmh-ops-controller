@@ -133,7 +133,7 @@ export default function Header({ onOpenNav, currentPage, onOpenPasswordDialog, o
         {/* Right Side: Host Selector & Actions */}
         <Stack direction="row" alignItems="center" spacing={{ xs: 0.5, sm: 1.5 }} sx={{ minWidth: 0 }}>
           {/* Quick Command Palette Button */}
-          <Tooltip title={lang === 'vi' ? "Tìm nhanh máy trạm, điều hướng, kịch bản (Ctrl + K)" : "Quick search machines, navigation, scripts (Ctrl + K)"}>
+          <Tooltip title={t('header.quickSearchTooltip')}>
             <Button
               variant="outlined"
               size="small"
@@ -156,7 +156,7 @@ export default function Header({ onOpenNav, currentPage, onOpenPasswordDialog, o
                 px: 1.2
               }}
             >
-              {lang === 'vi' ? 'Tìm nhanh...' : 'Quick search...'}
+              {t('header.quickSearch')}
             </Button>
           </Tooltip>
           <IconButton
@@ -291,7 +291,7 @@ export default function Header({ onOpenNav, currentPage, onOpenPasswordDialog, o
           </Menu>
 
           {/* Theme & Color Switcher */}
-          <Tooltip title={lang === 'vi' ? "Tùy chỉnh Giao diện & Màu sắc" : "Theme & Accent Color"}>
+          <Tooltip title={t('header.themeSettings')}>
             <IconButton
               onClick={(e) => setAnchorElTheme(e.currentTarget)}
               sx={{
@@ -322,12 +322,12 @@ export default function Header({ onOpenNav, currentPage, onOpenPasswordDialog, o
             }}
           >
             <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Palette size={16} /> {lang === 'vi' ? 'Giao diện & Màu sắc' : 'Theme & Color Presets'}
+              <Palette size={16} /> {t('header.themeMenuTitle')}
             </Typography>
 
             {/* Mode Switcher */}
             <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, textTransform: 'uppercase', mb: 1, display: 'block' }}>
-              {lang === 'vi' ? 'Chế độ hiển thị' : 'Theme Mode'}
+              {t('header.themeMode')}
             </Typography>
             <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
               <Button
@@ -338,7 +338,7 @@ export default function Header({ onOpenNav, currentPage, onOpenPasswordDialog, o
                 onClick={() => setThemeMode('light')}
                 sx={{ borderRadius: 1.5, fontWeight: 700 }}
               >
-                {lang === 'vi' ? 'Sáng' : 'Light'}
+                {t('header.modeLight')}
               </Button>
               <Button
                 variant={themeMode === 'dark' ? 'contained' : 'outlined'}
@@ -348,7 +348,7 @@ export default function Header({ onOpenNav, currentPage, onOpenPasswordDialog, o
                 onClick={() => setThemeMode('dark')}
                 sx={{ borderRadius: 1.5, fontWeight: 700 }}
               >
-                {lang === 'vi' ? 'Tối' : 'Dark'}
+                {t('header.modeDark')}
               </Button>
             </Stack>
 
@@ -356,7 +356,7 @@ export default function Header({ onOpenNav, currentPage, onOpenPasswordDialog, o
 
             {/* Color Presets */}
             <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, textTransform: 'uppercase', mb: 1, display: 'block' }}>
-              {lang === 'vi' ? 'Tông màu chủ đạo' : 'Accent Color'}
+              {t('header.accentColor')}
             </Typography>
             <Box
               sx={{

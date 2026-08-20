@@ -64,31 +64,31 @@ export default function CommandPalette({ open, onClose, onNavigate }) {
   const allItems = useMemo(() => {
     const items = [
       // Navigation Pages
-      { id: 'nav_fleet', category: 'Điều hướng', title: 'Danh sách máy trạm (Fleet Overview)', icon: Server, action: () => onNavigate('fleet') },
-      { id: 'nav_dashboard', category: 'Điều hướng', title: 'Tổng quan hệ thống (Dashboard Telemetry)', icon: LayoutDashboard, action: () => onNavigate('dashboard') },
-      { id: 'nav_network', category: 'Điều hướng', title: 'Mạng nội bộ & MikroTik RouterOS (Network Monitor)', icon: Globe, action: () => onNavigate('network') },
-      { id: 'nav_docker', category: 'Điều hướng', title: 'Quản lý Docker & Containers', icon: Boxes, action: () => onNavigate('docker') },
-      { id: 'nav_processes', category: 'Điều hướng', title: 'Quản lý Tiến trình (Processes)', icon: Activity, action: () => onNavigate('processes') },
-      { id: 'nav_watchdog', category: 'Điều hướng', title: 'Giám sát tự động (Watchdog Self-Healing)', icon: ShieldCheck, action: () => onNavigate('watchdog') },
-      { id: 'nav_scripts', category: 'Điều hướng', title: 'Kho Kịch Bản & Thao Tác 1-Click (Script Hub)', icon: Terminal, action: () => onNavigate('scripts') },
-      { id: 'nav_activity', category: 'Điều hướng', title: 'Nhật ký hoạt động & Kiểm toán (Audit Trail)', icon: History, action: () => onNavigate('activity') },
-      { id: 'nav_admin', category: 'Điều hướng', title: 'Quản trị hệ thống & Phân quyền (Admin)', icon: Settings, action: () => onNavigate('admin') },
+      { id: 'nav_fleet', category: t('commandPalette.category.navigation'), title: t('commandPalette.nav.fleet'), icon: Server, action: () => onNavigate('fleet') },
+      { id: 'nav_dashboard', category: t('commandPalette.category.navigation'), title: t('commandPalette.nav.dashboard'), icon: LayoutDashboard, action: () => onNavigate('dashboard') },
+      { id: 'nav_network', category: t('commandPalette.category.navigation'), title: t('commandPalette.nav.network'), icon: Globe, action: () => onNavigate('network') },
+      { id: 'nav_docker', category: t('commandPalette.category.navigation'), title: t('commandPalette.nav.docker'), icon: Boxes, action: () => onNavigate('docker') },
+      { id: 'nav_processes', category: t('commandPalette.category.navigation'), title: t('commandPalette.nav.processes'), icon: Activity, action: () => onNavigate('processes') },
+      { id: 'nav_watchdog', category: t('commandPalette.category.navigation'), title: t('commandPalette.nav.watchdog'), icon: ShieldCheck, action: () => onNavigate('watchdog') },
+      { id: 'nav_scripts', category: t('commandPalette.category.navigation'), title: t('commandPalette.nav.scripts'), icon: Terminal, action: () => onNavigate('scripts') },
+      { id: 'nav_activity', category: t('commandPalette.category.navigation'), title: t('commandPalette.nav.activity'), icon: History, action: () => onNavigate('activity') },
+      { id: 'nav_admin', category: t('commandPalette.category.navigation'), title: t('commandPalette.nav.admin'), icon: Settings, action: () => onNavigate('admin') },
 
       // Quick Actions
-      { id: 'act_theme', category: 'Thao tác nhanh', title: `Chuyển sang giao diện ${mode === 'dark' ? 'Sáng' : 'Tối'}`, icon: mode === 'dark' ? Sun : Moon, action: () => toggleTheme() },
-      { id: 'act_lang', category: 'Thao tác nhanh', title: `Đổi ngôn ngữ sang ${lang === 'vi' ? 'English' : 'Tiếng Việt'}`, icon: Languages, action: () => setLang(lang === 'vi' ? 'en' : 'vi') },
-      { id: 'act_logout', category: 'Thao tác nhanh', title: 'Đăng xuất tài khoản', icon: LogOut, action: () => logout() }
+      { id: 'act_theme', category: t('commandPalette.category.quickActions'), title: t('commandPalette.switchTheme', { mode: mode === 'dark' ? t('header.modeLight') : t('header.modeDark') }), icon: mode === 'dark' ? Sun : Moon, action: () => toggleTheme() },
+      { id: 'act_lang', category: t('commandPalette.category.quickActions'), title: t('commandPalette.switchLang', { lang: lang === 'vi' ? 'English' : 'Tiếng Việt' }), icon: Languages, action: () => setLang(lang === 'vi' ? 'en' : 'vi') },
+      { id: 'act_logout', category: t('commandPalette.category.quickActions'), title: t('commandPalette.logout'), icon: LogOut, action: () => logout() }
     ];
 
     // Add online / all hosts
     (hosts || []).forEach(h => {
       items.push({
         id: `host_${h.id}`,
-        category: 'Máy trạm (Hosts)',
+        category: t('commandPalette.category.hosts'),
         title: `${h.hostname || h.id} (${h.ip_address || 'N/A'})`,
-        subtitle: `${h.platform?.split(' ')[0] || 'OS'} • ${h.connected ? 'Online' : 'Offline'}`,
+        subtitle: `${h.platform?.split(' ')[0] || 'OS'} • ${h.connected ? t('common.online') : t('common.offline')}`,
         icon: Server,
-        badge: h.connected ? 'Online' : 'Offline',
+        badge: h.connected ? t('common.online') : t('common.offline'),
         badgeColor: h.connected ? 'success' : 'default',
         action: () => {
           setSelectedHostId(h.id);
@@ -98,7 +98,7 @@ export default function CommandPalette({ open, onClose, onNavigate }) {
     });
 
     return items;
-  }, [hosts, mode, lang, toggleTheme, setLang, logout, onNavigate, setSelectedHostId]);
+  }, [hosts, mode, lang, toggleTheme, setLang, logout, onNavigate, setSelectedHostId, t]);
 
   // Filter items
   const filteredItems = useMemo(() => {
@@ -155,7 +155,7 @@ export default function CommandPalette({ open, onClose, onNavigate }) {
           value={query}
           onChange={(e) => { setQuery(e.target.value); setSelectedIndex(0); }}
           onKeyDown={handleKeyDown}
-          placeholder="Tìm máy trạm, điều hướng, kịch bản hoặc thao tác nhanh... (Ctrl + K)"
+          placeholder={t('commandPalette.placeholder')}
           variant="standard"
           fullWidth
           InputProps={{
@@ -171,7 +171,7 @@ export default function CommandPalette({ open, onClose, onNavigate }) {
         {filteredItems.length === 0 ? (
           <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
             <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              Không tìm thấy kết quả phù hợp cho "{query}"
+              {t('commandPalette.noResults')}
             </Typography>
           </Box>
         ) : (
@@ -232,12 +232,12 @@ export default function CommandPalette({ open, onClose, onNavigate }) {
       {/* Footer Helper */}
       <Box sx={{ p: 1.5, bgcolor: alpha(theme.palette.common.black, 0.03), borderTop: `1px solid ${theme.palette.divider}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Stack direction="row" spacing={2} sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
-          <span>↑↓ để di chuyển</span>
-          <span>↵ để chọn</span>
-          <span>ESC để đóng</span>
+          <span>↑↓ {t('commandPalette.tipNavigate')}</span>
+          <span>↵ {t('commandPalette.tipSelect')}</span>
+          <span>ESC {t('commandPalette.tipClose')}</span>
         </Stack>
         <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.disabled' }}>
-          NMH Ops Controller
+          {t('app.title')}
         </Typography>
       </Box>
     </Dialog>

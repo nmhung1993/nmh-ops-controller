@@ -108,10 +108,10 @@ export default function PwaInstallButton({ variant = 'icon', sx = {} }) {
             ...sx
           }}
         >
-          {lang === 'vi' ? 'Cài App PWA' : 'Install App'}
+          {t('pwa.installApp')}
         </Button>
       ) : (
-        <Tooltip title={lang === 'vi' ? 'Cài đặt Ứng dụng PWA (Android / iOS / Desktop)' : 'Install PWA App'}>
+        <Tooltip title={t('pwa.installTooltip')}>
           <IconButton
             onClick={handleInstallClick}
             size="small"
@@ -161,7 +161,7 @@ export default function PwaInstallButton({ variant = 'icon', sx = {} }) {
               <Smartphone size={20} />
             </Box>
             <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
-              {isIos ? 'Cài đặt trên iOS (iPhone / iPad)' : 'Cài đặt Ứng dụng PWA'}
+              {isIos ? t('pwa.iosTitle') : t('pwa.modalTitle')}
             </Typography>
           </Stack>
           <IconButton size="small" onClick={() => setIosModalOpen(false)}>
@@ -173,7 +173,7 @@ export default function PwaInstallButton({ variant = 'icon', sx = {} }) {
           {isIos ? (
             <Stack spacing={2}>
               <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.85rem' }}>
-                Để cài đặt MinhHungOps vào màn hình chính trên iOS và sử dụng toàn màn hình như ứng dụng Native:
+                {t('pwa.iosDesc')}
               </Typography>
 
               <Box sx={{ p: 1.75, borderRadius: 2, bgcolor: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)', border: `1px solid ${theme.palette.divider}` }}>
@@ -183,7 +183,7 @@ export default function PwaInstallButton({ variant = 'icon', sx = {} }) {
                       <Share size={16} />
                     </Box>
                     <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.8125rem' }}>
-                      1. Nhấn nút <strong>Chia sẻ (Share)</strong> ở thanh công cụ Safari bên dưới.
+                      {t('pwa.iosStep1')}
                     </Typography>
                   </Stack>
 
@@ -192,7 +192,7 @@ export default function PwaInstallButton({ variant = 'icon', sx = {} }) {
                       <PlusSquare size={16} />
                     </Box>
                     <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.8125rem' }}>
-                      2. Cuộn xuống và chọn <strong>"Thêm vào Màn hình chính" (Add to Home Screen)</strong>.
+                      {t('pwa.iosStep2')}
                     </Typography>
                   </Stack>
 
@@ -201,7 +201,7 @@ export default function PwaInstallButton({ variant = 'icon', sx = {} }) {
                       <CheckCircle size={16} />
                     </Box>
                     <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.8125rem' }}>
-                      3. Nhấn <strong>Thêm (Add)</strong> ở góc trên bên phải để hoàn tất.
+                      {t('pwa.iosStep3')}
                     </Typography>
                   </Stack>
                 </Stack>
@@ -210,8 +210,7 @@ export default function PwaInstallButton({ variant = 'icon', sx = {} }) {
           ) : (
             <Stack spacing={1.5}>
               <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.85rem' }}>
-                Ứng dụng hỗ trợ Progressive Web App (PWA) đầy đủ. Bạn có thể cài đặt trực tiếp qua trình duyệt Chrome, Edge hoặc Safari để trải nghiệm mượt mà, khởi động tức thì và hoạt động độc lập trên thanh Taskbar / Home screen.
-                Bấm vào ... bên phải của thanh địa chỉ trình duyệt và chọn "Cài đặt và tạo lối tắt".
+                {t('pwa.generalDesc')}
               </Typography>
             </Stack>
           )}
@@ -219,7 +218,7 @@ export default function PwaInstallButton({ variant = 'icon', sx = {} }) {
 
         <DialogActions sx={{ px: 3, pb: 2.5 }}>
           <Button variant="contained" fullWidth onClick={() => setIosModalOpen(false)} sx={{ fontWeight: 700 }}>
-            {lang === 'vi' ? 'Đã hiểu' : 'Got it'}
+            {t('pwa.gotIt')}
           </Button>
         </DialogActions>
       </Dialog>

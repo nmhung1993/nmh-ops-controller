@@ -58,7 +58,7 @@ export default function FleetView({ onNavigate }) {
   const canViewHealth = isSuperAdmin || user?.permissions?.metrics?.health !== false;
 
   const getFriendlyHostName = (host) => {
-    if (!host) return 'Máy trạm';
+    if (!host) return t('common.workstation');
     if (host.displayName && !host.displayName.startsWith('DESKTOP-')) {
       return host.displayName;
     }
@@ -66,7 +66,7 @@ export default function FleetView({ onNavigate }) {
       return host.hostname;
     }
     const idSuffix = host.id ? host.id.slice(0, 6).toUpperCase() : '';
-    return idSuffix ? `Máy trạm #${idSuffix}` : 'Máy trạm Windows';
+    return idSuffix ? `${t('common.workstation')} #${idSuffix}` : `${t('common.workstation')} Windows`;
   };
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -165,18 +165,13 @@ export default function FleetView({ onNavigate }) {
   };
 
   const handleUpgradeAllFleet = async () => {
-    const onlineHosts = hosts.filter(h => h.online);
-    if (!onlineHosts.length) {
-      alert('Không có máy trạm nào đang trực tuyến để nâng cấp.');
-      return;
-    }
-    if (!window.confirm(`Bạn có chắc muốn gửi lệnh nâng cấp OTA cho toàn bộ ${onlineHosts.length} máy trạm trực tuyến không?`)) return;
+    if (outdatedHosts.length === 0) return;
     setUpgradingAll(true);
     try {
-      const res = await apiRequest('/api/v1/hosts/upgrade-all', { method: 'POST' });
-      setToastMessage(`Đã gửi lệnh nâng cấp OTA đến ${res.queuedCount} máy trạm đang hoạt động.`);
+      const res = await apiRequest('/api/v1/ota/upgrade-all', { method: 'POST' });
+      setToastMessage(t('fleet.upgradeAllSuccess', { count: outdatedHosts.length }));
       
-      const newTasks = onlineHosts.map(h => ({
+      const newTasks = outdatedHosts.map(h => ({
         hostId: h.id,
         displayName: getFriendlyHostName(h),
         ip: h.ip || '',
@@ -287,14 +282,14 @@ export default function FleetView({ onNavigate }) {
             <Box sx={{ minWidth: 0 }}>
               <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.25, flexWrap: 'wrap' }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 800, fontSize: { xs: '0.85rem', sm: '0.9375rem' } }}>
-                  {lang === 'vi' ? 'Trung Tâm Nâng Cấp Tự Động (OTA)' : 'Automatic Upgrade Center (OTA)'}
+                  {t('fleet.otaBannerTitle')}
                 </Typography>
                 <Label variant="filled" color="primary" sx={{ fontWeight: 800, fontSize: '0.7rem', px: 0.75, height: 20 }}>
                   Server v{otaStatus.latestAgentVersion}
                 </Label>
               </Stack>
               <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: { xs: '0.7rem', sm: '0.75rem' }, display: 'block' }} noWrap>
-                {lang === 'vi' ? 'Agent mới sẵn sàng phát hành qua mạng • Không gián đoạn.' : 'Latest agent release ready for seamless over-the-air deployment.'}
+                {t('fleet.otaBannerSubtitle', { version: otaStatus.latestAgentVersion, date: otaStatus.releaseDate || '2026-08-18' })}
               </Typography>
             </Box>
           </Stack>
@@ -302,7 +297,7 @@ export default function FleetView({ onNavigate }) {
           {/* Right actions: Status Chips + OTA Upgrade Button + Approve Agents Button */}
           <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexWrap: 'wrap', gap: 0.75, width: { xs: '100%', md: 'auto' }, justifyContent: { xs: 'flex-start', md: 'flex-end' } }}>
             <Chip
-              label={lang === 'vi' ? `${hosts.filter(h => h.version === otaStatus.latestAgentVersion).length} máy đã ở v${otaStatus.latestAgentVersion}` : `${hosts.filter(h => h.version === otaStatus.latestAgentVersion).length} at v${otaStatus.latestAgentVersion}`}
+              label={t('fleet.allAtVersion', { count: hosts.filter(h => h.version === otaStatus.latestAgentVersion).length, version: otaStatus.latestAgentVersion })}
               color="success"
               variant="outlined"
               size="small"
@@ -310,7 +305,7 @@ export default function FleetView({ onNavigate }) {
             />
             {hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length > 0 && (
               <Chip
-                label={lang === 'vi' ? `${hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length} máy cần nâng cấp` : `${hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length} update needed`}
+                label={t('fleet.updateNeeded', { count: hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length })}
                 color="warning"
                 size="small"
                 sx={{ fontWeight: 800, height: 24, fontSize: 10 }}
@@ -336,8 +331,8 @@ export default function FleetView({ onNavigate }) {
                 }}
               >
                 {upgradingAll
-                  ? (lang === 'vi' ? 'Đang nâng cấp...' : 'Upgrading...')
-                  : (lang === 'vi' ? `Nâng Cấp (${hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length})` : `Upgrade (${hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length})`)}
+                  ? t('fleet.upgrading')
+                  : t('fleet.upgradeBtn', { count: hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length })}
               </Button>
             )}
 
@@ -372,7 +367,7 @@ export default function FleetView({ onNavigate }) {
                 onClick={() => setOtaProgressOpen(true)}
                 sx={{ fontWeight: 700, height: 28, fontSize: 11, px: 1.25 }}
               >
-                {lang === 'vi' ? `Tiến Trình (${otaTasks.length})` : `Progress (${otaTasks.length})`}
+                {t('fleet.progressBtn', { count: otaTasks.length })}
               </Button>
             )}
           </Stack>
@@ -392,7 +387,7 @@ export default function FleetView({ onNavigate }) {
         sx={{ mb: 2 }}
       >
         <TextField
-          placeholder="Tìm theo tên máy, IP, hostname..."
+          placeholder={t('fleet.searchPlaceholder')}
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           size="small"
@@ -409,7 +404,7 @@ export default function FleetView({ onNavigate }) {
 
         <Stack direction="row" spacing={0.75} sx={{ overflowX: 'auto', pb: { xs: 0.5, sm: 0 }, flexWrap: { sm: 'wrap' } }}>
           <Chip
-            label={`Tất cả (${totalCount})`}
+            label={t('fleet.allFilter', { count: totalCount })}
             size="small"
             color={filterStatus === 'all' ? 'primary' : 'default'}
             variant={filterStatus === 'all' ? 'filled' : 'outlined'}
@@ -417,7 +412,7 @@ export default function FleetView({ onNavigate }) {
             sx={{ fontWeight: 700, fontSize: 11, cursor: 'pointer' }}
           />
           <Chip
-            label={`Trực tuyến (${onlineCount})`}
+            label={t('fleet.onlineFilter', { count: onlineCount })}
             size="small"
             color={filterStatus === 'online' ? 'success' : 'default'}
             variant={filterStatus === 'online' ? 'filled' : 'outlined'}
@@ -425,7 +420,7 @@ export default function FleetView({ onNavigate }) {
             sx={{ fontWeight: 700, fontSize: 11, cursor: 'pointer' }}
           />
           <Chip
-            label={`Mất kết nối (${hosts.length - onlineCount})`}
+            label={t('fleet.offlineFilter', { count: hosts.length - onlineCount })}
             size="small"
             color={filterStatus === 'offline' ? 'warning' : 'default'}
             variant={filterStatus === 'offline' ? 'filled' : 'outlined'}
@@ -434,7 +429,7 @@ export default function FleetView({ onNavigate }) {
           />
           {attentionHosts.length > 0 && (
             <Chip
-              label={`Cần chú ý (${attentionHosts.length})`}
+              label={t('fleet.attentionFilter', { count: attentionHosts.length })}
               size="small"
               color={filterStatus === 'attention' ? 'error' : 'default'}
               variant={filterStatus === 'attention' ? 'filled' : 'outlined'}
@@ -514,23 +509,23 @@ export default function FleetView({ onNavigate }) {
                           </Typography>
 
                           {host.version === otaStatus.latestAgentVersion ? (
-                            <Tooltip title={`Agent đang ở phiên bản mới nhất (v${host.version || otaStatus.latestAgentVersion})`}>
+                            <Tooltip title={t('fleet.latestVersion', { version: host.version || otaStatus.latestAgentVersion })}>
                               <Label
                                 variant="soft"
                                 color="success"
                                 sx={{ fontSize: '0.65rem', height: 18, px: 0.6, fontWeight: 700 }}
                               >
-                                v{host.version || otaStatus.latestAgentVersion} (Mới nhất)
+                                {t('fleet.latestVersion', { version: host.version || otaStatus.latestAgentVersion })}
                               </Label>
                             </Tooltip>
                           ) : (
-                            <Tooltip title={`Phiên bản hiện tại: v${host.version || '2.1.4'} • Phiên bản OTA trên Server: v${otaStatus.latestAgentVersion}`}>
+                            <Tooltip title={t('fleet.otaAvailable', { version: host.version || '2.1.4', latest: otaStatus.latestAgentVersion })}>
                               <Label
                                 variant="filled"
                                 color="warning"
                                 sx={{ fontSize: '0.65rem', height: 18, px: 0.6, fontWeight: 800 }}
                               >
-                                v{host.version || '2.1.4'} ➔ OTA v{otaStatus.latestAgentVersion}
+                                {t('fleet.otaAvailable', { version: host.version || '2.1.4', latest: otaStatus.latestAgentVersion })}
                               </Label>
                             </Tooltip>
                           )}
@@ -541,7 +536,7 @@ export default function FleetView({ onNavigate }) {
                               color="default"
                               sx={{ fontSize: '0.65rem', height: 18, px: 0.6 }}
                             >
-                              Cá nhân
+                              {t('fleet.personal')}
                             </Label>
                           )}
                         </Stack>
@@ -555,7 +550,7 @@ export default function FleetView({ onNavigate }) {
                             host.online ? (
                               <Box
                                 sx={{
-                                  width: 7,
+                                 width: 7,
                                   height: 7,
                                   borderRadius: '50%',
                                   bgcolor: 'success.main',
@@ -572,7 +567,7 @@ export default function FleetView({ onNavigate }) {
                         </Label>
 
                         {isSuperAdmin && host.online && (
-                          <Tooltip title="Nâng cấp Agent OTA">
+                          <Tooltip title={t('fleet.upgradeTooltip')}>
                             <IconButton
                               size="small"
                               color="primary"
@@ -715,17 +710,17 @@ export default function FleetView({ onNavigate }) {
           <Stack direction="row" alignItems="center" spacing={1.5}>
             <UploadCloud size={20} color={theme.palette.primary.main} />
             <Typography variant="h6" sx={{ fontWeight: 800 }}>
-              Tiến Trình Nâng Cấp Agent OTA • v{otaStatus.latestAgentVersion}
+              {t('fleet.otaProgressTitle', { version: otaStatus.latestAgentVersion })}
             </Typography>
           </Stack>
           <Label variant="soft" color={otaTasks.every(t => t.isDone) ? 'success' : 'primary'}>
-            {otaTasks.filter(t => t.isDone).length} / {otaTasks.length} Hoàn tất
+            {t('fleet.otaCompletedCount', { completed: otaTasks.filter(t => t.isDone).length, total: otaTasks.length })}
           </Label>
         </DialogTitle>
 
         <DialogContent sx={{ py: 3 }}>
           <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2.5 }}>
-            Quá trình nâng cấp OTA tự động tải gói bundle mã nguồn mới nhất từ Central Server, áp dụng file runtime và tự khởi động lại Agent.
+            {t('fleet.otaDesc')}
           </Typography>
 
           <Stack spacing={2}>
@@ -741,7 +736,7 @@ export default function FleetView({ onNavigate }) {
                     </Typography>
                   </Box>
                   <Chip
-                    label={task.isDone ? 'Đã cập nhật' : `${task.progress}%`}
+                    label={task.isDone ? t('fleet.updated') : `${task.progress}%`}
                     color={task.isDone ? 'success' : 'primary'}
                     size="small"
                     sx={{ fontWeight: 800 }}
@@ -766,22 +761,22 @@ export default function FleetView({ onNavigate }) {
                 <Grid container spacing={1} sx={{ mb: 1.25 }}>
                   <Grid item xs={3}>
                     <Typography variant="caption" sx={{ fontWeight: 700, color: task.step >= 1 ? 'primary.main' : 'text.disabled', fontSize: '0.7rem' }}>
-                      1. Gửi lệnh
+                      {t('fleet.step1')}
                     </Typography>
                   </Grid>
                   <Grid item xs={3}>
                     <Typography variant="caption" sx={{ fontWeight: 700, color: task.step >= 2 ? 'primary.main' : 'text.disabled', fontSize: '0.7rem' }}>
-                      2. Tải bundle
+                      {t('fleet.step2')}
                     </Typography>
                   </Grid>
                   <Grid item xs={3}>
                     <Typography variant="caption" sx={{ fontWeight: 700, color: task.step >= 3 ? 'primary.main' : 'text.disabled', fontSize: '0.7rem' }}>
-                      3. Ghi đè & Restart
+                      {t('fleet.step3')}
                     </Typography>
                   </Grid>
                   <Grid item xs={3}>
                     <Typography variant="caption" sx={{ fontWeight: 700, color: task.step >= 4 ? 'success.main' : 'text.disabled', fontSize: '0.7rem' }}>
-                      4. Hoàn tất
+                      {t('fleet.step4')}
                     </Typography>
                   </Grid>
                 </Grid>
@@ -803,7 +798,7 @@ export default function FleetView({ onNavigate }) {
 
         <DialogActions sx={{ p: 2, px: 3, borderTop: `1px solid ${theme.palette.divider}` }}>
           <Button onClick={() => setOtaProgressOpen(false)} variant="contained" color="primary">
-            Đóng
+            {t('fleet.close')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -819,31 +814,31 @@ export default function FleetView({ onNavigate }) {
           <Stack direction="row" alignItems="center" spacing={1.5}>
             <Sparkles size={20} color={theme.palette.primary.main} />
             <Typography variant="h6" sx={{ fontWeight: 800 }}>
-              Ghi Chú Phát Hành • v{otaStatus.latestAgentVersion}
+              {t('fleet.releaseNotesTitle', { version: otaStatus.latestAgentVersion })}
             </Typography>
           </Stack>
           <Label variant="filled" color="primary">
-            {otaStatus.releaseDate || 'Mới nhất'}
+            {otaStatus.releaseDate || t('fleet.latest')}
           </Label>
         </DialogTitle>
 
         <DialogContent sx={{ py: 3 }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, color: 'text.primary' }}>
-            Nội dung cập nhật trong phiên bản OTA:
+            {t('fleet.releaseNotesContent')}
           </Typography>
           <Card variant="outlined" sx={{ p: 2, bgcolor: isLight ? '#F8FAFC' : '#0B0F17', borderRadius: 2, mb: 2 }}>
             <Typography variant="body2" sx={{ color: 'text.secondary', lineHeight: 1.6 }}>
-              {otaStatus.releaseNotes || 'Đồng bộ hóa các tính năng giám sát và bảo mật mới nhất từ Central Server.'}
+              {otaStatus.releaseNotes || t('fleet.releaseNotesDefault')}
             </Typography>
           </Card>
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-            Sau khi kích hoạt nâng cấp, máy trạm sẽ tải file bundle tự động và khởi động lại dịch vụ trong vòng 5 giây mà không làm ngắt kết nối mạng.
+            {t('fleet.releaseNotesNotice')}
           </Typography>
         </DialogContent>
 
         <DialogActions sx={{ p: 2, px: 3, borderTop: `1px solid ${theme.palette.divider}` }}>
           <Button onClick={() => setReleaseNotesOpen(false)} variant="contained" color="primary">
-            Đã Hiểu
+            {t('fleet.understood')}
           </Button>
         </DialogActions>
       </Dialog>

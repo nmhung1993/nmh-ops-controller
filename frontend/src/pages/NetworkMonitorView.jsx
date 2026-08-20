@@ -1254,10 +1254,10 @@ export default function NetworkMonitorView() {
       >
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 800, mb: 0.5 }}>
-            {lang === 'vi' ? 'Giám sát mạng nội bộ' : 'Network Operations & Monitor'}
+            {t('network.title')}
           </Typography>
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            {lang === 'vi' ? 'Theo dõi độ trễ, packet loss theo thời gian thực và quản trị hệ thống Router / Mesh' : 'Real-time ping latency, packet loss analytics and Core Router / Wi-Fi Mesh management'}
+            {t('network.subtitle')}
           </Typography>
         </Box>
 
@@ -1270,7 +1270,7 @@ export default function NetworkMonitorView() {
             onClick={(e) => setExportAnchorEl(e.currentTarget)}
             sx={{ fontWeight: 700 }}
           >
-            {lang === 'vi' ? 'Xuất dữ liệu' : 'Export Data'}
+            {t('network.exportData')}
           </Button>
 
           <Menu
@@ -1280,26 +1280,26 @@ export default function NetworkMonitorView() {
             PaperProps={{ sx: { minWidth: 200, borderRadius: 2 } }}
           >
             <Typography variant="overline" sx={{ px: 2, py: 0.5, color: 'text.secondary', fontWeight: 800, display: 'block' }}>
-              {lang === 'vi' ? 'DẢI THỜI GIAN XUẤT' : 'EXPORT TIME RANGE'}
+              {t('network.exportRange')}
             </Typography>
             <MenuItem onClick={() => handleExportData('1h', 'csv')}>
-              <FileSpreadsheet size={16} style={{ marginRight: 8 }} /> {lang === 'vi' ? '1 giờ qua (CSV)' : 'Last 1 hour (CSV)'}
+              <FileSpreadsheet size={16} style={{ marginRight: 8 }} /> {t('network.last1h')}
             </MenuItem>
             <MenuItem onClick={() => handleExportData('8h', 'csv')}>
-              <FileSpreadsheet size={16} style={{ marginRight: 8 }} /> {lang === 'vi' ? '8 giờ qua (CSV)' : 'Last 8 hours (CSV)'}
+              <FileSpreadsheet size={16} style={{ marginRight: 8 }} /> {t('network.last8h')}
             </MenuItem>
             <MenuItem onClick={() => handleExportData('24h', 'csv')}>
-              <FileSpreadsheet size={16} style={{ marginRight: 8 }} /> {lang === 'vi' ? '1 ngày / 24h (CSV)' : 'Last 24 hours (CSV)'}
+              <FileSpreadsheet size={16} style={{ marginRight: 8 }} /> {t('network.last24h')}
             </MenuItem>
             <MenuItem onClick={() => handleExportData('7d', 'csv')}>
-              <FileSpreadsheet size={16} style={{ marginRight: 8 }} /> {lang === 'vi' ? '1 tuần / 7 ngày (CSV)' : 'Last 7 days (CSV)'}
+              <FileSpreadsheet size={16} style={{ marginRight: 8 }} /> {t('network.last7d')}
             </MenuItem>
             <MenuItem onClick={() => handleExportData('30d', 'csv')}>
-              <FileSpreadsheet size={16} style={{ marginRight: 8 }} /> {lang === 'vi' ? '1 tháng / 30 ngày (CSV)' : 'Last 30 days (CSV)'}
+              <FileSpreadsheet size={16} style={{ marginRight: 8 }} /> {t('network.last30d')}
             </MenuItem>
             <Divider />
             <MenuItem onClick={() => handleExportData('24h', 'json')}>
-              <FileCode size={16} style={{ marginRight: 8 }} /> {lang === 'vi' ? 'Toàn bộ dữ liệu 24h (JSON)' : 'Full 24h raw data (JSON)'}
+              <FileCode size={16} style={{ marginRight: 8 }} /> {t('network.full24hJson')}
             </MenuItem>
           </Menu>
 
@@ -1311,7 +1311,7 @@ export default function NetworkMonitorView() {
               onClick={() => handleOpenAddTarget()}
               sx={{ fontWeight: 700, boxShadow: theme.customShadows.primary }}
             >
-              {lang === 'vi' ? 'Thêm Target' : 'Add Target'}
+              {t('network.addTarget')}
             </Button>
           )}
         </Stack>
@@ -1328,14 +1328,14 @@ export default function NetworkMonitorView() {
               </Box>
               <Box sx={{ minWidth: 0 }}>
                 <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.625rem', display: 'block', noWrap: true }}>
-                  {lang === 'vi' ? 'Tổng số Target' : 'Total Targets'}
+                  {t('network.totalTargets')}
                 </Typography>
                 <Stack direction="row" spacing={0.5} alignItems="baseline" sx={{ flexWrap: 'wrap' }}>
                   <Typography variant="h6" sx={{ fontWeight: 800, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                     {summary.total}
                   </Typography>
                   <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10 }}>
-                    {summary.paused > 0 ? (lang === 'vi' ? `(${summary.paused} dừng)` : `(${summary.paused} paused)`) : 'Ping'}
+                    {summary.paused > 0 ? t('network.pausedCount', { count: summary.paused }) : 'Ping'}
                   </Typography>
                 </Stack>
               </Box>
@@ -1350,13 +1350,13 @@ export default function NetworkMonitorView() {
               </Box>
               <Box sx={{ minWidth: 0 }}>
                 <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.625rem', display: 'block', noWrap: true }}>
-                  {lang === 'vi' ? 'Trực tuyến' : 'Online'}
+                  {t('network.online')}
                 </Typography>
                 <Stack direction="row" spacing={0.5} alignItems="baseline" sx={{ flexWrap: 'wrap' }}>
                   <Typography variant="h6" sx={{ fontWeight: 800, color: 'success.main', fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                     {summary.online}
                   </Typography>
-                  <Chip label={lang === 'vi' ? "Tốt" : "Good"} size="small" color="success" sx={{ height: 16, fontSize: 9, fontWeight: 700, px: 0.25 }} />
+                  <Chip label={t('network.good')} size="small" color="success" sx={{ height: 16, fontSize: 9, fontWeight: 700, px: 0.25 }} />
                 </Stack>
               </Box>
             </Stack>
@@ -1370,7 +1370,7 @@ export default function NetworkMonitorView() {
               </Box>
               <Box sx={{ minWidth: 0 }}>
                 <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.625rem', display: 'block', noWrap: true }}>
-                  {lang === 'vi' ? 'Mất kết nối' : 'Offline / Loss'}
+                  {t('network.offline')}
                 </Typography>
                 <Stack direction="row" spacing={0.5} alignItems="baseline" sx={{ flexWrap: 'wrap' }}>
                   <Typography variant="h6" sx={{ fontWeight: 800, color: summary.offline > 0 ? 'error.main' : 'text.primary', fontSize: { xs: '1rem', sm: '1.25rem' } }}>
@@ -1409,10 +1409,10 @@ export default function NetworkMonitorView() {
       {/* Tabs Selector */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2.5 }}>
         <Tabs value={currentTab} onChange={(_, v) => setCurrentTab(v)} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
-          <Tab icon={<Globe size={16} />} iconPosition="start" label={lang === 'vi' ? "Giám sát Ping" : "Ping Monitor"} sx={{ fontWeight: 700, minHeight: 44, py: 0.5, fontSize: { xs: '0.78rem', sm: '0.875rem' } }} />
-          {isSuperAdmin && <Tab icon={<Search size={16} />} iconPosition="start" label={lang === 'vi' ? "Quét LAN" : "LAN Scanner"} sx={{ fontWeight: 700, minHeight: 44, py: 0.5, fontSize: { xs: '0.78rem', sm: '0.875rem' } }} />}
-          {isSuperAdmin && <Tab icon={<Shield size={16} />} iconPosition="start" label={lang === 'vi' ? "Gateway Router" : "Gateway Router"} sx={{ fontWeight: 700, minHeight: 44, py: 0.5, fontSize: { xs: '0.78rem', sm: '0.875rem' } }} />}
-          {isSuperAdmin && <Tab icon={<Wifi size={16} />} iconPosition="start" label={lang === 'vi' ? "Wi-Fi Mesh" : "Wi-Fi Mesh"} sx={{ fontWeight: 700, minHeight: 44, py: 0.5, fontSize: { xs: '0.78rem', sm: '0.875rem' } }} />}
+          <Tab icon={<Globe size={16} />} iconPosition="start" label={t('network.tab.ping')} sx={{ fontWeight: 700, minHeight: 44, py: 0.5, fontSize: { xs: '0.78rem', sm: '0.875rem' } }} />
+          {isSuperAdmin && <Tab icon={<Search size={16} />} iconPosition="start" label={t('network.tab.scanner')} sx={{ fontWeight: 700, minHeight: 44, py: 0.5, fontSize: { xs: '0.78rem', sm: '0.875rem' } }} />}
+          {isSuperAdmin && <Tab icon={<Shield size={16} />} iconPosition="start" label={t('network.tab.gateway')} sx={{ fontWeight: 700, minHeight: 44, py: 0.5, fontSize: { xs: '0.78rem', sm: '0.875rem' } }} />}
+          {isSuperAdmin && <Tab icon={<Wifi size={16} />} iconPosition="start" label={t('network.tab.wifiMesh')} sx={{ fontWeight: 700, minHeight: 44, py: 0.5, fontSize: { xs: '0.78rem', sm: '0.875rem' } }} />}
         </Tabs>
       </Box>
 

@@ -6,12 +6,9 @@ const root = path.join(__dirname, '..');
 // Load current files as baseline
 const baselineVi = JSON.parse(fs.readFileSync(path.join(root, 'frontend', 'src', 'locales', 'vi.json'), 'utf8'));
 const baselineEn = JSON.parse(fs.readFileSync(path.join(root, 'frontend', 'src', 'locales', 'en.json'), 'utf8'));
-const publicVi = JSON.parse(fs.readFileSync(path.join(root, 'public', 'lang', 'vi.json'), 'utf8'));
-const publicEn = JSON.parse(fs.readFileSync(path.join(root, 'public', 'lang', 'en.json'), 'utf8'));
 
 // All unified keys
 const newTranslationsVi = {
-  ...publicVi,
   ...baselineVi,
 
   // Common & Header
@@ -431,7 +428,6 @@ const newTranslationsVi = {
 };
 
 const newTranslationsEn = {
-  ...publicEn,
   ...baselineEn,
 
   // Common & Header
@@ -831,17 +827,8 @@ allKeys.forEach(k => {
 const viJsonStr = JSON.stringify(finalVi, null, 2) + '\n';
 const enJsonStr = JSON.stringify(finalEn, null, 2) + '\n';
 
-// Write to all 3 destinations:
-// 1. frontend/src/locales/
+// Write to frontend/src/locales/ (Single Source of Truth)
 fs.writeFileSync(path.join(root, 'frontend', 'src', 'locales', 'vi.json'), viJsonStr, 'utf8');
 fs.writeFileSync(path.join(root, 'frontend', 'src', 'locales', 'en.json'), enJsonStr, 'utf8');
 
-// 2. frontend/src/lang/
-fs.writeFileSync(path.join(root, 'frontend', 'src', 'lang', 'vi.json'), viJsonStr, 'utf8');
-fs.writeFileSync(path.join(root, 'frontend', 'src', 'lang', 'en.json'), enJsonStr, 'utf8');
-
-// 3. public/lang/
-fs.writeFileSync(path.join(root, 'public', 'lang', 'vi.json'), viJsonStr, 'utf8');
-fs.writeFileSync(path.join(root, 'public', 'lang', 'en.json'), enJsonStr, 'utf8');
-
-console.log(`[i18n-sync] Successfully synchronized ${allKeys.length} keys across all 3 language locations!`);
+console.log(`[i18n-sync] Successfully synchronized ${allKeys.length} keys to frontend/src/locales/!`);

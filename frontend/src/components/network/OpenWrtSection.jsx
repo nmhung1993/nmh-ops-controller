@@ -50,7 +50,7 @@ export default function OpenWrtSection({
   wolLoadingMac
 }) {
   const theme = useTheme();
-  const { lang } = useLanguage();
+  const { lang, t } = useLanguage();
 
   if (loading && !status) {
     return <LinearProgress sx={{ my: 4, borderRadius: 2 }} />;
@@ -61,13 +61,13 @@ export default function OpenWrtSection({
       <Card sx={{ p: 4, textAlign: 'center' }}>
         <Server size={48} color={theme.palette.text.disabled} />
         <Typography variant="h6" sx={{ mt: 2, fontWeight: 700 }}>
-          {lang === 'vi' ? 'Không thể kết nối OpenWrt Gateway' : 'Cannot connect to OpenWrt Gateway'}
+          {t('openwrt.cannotConnect', { host: '' })}
         </Typography>
         <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3 }}>
-          {lang === 'vi' ? 'Vui lòng kiểm tra lại địa chỉ IP, cổng HTTP (80/443) và mật khẩu ubus / LuCI RPC.' : 'Please check the IP address, HTTP port (80/443), and ubus / LuCI RPC credentials.'}
+          {t('openwrt.checkCredentials')}
         </Typography>
         <Button variant="contained" startIcon={<Settings size={16} />} onClick={onOpenConfig}>
-          {lang === 'vi' ? 'Cấu hình kết nối' : 'Configure Connection'}
+          {t('openwrt.configure')}
         </Button>
       </Card>
     );
@@ -103,7 +103,7 @@ export default function OpenWrtSection({
             <Box sx={{ minWidth: 0 }}>
               <Stack direction="row" spacing={0.75} alignItems="center" justifyContent={{ xs: 'center', sm: 'flex-start' }} sx={{ flexWrap: 'wrap', gap: 0.5, mb: 0.25 }}>
                 <Typography variant="overline" sx={{ color: 'info.main', fontWeight: 800, letterSpacing: 0.5, fontSize: '0.65rem', lineHeight: 1.2 }}>
-                  OPENWRT / IMMORTALWRT CORE ROUTER
+                  {t('openwrt.title')}
                 </Typography>
                 <Label variant="soft" color={status.online ? 'success' : 'error'} sx={{ height: 20, fontSize: '0.65rem' }}>
                   {status.online ? 'Online' : 'Offline'}
@@ -128,7 +128,7 @@ export default function OpenWrtSection({
               onClick={onRestartNetwork}
               sx={{ fontWeight: 700, fontSize: '0.75rem', py: 0.5 }}
             >
-              {lang === 'vi' ? 'Làm mới mạng' : 'Renew Network'}
+              {t('openwrt.restartNetwork')}
             </Button>
             <Button
               size="small"
@@ -138,7 +138,7 @@ export default function OpenWrtSection({
               onClick={onReboot}
               sx={{ fontWeight: 700, fontSize: '0.75rem', py: 0.5 }}
             >
-              Reboot
+              {t('network.reboot')}
             </Button>
             <Button
               size="small"
@@ -148,7 +148,7 @@ export default function OpenWrtSection({
               onClick={onOpenConfig}
               sx={{ fontWeight: 700, fontSize: '0.75rem', py: 0.5 }}
             >
-              {lang === 'vi' ? 'Cấu hình' : 'Config'}
+              {t('network.config')}
             </Button>
           </Stack>
         </Stack>
@@ -173,7 +173,7 @@ export default function OpenWrtSection({
         <Grid item xs={6} sm={6} md={3}>
           <Card sx={{ p: { xs: 1.25, sm: 2 }, height: '100%', borderRadius: 2 }}>
             <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, fontSize: { xs: '0.6rem', sm: '0.7rem' } }}>
-              {lang === 'vi' ? 'TẢI CPU ROUTER' : 'ROUTER CPU LOAD'}
+              {t('network.routerCpuLoad')}
             </Typography>
             <Typography variant="subtitle1" sx={{ fontWeight: 800, my: 0.25, color: status.cpu > 80 ? 'error.main' : 'text.primary', fontSize: { xs: '0.875rem', sm: '1.1rem' } }}>
               {status.cpu}%
@@ -187,7 +187,7 @@ export default function OpenWrtSection({
         <Grid item xs={6} sm={6} md={3}>
           <Card sx={{ p: { xs: 1.25, sm: 2 }, height: '100%', borderRadius: 2 }}>
             <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, fontSize: { xs: '0.6rem', sm: '0.7rem' } }}>
-              {lang === 'vi' ? 'BỘ NHỚ RAM' : 'RAM MEMORY'}
+              {t('network.ramMemory')}
             </Typography>
             <Typography variant="subtitle1" sx={{ fontWeight: 800, my: 0.25, fontSize: { xs: '0.875rem', sm: '1.1rem' } }}>
               {status.memory}%
@@ -201,13 +201,13 @@ export default function OpenWrtSection({
         <Grid item xs={6} sm={6} md={3}>
           <Card sx={{ p: { xs: 1.25, sm: 2 }, height: '100%', borderRadius: 2 }}>
             <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, fontSize: { xs: '0.6rem', sm: '0.7rem' } }}>
-              DHCP
+              {t('network.dhcp')}
             </Typography>
             <Typography variant="subtitle1" sx={{ fontWeight: 800, my: 0.25, color: 'info.main', fontSize: { xs: '0.875rem', sm: '1.1rem' } }}>
-              {status.dhcpLeases?.length || 0} {lang === 'vi' ? 'thiết bị' : 'devices'}
+              {status.dhcpLeases?.length || 0} {t('common.devices')}
             </Typography>
             <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.65rem', display: 'block' }}>
-              {lang === 'vi' ? 'Đang kết nối LAN' : 'Active on LAN'}
+              {t('openwrt.activeOnLan')}
             </Typography>
           </Card>
         </Grid>
@@ -216,29 +216,29 @@ export default function OpenWrtSection({
       {/* DHCP Table */}
       <Card sx={{ p: { xs: 1.5, sm: 3 }, borderRadius: 2 }}>
         <Typography variant="h6" sx={{ fontWeight: 800, mb: 2, fontSize: { xs: '0.95rem', sm: '1.15rem' } }}>
-          {lang === 'vi' ? `Danh sách cấp phát IP DHCP (${status.dhcpLeases?.length || 0})` : `DHCP IP Leases (${status.dhcpLeases?.length || 0})`}
+          {t('network.dhcpLeasesTitle', { count: status.dhcpLeases?.length || 0 })}
         </Typography>
 
         <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Địa chỉ IP' : 'IP Address'}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Tên thiết bị (Hostname)' : 'Hostname'}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>MAC Address</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Thời hạn thuê (Expires)' : 'Lease Expiry'}</TableCell>
-                <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>{lang === 'vi' ? 'Thao tác' : 'Actions'}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{t('network.ipAddress')}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{t('network.hostnameCol')}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{t('network.macAddress')}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{t('network.status')}</TableCell>
+                <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>{t('network.actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {(status.dhcpLeases || []).map((lease, idx) => (
                 <TableRow key={lease.id || idx}>
                   <TableCell sx={{ fontWeight: 700, fontFamily: 'monospace' }}>{lease.ip}</TableCell>
-                  <TableCell>{lease.hostname || (lang === 'vi' ? 'Thiết bị LAN' : 'LAN Device')}</TableCell>
+                  <TableCell>{lease.hostname || t('network.lanDevice')}</TableCell>
                   <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{lease.mac}</TableCell>
                   <TableCell>
                     <Label variant="soft" color="info">
-                      {lease.expiresAfter || (lang === 'vi' ? 'Hợp lệ' : 'Valid')}
+                      {lease.expiresAfter || t('common.good')}
                     </Label>
                   </TableCell>
                   <TableCell sx={{ textAlign: 'right' }}>
@@ -252,7 +252,7 @@ export default function OpenWrtSection({
                           disabled={wolLoadingMac === lease.mac}
                           onClick={() => onSendWol(lease.mac, lease.hostname)}
                         >
-                          {wolLoadingMac === lease.mac ? (lang === 'vi' ? 'Đang gửi...' : 'Sending...') : 'WoL'}
+                          {wolLoadingMac === lease.mac ? t('network.sending') : t('network.wol')}
                         </Button>
                       )}
                       {onOpenAddQueue && (
@@ -263,7 +263,7 @@ export default function OpenWrtSection({
                           startIcon={<SlidersHorizontal size={14} />}
                           onClick={() => onOpenAddQueue(lease.ip, lease.hostname)}
                         >
-                          {lang === 'vi' ? 'Giới hạn' : 'Limit'}
+                          {t('network.limit')}
                         </Button>
                       )}
                       {onOpenAddNat && (
@@ -274,7 +274,7 @@ export default function OpenWrtSection({
                           startIcon={<ArrowUpDown size={14} />}
                           onClick={() => onOpenAddNat(lease.ip, lease.hostname)}
                         >
-                          {lang === 'vi' ? 'Mở Cổng' : 'Open Port'}
+                          {t('network.openPort')}
                         </Button>
                       )}
                       <Button
@@ -283,7 +283,7 @@ export default function OpenWrtSection({
                         startIcon={<Plus size={14} />}
                         onClick={() => onOpenAddTarget(lease.ip, lease.hostname)}
                       >
-                        {lang === 'vi' ? 'Theo dõi' : 'Monitor'}
+                        {t('network.monitor')}
                       </Button>
                     </Stack>
                   </TableCell>

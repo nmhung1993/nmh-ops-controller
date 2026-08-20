@@ -34,7 +34,7 @@ const DEVICE_TYPES = [
 
 export default function NetworkDeviceDialog({ open, onClose, onSave, editingDevice, defaultRole = 'gateway' }) {
   const theme = useTheme();
-  const { lang } = useLanguage();
+  const { lang, t } = useLanguage();
 
   const [form, setForm] = useState({
     name: '',
@@ -105,44 +105,42 @@ export default function NetworkDeviceDialog({ open, onClose, onSave, editingDevi
         <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
           {form.role === 'gateway' ? <Shield size={22} color={theme.palette.primary.main} /> : <Wifi size={22} color={theme.palette.primary.main} />}
           {editingDevice 
-            ? (lang === 'vi' ? `Chỉnh sửa thiết bị: ${editingDevice.name}` : `Edit Device: ${editingDevice.name}`)
-            : (lang === 'vi' ? `Thêm thiết bị ${form.role === 'gateway' ? 'Gateway' : 'Router & Mesh'} mới` : `Add New ${form.role === 'gateway' ? 'Gateway' : 'Router & Mesh'} Device`)}
+            ? t('deviceDialog.editDeviceTitle', { name: editingDevice.name })
+            : t('deviceDialog.addNew', { role: form.role === 'gateway' ? t('deviceDialog.gateway') : t('deviceDialog.routerMesh') })}
         </DialogTitle>
 
         <DialogContent>
           <Stack spacing={2.5} sx={{ mt: 1 }}>
             <Alert severity="info" sx={{ py: 0.5, fontSize: '0.8rem' }}>
-              {lang === 'vi' 
-                ? 'Hỗ trợ quản trị tập trung MikroTik RouterOS (API Socket 8728/8729 & REST), OpenWrt / ImmortalWrt (ubus/LuCI), TP-Link Deco, Xiaomi Mesh và Gecoos AP.'
-                : 'Supports centralized management for MikroTik RouterOS (API Socket 8728/8729 & REST), OpenWrt / ImmortalWrt (ubus/LuCI), TP-Link Deco, Xiaomi Mesh, and Gecoos AP.'}
+              {t('deviceDialog.bannerDesc')}
             </Alert>
 
             <Grid container spacing={2}>
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth size="small">
-                  <InputLabel>{lang === 'vi' ? 'Vai trò thiết bị' : 'Device Role'}</InputLabel>
+                  <InputLabel>{t('deviceDialog.roleLabel')}</InputLabel>
                   <Select
                     value={form.role}
-                    label={lang === 'vi' ? 'Vai trò thiết bị' : 'Device Role'}
+                    label={t('deviceDialog.roleLabel')}
                     onChange={(e) => setForm(prev => ({ ...prev, role: e.target.value }))}
                   >
-                    <MenuItem value="gateway">{lang === 'vi' ? 'Core Gateway (Router biên / Quay PPPoE)' : 'Core Gateway (Border Router / PPPoE)'}</MenuItem>
-                    <MenuItem value="router_mesh">{lang === 'vi' ? 'Router & Wi-Fi Mesh (Điểm phát AP)' : 'Router & Wi-Fi Mesh (AP / Mesh)'}</MenuItem>
+                    <MenuItem value="gateway">{t('deviceDialog.roleGatewayOption')}</MenuItem>
+                    <MenuItem value="router_mesh">{t('deviceDialog.roleRouterMeshOption')}</MenuItem>
                   </Select>
                 </FormControl>
               </Grid>
 
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth size="small">
-                  <InputLabel>{lang === 'vi' ? 'Hãng / Nền tảng' : 'Platform / Brand'}</InputLabel>
+                  <InputLabel>{t('deviceDialog.platformBrand')}</InputLabel>
                   <Select
                     value={form.type}
-                    label={lang === 'vi' ? 'Hãng / Nền tảng' : 'Platform / Brand'}
+                    label={t('deviceDialog.platformBrand')}
                     onChange={(e) => handleTypeChange(e.target.value)}
                   >
-                    {DEVICE_TYPES.map(t => (
-                      <MenuItem key={t.value} value={t.value}>
-                        {lang === 'vi' ? t.labelVi : t.labelEn}
+                    {DEVICE_TYPES.map(typeItem => (
+                      <MenuItem key={typeItem.value} value={typeItem.value}>
+                        {lang === 'vi' ? typeItem.labelVi : typeItem.labelEn}
                       </MenuItem>
                     ))}
                   </Select>
@@ -152,10 +150,10 @@ export default function NetworkDeviceDialog({ open, onClose, onSave, editingDevi
 
             <TextField
               size="small"
-              label={lang === 'vi' ? 'Tên thiết bị (Gợi nhớ)' : 'Device Name'}
+              label={t('deviceDialog.deviceName')}
               value={form.name}
               onChange={(e) => setForm(prev => ({ ...prev, name: e.target.value }))}
-              placeholder={lang === 'vi' ? 'VD: MikroTik RB5009, OpenWrt Tầng 1, Deco X50...' : 'e.g. MikroTik RB5009, OpenWrt Core, Deco X50...'}
+              placeholder={t('deviceDialog.deviceNamePlaceholder')}
               required
               fullWidth
             />
@@ -164,7 +162,7 @@ export default function NetworkDeviceDialog({ open, onClose, onSave, editingDevi
               <Grid item xs={8}>
                 <TextField
                   size="small"
-                  label={lang === 'vi' ? 'Địa chỉ IP (Host)' : 'IP Address (Host)'}
+                  label={t('deviceDialog.ipHost')}
                   value={form.host}
                   onChange={(e) => setForm(prev => ({ ...prev, host: e.target.value }))}
                   placeholder="192.168.1.1"
@@ -175,7 +173,7 @@ export default function NetworkDeviceDialog({ open, onClose, onSave, editingDevi
               <Grid item xs={4}>
                 <TextField
                   size="small"
-                  label={lang === 'vi' ? 'Cổng (Port)' : 'Port'}
+                  label={t('deviceDialog.portLabel')}
                   type="number"
                   value={form.port}
                   onChange={(e) => setForm(prev => ({ ...prev, port: e.target.value }))}
@@ -189,32 +187,32 @@ export default function NetworkDeviceDialog({ open, onClose, onSave, editingDevi
             {form.type !== 'xiaomi' && form.type !== 'gecoos' && (
               <TextField
                 size="small"
-                label={lang === 'vi' ? 'Tên tài khoản (Username)' : 'Username'}
+                label={t('deviceDialog.usernameLabel')}
                 value={form.username}
                 onChange={(e) => setForm(prev => ({ ...prev, username: e.target.value }))}
-                placeholder={lang === 'vi' ? 'admin hoặc root' : 'admin or root'}
+                placeholder={t('deviceDialog.usernamePlaceholder')}
                 fullWidth
               />
             )}
 
             <TextField
               size="small"
-              label={lang === 'vi' ? 'Mật khẩu quản trị (Password / Token)' : 'Admin Password / Token'}
+              label={t('deviceDialog.passwordLabel')}
               type="password"
               value={form.password}
               onChange={(e) => setForm(prev => ({ ...prev, password: e.target.value }))}
-              placeholder={lang === 'vi' ? 'Để trống nếu không đặt mật khẩu' : 'Leave empty if no password'}
+              placeholder={t('deviceDialog.passwordPlaceholder')}
               fullWidth
             />
 
             {form.type === 'mikrotik' && (
               <TextField
                 size="small"
-                label={lang === 'vi' ? 'Tên cổng PPPoE (Interface WAN)' : 'PPPoE Interface Name (WAN)'}
+                label={t('deviceDialog.pppoeInterface')}
                 value={form.pppoeInterface}
                 onChange={(e) => setForm(prev => ({ ...prev, pppoeInterface: e.target.value }))}
                 placeholder="pppoe-out1"
-                helperText={lang === 'vi' ? 'Dùng cho tính năng làm mới IP WAN và đo băng thông realtime' : 'Used for WAN IP renewal and realtime bandwidth monitoring'}
+                helperText={t('deviceDialog.pppoeInterfaceHelper')}
                 fullWidth
               />
             )}
@@ -228,7 +226,7 @@ export default function NetworkDeviceDialog({ open, onClose, onSave, editingDevi
               }
               label={
                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  {lang === 'vi' ? 'Sử dụng kết nối bảo mật SSL / HTTPS' : 'Use secure SSL / HTTPS connection'}
+                  {t('deviceDialog.useHttps')}
                 </Typography>
               }
             />
@@ -236,9 +234,9 @@ export default function NetworkDeviceDialog({ open, onClose, onSave, editingDevi
         </DialogContent>
 
         <DialogActions sx={{ p: 2.5 }}>
-          <Button onClick={onClose}>{lang === 'vi' ? 'Hủy' : 'Cancel'}</Button>
+          <Button onClick={onClose}>{t('common.cancel')}</Button>
           <Button type="submit" variant="contained" color="primary" sx={{ fontWeight: 700 }}>
-            {editingDevice ? (lang === 'vi' ? 'Lưu cập nhật' : 'Save Changes') : (lang === 'vi' ? 'Thêm thiết bị' : 'Add Device')}
+            {editingDevice ? t('deviceDialog.saveUpdate') : t('deviceDialog.addDevice')}
           </Button>
         </DialogActions>
       </form>

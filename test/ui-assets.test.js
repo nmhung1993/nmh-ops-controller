@@ -8,8 +8,8 @@ const root = path.join(__dirname, '..');
 test('English and Vietnamese dictionaries cover UI translation keys', () => {
   const html = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
   const app = fs.readFileSync(path.join(root, 'public', 'js', 'app.js'), 'utf8');
-  const english = JSON.parse(fs.readFileSync(path.join(root, 'public', 'lang', 'en.json'), 'utf8'));
-  const vietnamese = JSON.parse(fs.readFileSync(path.join(root, 'public', 'lang', 'vi.json'), 'utf8'));
+  const english = JSON.parse(fs.readFileSync(path.join(root, 'frontend', 'src', 'locales', 'en.json'), 'utf8'));
+  const vietnamese = JSON.parse(fs.readFileSync(path.join(root, 'frontend', 'src', 'locales', 'vi.json'), 'utf8'));
   const keys = new Set();
 
   for (const match of html.matchAll(/data-i18n(?:-placeholder)?="([^"]+)"/g)) keys.add(match[1]);

@@ -49,7 +49,7 @@ export default function ZTESection({
   wolLoadingMac
 }) {
   const theme = useTheme();
-  const { lang } = useLanguage();
+  const { lang, t } = useLanguage();
 
   if (loading && !status) {
     return <LinearProgress sx={{ my: 4, borderRadius: 2 }} />;
@@ -60,13 +60,13 @@ export default function ZTESection({
       <Card sx={{ p: 4, textAlign: 'center' }}>
         <Wifi size={48} color={theme.palette.text.disabled} />
         <Typography variant="h6" sx={{ mt: 2, fontWeight: 700 }}>
-          {lang === 'vi' ? 'Không thể kết nối Router / EasyMesh ZTE' : 'Cannot connect to ZTE Router / EasyMesh'}
+          {t('zte.cannotConnect', { host: '' })}
         </Typography>
         <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3 }}>
-          {lang === 'vi' ? 'Vui lòng kiểm tra lại địa chỉ IP ZTE (H196A / F670L / H3601) và kết nối mạng.' : 'Please verify ZTE IP address (H196A / F670L / H3601) and network connectivity.'}
+          {t('zte.checkCredentials')}
         </Typography>
         <Button variant="contained" startIcon={<Settings size={16} />} onClick={onOpenConfig}>
-          {lang === 'vi' ? 'Cấu hình kết nối' : 'Configure Connection'}
+          {t('zte.configure')}
         </Button>
       </Card>
     );
@@ -102,7 +102,7 @@ export default function ZTESection({
             <Box sx={{ minWidth: 0 }}>
               <Stack direction="row" spacing={0.75} alignItems="center" justifyContent={{ xs: 'center', sm: 'flex-start' }} sx={{ flexWrap: 'wrap', gap: 0.5, mb: 0.25 }}>
                 <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: 0.5, fontSize: '0.65rem', lineHeight: 1.2 }}>
-                  ZTE EASYMESH & GPON ONT
+                  {t('zte.title')}
                 </Typography>
                 <Label variant="soft" color={status.online ? 'success' : 'error'} sx={{ height: 20, fontSize: '0.65rem' }}>
                   {status.online ? 'Online' : 'Offline'}
@@ -131,7 +131,7 @@ export default function ZTESection({
               onClick={onRestartWifi}
               sx={{ fontWeight: 700, fontSize: '0.75rem', py: 0.5 }}
             >
-              {lang === 'vi' ? 'Làm mới Wi-Fi' : 'Restart Mesh'}
+              {t('network.restartWifi')}
             </Button>
             <Button
               size="small"
@@ -141,7 +141,7 @@ export default function ZTESection({
               onClick={onReboot}
               sx={{ fontWeight: 700, fontSize: '0.75rem', py: 0.5 }}
             >
-              Reboot Router
+              {t('network.reboot')}
             </Button>
             <Button
               size="small"
@@ -151,7 +151,7 @@ export default function ZTESection({
               onClick={onOpenConfig}
               sx={{ fontWeight: 700, fontSize: '0.75rem', py: 0.5 }}
             >
-              {lang === 'vi' ? 'Cấu hình' : 'Config'}
+              {t('network.config')}
             </Button>
           </Stack>
         </Stack>
@@ -176,13 +176,13 @@ export default function ZTESection({
         <Grid item xs={6} sm={6} md={3}>
           <Card sx={{ p: { xs: 1.25, sm: 2 }, height: '100%', borderRadius: 2 }}>
             <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, fontSize: { xs: '0.6rem', sm: '0.7rem' } }}>
-              {lang === 'vi' ? 'QUANG GPON (RX)' : 'GPON OPTICAL (RX)'}
+              {t('zte.gponPower')}
             </Typography>
             <Typography variant="subtitle1" sx={{ fontWeight: 800, my: 0.25, color: 'success.main', fontFamily: 'monospace', fontSize: { xs: '0.875rem', sm: '1.1rem' } }} noWrap>
               {status.pon?.rxPowerDbm || '-19.4 dBm'}
             </Typography>
             <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.65rem', display: 'block' }} noWrap>
-              Tx: {status.pon?.txPowerDbm || '2.3 dBm'} ({lang === 'vi' ? 'Ổn định' : 'Optimal'})
+              Tx: {status.pon?.txPowerDbm || '2.3 dBm'} ({t('zte.optimal')})
             </Typography>
           </Card>
         </Grid>
@@ -190,10 +190,10 @@ export default function ZTESection({
         <Grid item xs={6} sm={6} md={3}>
           <Card sx={{ p: { xs: 1.25, sm: 2 }, height: '100%', borderRadius: 2 }}>
             <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, fontSize: { xs: '0.6rem', sm: '0.7rem' } }}>
-              WI-FI CLIENTS
+              {t('network.totalWifiClients')}
             </Typography>
             <Typography variant="subtitle1" sx={{ fontWeight: 800, my: 0.25, color: 'primary.main', fontSize: { xs: '0.875rem', sm: '1.1rem' } }}>
-              {status.wifi?.count || status.clients?.length || 0} {lang === 'vi' ? 'máy' : 'devices'}
+              {status.wifi?.count || status.clients?.length || 0} {t('common.devices')}
             </Typography>
             <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.65rem', display: 'block' }} noWrap>
               5G: {status.wifi?.wifi50Count || 0} • 2.4G: {status.wifi?.wifi24Count || 0}
@@ -204,7 +204,7 @@ export default function ZTESection({
         <Grid item xs={6} sm={6} md={3}>
           <Card sx={{ p: { xs: 1.25, sm: 2 }, height: '100%', borderRadius: 2 }}>
             <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, fontSize: { xs: '0.6rem', sm: '0.7rem' } }}>
-              CPU & RAM ZTE
+              {t('network.apCpuLoad')} & {t('network.ramAp')}
             </Typography>
             <Typography variant="subtitle1" sx={{ fontWeight: 800, my: 0.25, fontSize: { xs: '0.85rem', sm: '1.05rem' } }} noWrap>
               C: {status.cpu || 16}% / R: {status.memory || 45}%
@@ -221,7 +221,7 @@ export default function ZTESection({
       {status.meshNodes && status.meshNodes.length > 0 && (
         <Box>
           <Typography variant="h6" sx={{ fontWeight: 800, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Layers size={20} color={theme.palette.primary.main} /> {lang === 'vi' ? `Topology Trạm Vệ Tinh ZTE EasyMesh (${status.meshNodes.length})` : `ZTE EasyMesh Topology (${status.meshNodes.length} Nodes)`}
+            <Layers size={20} color={theme.palette.primary.main} /> {t('zte.meshTopology', { count: status.meshNodes.length })}
           </Typography>
 
           <Grid container spacing={2.5}>
@@ -245,7 +245,7 @@ export default function ZTESection({
                   <Stack direction="row" spacing={2} sx={{ my: 1.5 }}>
                     <Box sx={{ flex: 1 }}>
                       <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                        {lang === 'vi' ? 'TẢI CPU' : 'CPU LOAD'}
+                        {t('network.apCpuLoad')}
                       </Typography>
                       <Typography variant="h6" sx={{ fontWeight: 800 }}>
                         {node.cpu}%
@@ -254,7 +254,7 @@ export default function ZTESection({
                     <Divider orientation="vertical" flexItem />
                     <Box sx={{ flex: 1 }}>
                       <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                        RAM
+                        {t('network.ramAp')}
                       </Typography>
                       <Typography variant="h6" sx={{ fontWeight: 800 }}>
                         {node.memory}%
@@ -263,10 +263,10 @@ export default function ZTESection({
                     <Divider orientation="vertical" flexItem />
                     <Box sx={{ flex: 1 }}>
                       <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                        WI-FI CLIENTS
+                        {t('network.wifiClients')}
                       </Typography>
                       <Typography variant="h6" sx={{ fontWeight: 800, color: 'primary.main' }}>
-                        {node.clientCount} {lang === 'vi' ? 'máy' : 'devices'}
+                        {node.clientCount} {t('common.devices')}
                       </Typography>
                     </Box>
                   </Stack>
@@ -280,19 +280,19 @@ export default function ZTESection({
       {/* Connected Wi-Fi Devices Table */}
       <Card sx={{ p: 3 }}>
         <Typography variant="h6" sx={{ fontWeight: 800, mb: 2 }}>
-          {lang === 'vi' ? `Danh sách thiết bị kết nối Wi-Fi (${status.clients?.length || 0})` : `Connected Wi-Fi Devices (${status.clients?.length || 0})`}
+          {t('zte.clientsTableTitle', { count: status.clients?.length || 0 })}
         </Typography>
 
         <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Tên thiết bị' : 'Device Name'}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Địa chỉ IP' : 'IP Address'}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Băng tần' : 'Band'}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Tín hiệu (RSSI)' : 'Signal (RSSI)'}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>MAC Address</TableCell>
-                <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>{lang === 'vi' ? 'Thao tác' : 'Actions'}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{t('network.deviceName')}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{t('network.ipAddress')}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{t('network.band')}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{t('network.status')}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{t('network.macAddress')}</TableCell>
+                <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>{t('network.actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -322,7 +322,7 @@ export default function ZTESection({
                           disabled={wolLoadingMac === client.mac}
                           onClick={() => onSendWol(client.mac, client.name)}
                         >
-                          {wolLoadingMac === client.mac ? (lang === 'vi' ? 'Đang gửi...' : 'Sending...') : 'WoL'}
+                          {wolLoadingMac === client.mac ? t('network.sending') : t('network.wol')}
                         </Button>
                       )}
                       {onOpenAddQueue && (
@@ -333,7 +333,7 @@ export default function ZTESection({
                           startIcon={<SlidersHorizontal size={14} />}
                           onClick={() => onOpenAddQueue(client.ip, client.name)}
                         >
-                          {lang === 'vi' ? 'Giới hạn' : 'Limit'}
+                          {t('network.limit')}
                         </Button>
                       )}
                       {onOpenAddNat && (
@@ -344,7 +344,7 @@ export default function ZTESection({
                           startIcon={<ArrowUpDown size={14} />}
                           onClick={() => onOpenAddNat(client.ip, client.name)}
                         >
-                          {lang === 'vi' ? 'Mở Cổng' : 'Open Port'}
+                          {t('network.openPort')}
                         </Button>
                       )}
                       <Button
@@ -353,7 +353,7 @@ export default function ZTESection({
                         startIcon={<Plus size={14} />}
                         onClick={() => onOpenAddTarget(client.ip, client.name)}
                       >
-                        {lang === 'vi' ? 'Theo dõi' : 'Monitor'}
+                        {t('network.monitor')}
                       </Button>
                     </Stack>
                   </TableCell>
