@@ -211,6 +211,7 @@ export default function PwaInstallButton({ variant = 'icon', sx = {} }) {
             <Stack spacing={1.5}>
               <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.85rem' }}>
                 Ứng dụng hỗ trợ Progressive Web App (PWA) đầy đủ. Bạn có thể cài đặt trực tiếp qua trình duyệt Chrome, Edge hoặc Safari để trải nghiệm mượt mà, khởi động tức thì và hoạt động độc lập trên thanh Taskbar / Home screen.
+                Bấm vào ... bên phải của thanh địa chỉ trình duyệt và chọn "Cài đặt và tạo lối tắt".
               </Typography>
             </Stack>
           )}
