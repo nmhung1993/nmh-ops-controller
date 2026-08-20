@@ -1,8 +1,12 @@
 {
-  "name": "windows-controller-homeassistant-connector",
+  "name": "nmh-ops-controller-homeassistant-connector",
   "version": "2.1.5",
   "private": true,
   "main": "agent.js",
-  "engines": { "node": ">=18" },
-  "dependencies": { "ws": "^8.18.0" }
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
 }

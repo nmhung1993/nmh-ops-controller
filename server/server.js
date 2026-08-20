@@ -42,7 +42,7 @@ const COMMAND_CAPABILITIES = {
   'watchdog.launch': ['watchdog.launch', 'watchdog', 'service-launch', 'windows', 'linux', 'synology'],
   'window.capture': ['window.capture', 'desktop-helper'],
   'system.execute': ['system.execute', 'powershell', 'windows', 'linux', 'synology', 'homeassistant', 'scripts', 'processes', 'telemetry', 'bash', 'shell'],
-  'agent.upgrade': ['agent.upgrade', 'windows', 'linux', 'synology', 'telemetry', 'processes'],
+  'agent.upgrade': ['agent.upgrade', 'windows', 'linux', 'synology', 'homeassistant', 'homeassistant.entities', 'telemetry', 'processes', 'system.execute'],
   'docker.info': ['docker', 'system.execute', 'linux', 'synology', 'windows'],
   'docker.containers': ['docker', 'system.execute', 'linux', 'synology', 'windows'],
   'docker.container.details': ['docker', 'system.execute', 'linux', 'synology', 'windows'],
@@ -1305,13 +1305,20 @@ app.get('/api/v1/ota/agent-bundle', (req, res) => {
     const files = {};
     if (platform.includes('synology')) {
       const synoPath = path.join(__dirname, '..', 'synology-agent', 'agent.js');
+      const pkgPath = path.join(__dirname, '..', 'synology-agent', 'package.json');
       if (fs.existsSync(synoPath)) files['agent.js'] = fs.readFileSync(synoPath, 'utf8');
+      if (fs.existsSync(pkgPath)) files['package.json'] = fs.readFileSync(pkgPath, 'utf8');
     } else if (platform.includes('linux')) {
       const linuxPath = path.join(__dirname, '..', 'linux-agent', 'agent.js');
+      const pkgPath = path.join(__dirname, '..', 'linux-agent', 'package.json');
       if (fs.existsSync(linuxPath)) files['agent.js'] = fs.readFileSync(linuxPath, 'utf8');
-    } else if (platform.includes('homeassistant') || platform.includes('hass')) {
+      if (fs.existsSync(pkgPath)) files['package.json'] = fs.readFileSync(pkgPath, 'utf8');
+    } else if (platform.includes('homeassistant') || platform.includes('home assistant') || platform.includes('hass')) {
+
       const hassPath = path.join(__dirname, '..', 'homeassistant-addon', 'agent.js');
+      const pkgPath = path.join(__dirname, '..', 'homeassistant-addon', 'package.json');
       if (fs.existsSync(hassPath)) files['agent.js'] = fs.readFileSync(hassPath, 'utf8');
+      if (fs.existsSync(pkgPath)) files['package.json'] = fs.readFileSync(pkgPath, 'utf8');
     } else {
       const agentPath = path.join(__dirname, '..', 'agent', 'agent.js');
       const windowsPath = path.join(__dirname, '..', 'agent', 'windows.js');
@@ -1337,7 +1344,7 @@ app.post('/api/v1/hosts/:id/upgrade', authenticate, requireSuperAdmin, (req, res
   const agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(req.params.id);
   if (!agent) return res.status(404).json({ error: 'Agent not found' });
   const p = (agent.platform || '').toLowerCase();
-  const plat = p.includes('synology') ? 'synology' : (p.includes('linux') ? 'linux' : (p.includes('hass') ? 'homeassistant' : 'windows'));
+  const plat = p.includes('synology') ? 'synology' : (p.includes('linux') ? 'linux' : (p.includes('home assistant') || p.includes('homeassistant') || p.includes('hass') ? 'homeassistant' : 'windows'));
   const command = createCommand(req.params.id, 'agent.upgrade', {
     targetVersion: '2.1.5',
     downloadUrl: `/api/v1/ota/agent-bundle?platform=${plat}`
@@ -1351,7 +1358,7 @@ app.post('/api/v1/hosts/upgrade-all', authenticate, requireSuperAdmin, (req, res
   for (const a of agents) {
     if (agentSockets.has(a.id)) {
       const p = (a.platform || '').toLowerCase();
-      const plat = p.includes('synology') ? 'synology' : (p.includes('linux') ? 'linux' : (p.includes('hass') ? 'homeassistant' : 'windows'));
+      const plat = p.includes('synology') ? 'synology' : (p.includes('linux') ? 'linux' : (p.includes('home assistant') || p.includes('homeassistant') || p.includes('hass') ? 'homeassistant' : 'windows'));
       const command = createCommand(a.id, 'agent.upgrade', {
         targetVersion: '2.1.5',
         downloadUrl: `/api/v1/ota/agent-bundle?platform=${plat}`

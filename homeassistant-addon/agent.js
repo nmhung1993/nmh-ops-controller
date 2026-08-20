@@ -11,7 +11,7 @@ const VERSION = '2.1.5';
 const CONFIG_FILE = argument('--config') || '/data/options.json';
 const STATE_FILE = process.env.WC_STATE_FILE || path.join(path.dirname(CONFIG_FILE), 'windows-controller-state.json');
 const CONNECTION_ATTEMPT_TIMEOUT_MS = Number(process.env.WC_CONNECTION_ATTEMPT_TIMEOUT_MS || 10_000);
-const capabilities = ['telemetry', 'hardware-sensors', 'homeassistant', 'homeassistant.entities', 'system.execute', 'scripts'];
+const capabilities = ['telemetry', 'hardware-sensors', 'homeassistant', 'homeassistant.entities', 'system.execute', 'scripts', 'agent.upgrade'];
 let config;
 let state;
 let socket = null;
@@ -71,10 +71,10 @@ function connect() {
   connectionAttemptTimer = setTimeout(() => failConnection(current, 'connection_attempt_timeout'), CONNECTION_ATTEMPT_TIMEOUT_MS);
   current.on('open', () => {
     lastActivityAt = Date.now();
-    console.log('Home Assistant connector WebSocket opened; sending hello');
+    console.log(`Home Assistant connector v${VERSION} WebSocket opened; sending hello`);
     send(envelope('agent.hello', { installId: state.installId, token: state.token, hostname: state.hostname, fingerprint: fingerprint(), platform: 'Home Assistant', version: VERSION, capabilities }));
   });
-  current.on('message', raw => {
+  current.on('message', async raw => {
     lastActivityAt = Date.now();
     let message; try { message = JSON.parse(raw.toString()); } catch { return; }
     if (message.type === 'server.pending') { if (connectionAttemptTimer) clearTimeout(connectionAttemptTimer); connectionAttemptTimer = null; reconnectDelay = 1000; approved = false; state.agentId = message.payload?.agentId || state.agentId; saveState(); console.log(`Home Assistant connector pending approval: ${state.agentId}`); }
@@ -89,9 +89,37 @@ function connect() {
       }
     }
     else if (message.type === 'server.command') {
-
       const { commandId, commandType, data = {} } = message.payload || {};
-      if (commandType === 'system.execute') {
+      if (commandType === 'agent.upgrade') {
+        const downloadPath = data.downloadUrl || '/api/v1/ota/agent-bundle?platform=homeassistant';
+        const bundleUrl = `${config.central_server_url.replace(/\/$/, '')}${downloadPath}`;
+        console.log(`[Home Assistant OTA] Downloading upgrade bundle from ${bundleUrl}...`);
+        try {
+          const resp = await fetch(bundleUrl);
+          if (!resp.ok) throw new Error(`Download failed: HTTP ${resp.status}`);
+          const bundle = await resp.json();
+          if (!bundle?.files || Object.keys(bundle.files).length === 0) {
+            throw new Error('Upgrade bundle contains no files');
+          }
+          for (const [filename, content] of Object.entries(bundle.files)) {
+            const targetPath = path.join(__dirname, filename);
+            fs.writeFileSync(targetPath, content, 'utf8');
+          }
+          state.version = bundle.version || '2.1.5';
+          saveState();
+          console.log(`[Home Assistant OTA] Upgraded to v${bundle.version || '2.1.5'}. Files updated: ${Object.keys(bundle.files).join(', ')}.`);
+          send(envelope('agent.command.result', { commandId, status: 'succeeded', result: { updated: true, newVersion: bundle.version || '2.1.5' } }));
+          send(envelope('agent.event', { eventType: 'agent.ota.restarting', severity: 'info', message: `Add-on upgraded to v${bundle.version || '2.1.5'}. Restarting container...` }));
+          setTimeout(() => {
+            console.log('[Home Assistant OTA] Restarting Add-on process now...');
+            process.exit(0);
+          }, 1000);
+        } catch (err) {
+          console.error('[Home Assistant OTA] Upgrade failed:', err.message);
+          send(envelope('agent.command.result', { commandId, status: 'failed', error: err.message }));
+        }
+      }
+      else if (commandType === 'system.execute') {
         const script = String(data.command || '').trim();
         if (!script) {
           return send(envelope('agent.command.result', { commandId, status: 'failed', error: 'command_empty' }));
@@ -106,6 +134,7 @@ function connect() {
         send(envelope('agent.command.result', { commandId, status: 'failed', error: 'capability_not_supported' }));
       }
     }
+
   });
   current.on('error', error => {
     console.error('Home Assistant connector error:', error.message);
