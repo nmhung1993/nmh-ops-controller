@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: minhhungops-controller:latest
     container_name: minhhungops-controller
     restart: unless-stopped
     ports:
@@ -13,5 +14,9 @@ services:
       - DATA_DIR=/app/data
       - TZ=Asia/Bangkok
     volumes:
-      - ./data:/app/data
+      - minhhungops_data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  minhhungops_data:
+    name: minhhungops_controller_data
