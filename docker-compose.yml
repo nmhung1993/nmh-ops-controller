@@ -20,3 +20,4 @@ services:
 volumes:
   minhhungops_data:
     name: minhhungops_controller_data
+ 

@@ -277,7 +277,7 @@ export default function ProcessesView() {
           </Typography>
           {updatedAt && (
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-              Cập nhật: {formatDateTime(updatedAt, lang)}
+              {lang === 'vi' ? 'Cập nhật: ' : 'Updated: '}{formatDateTime(updatedAt, lang)}
             </Typography>
           )}
         </Box>
@@ -299,7 +299,7 @@ export default function ProcessesView() {
                 <TableRow>
                   <TableCell colSpan={6} sx={{ textAlign: 'center', py: 6, color: 'text.secondary' }}>
                     <Activity size={36} style={{ marginBottom: 8, opacity: 0.4 }} />
-                    <Typography variant="body2">{processes.length === 0 ? t('process.none') : 'Không tìm thấy tiến trình nào phù hợp.'}</Typography>
+                    <Typography variant="body2">{processes.length === 0 ? t('process.none') : (lang === 'vi' ? 'Không tìm thấy tiến trình nào phù hợp.' : 'No matching processes found.')}</Typography>
                   </TableCell>
                 </TableRow>
               ) : (

@@ -34,6 +34,7 @@ import {
   ArrowUpDown
 } from 'lucide-react';
 import Label from '../common/Label';
+import { useLanguage } from '../../context/LanguageContext';
 
 export default function ZTESection({
   status,
@@ -48,6 +49,7 @@ export default function ZTESection({
   wolLoadingMac
 }) {
   const theme = useTheme();
+  const { lang } = useLanguage();
 
   if (loading && !status) {
     return <LinearProgress sx={{ my: 4, borderRadius: 2 }} />;
@@ -58,13 +60,13 @@ export default function ZTESection({
       <Card sx={{ p: 4, textAlign: 'center' }}>
         <Wifi size={48} color={theme.palette.text.disabled} />
         <Typography variant="h6" sx={{ mt: 2, fontWeight: 700 }}>
-          Không thể kết nối Router / EasyMesh ZTE
+          {lang === 'vi' ? 'Không thể kết nối Router / EasyMesh ZTE' : 'Cannot connect to ZTE Router / EasyMesh'}
         </Typography>
         <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3 }}>
-          Vui lòng kiểm tra lại địa chỉ IP ZTE (H196A / F670L / H3601) và kết nối mạng.
+          {lang === 'vi' ? 'Vui lòng kiểm tra lại địa chỉ IP ZTE (H196A / F670L / H3601) và kết nối mạng.' : 'Please verify ZTE IP address (H196A / F670L / H3601) and network connectivity.'}
         </Typography>
         <Button variant="contained" startIcon={<Settings size={16} />} onClick={onOpenConfig}>
-          Cấu hình kết nối
+          {lang === 'vi' ? 'Cấu hình kết nối' : 'Configure Connection'}
         </Button>
       </Card>
     );
@@ -75,145 +77,151 @@ export default function ZTESection({
       {/* Banner */}
       <Card
         sx={{
-          p: 3,
-          background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.1)} 0%, ${theme.palette.background.paper} 100%)`
+          p: { xs: 1.5, sm: 2.5 },
+          background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.1)} 0%, ${theme.palette.background.paper} 100%)`,
+          borderRadius: 2.5
         }}
       >
-        <Stack direction={{ xs: 'column', md: 'row' }} alignItems="center" justifyContent="space-between" spacing={2.5}>
-          <Stack direction="row" spacing={2} alignItems="center">
+        <Stack direction={{ xs: 'column', md: 'row' }} alignItems="center" justifyContent="space-between" spacing={2} sx={{ textAlign: { xs: 'center', md: 'left' } }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems="center" sx={{ width: { xs: '100%', md: 'auto' } }}>
             <Box
               sx={{
-                width: 56,
-                height: 56,
-                borderRadius: 2.5,
+                width: { xs: 44, sm: 52 },
+                height: { xs: 44, sm: 52 },
+                borderRadius: 2,
                 bgcolor: 'primary.main',
                 color: 'white',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center'
+                justifyContent: 'center',
+                flexShrink: 0
               }}
             >
-              <Wifi size={32} />
+              <Wifi size={26} />
             </Box>
-            <Box>
-              <Stack direction="row" spacing={1} alignItems="center">
-                <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: 1 }}>
-                  ZTE EASYMESH & GPON ONT ROUTER
+            <Box sx={{ minWidth: 0 }}>
+              <Stack direction="row" spacing={0.75} alignItems="center" justifyContent={{ xs: 'center', sm: 'flex-start' }} sx={{ flexWrap: 'wrap', gap: 0.5, mb: 0.25 }}>
+                <Typography variant="overline" sx={{ color: 'primary.main', fontWeight: 800, letterSpacing: 0.5, fontSize: '0.65rem', lineHeight: 1.2 }}>
+                  ZTE EASYMESH & GPON ONT
                 </Typography>
-                <Label variant="soft" color={status.online ? 'success' : 'error'}>
+                <Label variant="soft" color={status.online ? 'success' : 'error'} sx={{ height: 20, fontSize: '0.65rem' }}>
                   {status.online ? 'Online' : 'Offline'}
                 </Label>
                 {status.pon?.status && (
-                  <Label variant="soft" color="success">
+                  <Label variant="soft" color="success" sx={{ height: 20, fontSize: '0.65rem' }}>
                     GPON OK
                   </Label>
                 )}
               </Stack>
-              <Typography variant="h4" sx={{ fontWeight: 800 }}>
+              <Typography variant="h6" sx={{ fontWeight: 800, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
                 {status.routerName}
               </Typography>
-              <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+              <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, display: 'block', fontSize: '0.72rem' }}>
                 Host: {status.host} • Model: {status.hardware} • ROM: {status.version} • {status.uptimeFormatted}
               </Typography>
             </Box>
           </Stack>
 
-          <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap', gap: 1 }}>
+          <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.75, justifyContent: { xs: 'center', md: 'flex-end' }, width: { xs: '100%', md: 'auto' } }}>
             <Button
+              size="small"
               variant="outlined"
               color="warning"
-              startIcon={<RotateCcw size={16} />}
+              startIcon={<RotateCcw size={14} />}
               onClick={onRestartWifi}
-              sx={{ fontWeight: 700 }}
+              sx={{ fontWeight: 700, fontSize: '0.75rem', py: 0.5 }}
             >
-              Restart Wi-Fi EasyMesh
+              {lang === 'vi' ? 'Làm mới Wi-Fi' : 'Restart Mesh'}
             </Button>
             <Button
+              size="small"
               variant="outlined"
               color="error"
-              startIcon={<Power size={16} />}
+              startIcon={<Power size={14} />}
               onClick={onReboot}
-              sx={{ fontWeight: 700 }}
+              sx={{ fontWeight: 700, fontSize: '0.75rem', py: 0.5 }}
             >
               Reboot Router
             </Button>
             <Button
+              size="small"
               variant="contained"
               color="inherit"
-              startIcon={<Settings size={16} />}
+              startIcon={<Settings size={14} />}
               onClick={onOpenConfig}
-              sx={{ fontWeight: 700 }}
+              sx={{ fontWeight: 700, fontSize: '0.75rem', py: 0.5 }}
             >
-              Cấu hình
+              {lang === 'vi' ? 'Cấu hình' : 'Config'}
             </Button>
           </Stack>
         </Stack>
       </Card>
 
-      {/* Telemetry Cards */}
-      <Grid container spacing={2.5}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ p: 2.5, height: '100%' }}>
-            <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+      {/* Telemetry Cards (2x2 on Mobile) */}
+      <Grid container spacing={{ xs: 1, sm: 2 }}>
+        <Grid item xs={6} sm={6} md={3}>
+          <Card sx={{ p: { xs: 1.25, sm: 2 }, height: '100%', borderRadius: 2 }}>
+            <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, fontSize: { xs: '0.6rem', sm: '0.7rem' } }}>
               WAN IP & PPPOE
             </Typography>
-            <Typography variant="h5" sx={{ fontWeight: 800, my: 0.5, color: 'primary.main', fontFamily: 'monospace' }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 800, my: 0.25, color: 'primary.main', fontFamily: 'monospace', fontSize: { xs: '0.875rem', sm: '1.1rem' } }} noWrap>
               {status.wan?.ip || '--'}
             </Typography>
-            <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
-              PPPoE: {status.wan?.pppoeUser || 'Connected'} • GW: {status.wan?.gateway || '192.168.1.1'}
+            <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.65rem', display: 'block' }} noWrap>
+              GW: {status.wan?.gateway || '192.168.1.1'}
             </Typography>
           </Card>
         </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ p: 2.5, height: '100%' }}>
-            <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
-              CÔNG SUẤT QUANG (GPON)
+        <Grid item xs={6} sm={6} md={3}>
+          <Card sx={{ p: { xs: 1.25, sm: 2 }, height: '100%', borderRadius: 2 }}>
+            <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, fontSize: { xs: '0.6rem', sm: '0.7rem' } }}>
+              {lang === 'vi' ? 'QUANG GPON (RX)' : 'GPON OPTICAL (RX)'}
             </Typography>
-            <Typography variant="h5" sx={{ fontWeight: 800, my: 0.5, color: 'success.main', fontFamily: 'monospace' }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 800, my: 0.25, color: 'success.main', fontFamily: 'monospace', fontSize: { xs: '0.875rem', sm: '1.1rem' } }} noWrap>
               {status.pon?.rxPowerDbm || '-19.4 dBm'}
             </Typography>
-            <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
-              Tx: {status.pon?.txPowerDbm || '2.3 dBm'} (Tín hiệu Quang Ổn Định)
+            <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.65rem', display: 'block' }} noWrap>
+              Tx: {status.pon?.txPowerDbm || '2.3 dBm'} ({lang === 'vi' ? 'Ổn định' : 'Optimal'})
             </Typography>
           </Card>
         </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ p: 2.5, height: '100%' }}>
-            <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
-              THIẾT BỊ WI-FI ĐANG KẾT NỐI
+        <Grid item xs={6} sm={6} md={3}>
+          <Card sx={{ p: { xs: 1.25, sm: 2 }, height: '100%', borderRadius: 2 }}>
+            <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, fontSize: { xs: '0.6rem', sm: '0.7rem' } }}>
+              WI-FI CLIENTS
             </Typography>
-            <Typography variant="h5" sx={{ fontWeight: 800, my: 0.5, color: 'primary.main' }}>
-              {status.wifi?.count || status.clients?.length || 0} máy
+            <Typography variant="subtitle1" sx={{ fontWeight: 800, my: 0.25, color: 'primary.main', fontSize: { xs: '0.875rem', sm: '1.1rem' } }}>
+              {status.wifi?.count || status.clients?.length || 0} {lang === 'vi' ? 'máy' : 'devices'}
             </Typography>
-            <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
-              5GHz: {status.wifi?.wifi50Count || 0} • 2.4GHz: {status.wifi?.wifi24Count || 0}
+            <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.65rem', display: 'block' }} noWrap>
+              5G: {status.wifi?.wifi50Count || 0} • 2.4G: {status.wifi?.wifi24Count || 0}
             </Typography>
           </Card>
         </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ p: 2.5, height: '100%' }}>
-            <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
-              TẢI CPU & BỘ NHỚ RAM
+        <Grid item xs={6} sm={6} md={3}>
+          <Card sx={{ p: { xs: 1.25, sm: 2 }, height: '100%', borderRadius: 2 }}>
+            <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, fontSize: { xs: '0.6rem', sm: '0.7rem' } }}>
+              CPU & RAM ZTE
             </Typography>
-            <Typography variant="h5" sx={{ fontWeight: 800, my: 0.5 }}>
-              CPU: {status.cpu || 16}% / RAM: {status.memory || 45}%
+            <Typography variant="subtitle1" sx={{ fontWeight: 800, my: 0.25, fontSize: { xs: '0.85rem', sm: '1.05rem' } }} noWrap>
+              C: {status.cpu || 16}% / R: {status.memory || 45}%
             </Typography>
-            <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
-              EasyMesh Controller SoC
+            <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.65rem', display: 'block' }} noWrap>
+              Controller SoC
             </Typography>
           </Card>
         </Grid>
       </Grid>
 
+
       {/* Satellite EasyMesh Nodes */}
       {status.meshNodes && status.meshNodes.length > 0 && (
         <Box>
           <Typography variant="h6" sx={{ fontWeight: 800, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Layers size={20} color={theme.palette.primary.main} /> Topology Trạm Vệ Tinh ZTE EasyMesh ({status.meshNodes.length})
+            <Layers size={20} color={theme.palette.primary.main} /> {lang === 'vi' ? `Topology Trạm Vệ Tinh ZTE EasyMesh (${status.meshNodes.length})` : `ZTE EasyMesh Topology (${status.meshNodes.length} Nodes)`}
           </Typography>
 
           <Grid container spacing={2.5}>
@@ -237,7 +245,7 @@ export default function ZTESection({
                   <Stack direction="row" spacing={2} sx={{ my: 1.5 }}>
                     <Box sx={{ flex: 1 }}>
                       <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                        TẢI CPU
+                        {lang === 'vi' ? 'TẢI CPU' : 'CPU LOAD'}
                       </Typography>
                       <Typography variant="h6" sx={{ fontWeight: 800 }}>
                         {node.cpu}%
@@ -258,7 +266,7 @@ export default function ZTESection({
                         WI-FI CLIENTS
                       </Typography>
                       <Typography variant="h6" sx={{ fontWeight: 800, color: 'primary.main' }}>
-                        {node.clientCount} máy
+                        {node.clientCount} {lang === 'vi' ? 'máy' : 'devices'}
                       </Typography>
                     </Box>
                   </Stack>
@@ -272,19 +280,19 @@ export default function ZTESection({
       {/* Connected Wi-Fi Devices Table */}
       <Card sx={{ p: 3 }}>
         <Typography variant="h6" sx={{ fontWeight: 800, mb: 2 }}>
-          Danh sách thiết bị kết nối Wi-Fi ({status.clients?.length || 0})
+          {lang === 'vi' ? `Danh sách thiết bị kết nối Wi-Fi (${status.clients?.length || 0})` : `Connected Wi-Fi Devices (${status.clients?.length || 0})`}
         </Typography>
 
         <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell sx={{ fontWeight: 700 }}>Tên thiết bị</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Địa chỉ IP</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Băng tần</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>Tín hiệu (RSSI)</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Tên thiết bị' : 'Device Name'}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Địa chỉ IP' : 'IP Address'}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Băng tần' : 'Band'}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{lang === 'vi' ? 'Tín hiệu (RSSI)' : 'Signal (RSSI)'}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }}>MAC Address</TableCell>
-                <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>Thao tác</TableCell>
+                <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>{lang === 'vi' ? 'Thao tác' : 'Actions'}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -314,7 +322,7 @@ export default function ZTESection({
                           disabled={wolLoadingMac === client.mac}
                           onClick={() => onSendWol(client.mac, client.name)}
                         >
-                          {wolLoadingMac === client.mac ? 'Đang gửi...' : 'WoL'}
+                          {wolLoadingMac === client.mac ? (lang === 'vi' ? 'Đang gửi...' : 'Sending...') : 'WoL'}
                         </Button>
                       )}
                       {onOpenAddQueue && (
@@ -325,7 +333,7 @@ export default function ZTESection({
                           startIcon={<SlidersHorizontal size={14} />}
                           onClick={() => onOpenAddQueue(client.ip, client.name)}
                         >
-                          Bóp Bandwidth
+                          {lang === 'vi' ? 'Giới hạn' : 'Limit'}
                         </Button>
                       )}
                       {onOpenAddNat && (
@@ -336,7 +344,7 @@ export default function ZTESection({
                           startIcon={<ArrowUpDown size={14} />}
                           onClick={() => onOpenAddNat(client.ip, client.name)}
                         >
-                          Mở Cổng
+                          {lang === 'vi' ? 'Mở Cổng' : 'Open Port'}
                         </Button>
                       )}
                       <Button
@@ -345,7 +353,7 @@ export default function ZTESection({
                         startIcon={<Plus size={14} />}
                         onClick={() => onOpenAddTarget(client.ip, client.name)}
                       >
-                        Theo dõi
+                        {lang === 'vi' ? 'Theo dõi' : 'Monitor'}
                       </Button>
                     </Stack>
                   </TableCell>

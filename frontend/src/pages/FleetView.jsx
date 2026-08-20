@@ -237,60 +237,26 @@ export default function FleetView({ onNavigate }) {
   return (
     <Box sx={{ width: '100%', maxWidth: 1600, mx: 'auto' }}>
       {/* Top Action Header */}
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        alignItems={{ xs: 'flex-start', sm: 'center' }}
-        justifyContent="space-between"
-        spacing={2}
-        sx={{ mb: 3 }}
-      >
-        <Box>
-          <Typography variant="h4" sx={{ fontWeight: 800, mb: 0.5, letterSpacing: '-0.025em' }}>
-            {t('fleet.title')}
-          </Typography>
-          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            {t('fleet.description')}
-          </Typography>
-        </Box>
-
-        <Stack direction="row" spacing={1.5} alignItems="center" sx={{ width: { xs: '100%', sm: 'auto' }, flexWrap: 'wrap' }}>
-          {isSuperAdmin && (
-            <Button
-              variant="outlined"
-              color="primary"
-              startIcon={<UploadCloud size={16} className={upgradingAll ? 'animate-spin' : ''} />}
-              onClick={handleUpgradeAllFleet}
-              disabled={upgradingAll}
-              sx={{ fontWeight: 700, whiteSpace: 'nowrap', flexGrow: { xs: 1, sm: 0 } }}
-            >
-              {upgradingAll ? 'Đang nâng cấp...' : 'Nâng cấp toàn bộ (OTA)'}
-            </Button>
-          )}
-
-          {isSuperAdmin && (
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<Server size={16} />}
-              onClick={() => onNavigate('admin')}
-              sx={{ whiteSpace: 'nowrap', flexGrow: { xs: 1, sm: 0 } }}
-            >
-              {t('fleet.approve')}
-            </Button>
-          )}
-        </Stack>
-      </Stack>
+      {/* Page Title Header */}
+      <Box sx={{ mb: 2.5 }}>
+        <Typography variant="h4" sx={{ fontWeight: 800, mb: 0.5, letterSpacing: '-0.025em' }}>
+          {t('fleet.title')}
+        </Typography>
+        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+          {t('fleet.description')}
+        </Typography>
+      </Box>
 
       {toastMessage && (
-        <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setToastMessage('')}>
+        <Alert severity="success" sx={{ mb: 2.5, borderRadius: 2 }} onClose={() => setToastMessage('')}>
           {toastMessage}
         </Alert>
       )}
 
-      {/* OTA Center Banner */}
+      {/* Unified OTA Upgrade & Agent Approval Row */}
       <Card
         sx={{
-          mb: 2,
+          mb: 2.5,
           p: { xs: 1.25, sm: 2 },
           background: isLight
             ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(99, 102, 241, 0.06) 100%)'
@@ -300,11 +266,12 @@ export default function FleetView({ onNavigate }) {
         }}
       >
         <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ xs: 'flex-start', md: 'center' }} justifyContent="space-between" spacing={1.5}>
+          {/* Left info: Icon & Title */}
           <Stack direction="row" spacing={1.5} alignItems="center">
             <Box
               sx={{
-                width: { xs: 36, sm: 40 },
-                height: { xs: 36, sm: 40 },
+                width: { xs: 36, sm: 42 },
+                height: { xs: 36, sm: 42 },
                 borderRadius: 1.75,
                 bgcolor: 'primary.main',
                 color: '#ffffff',
@@ -320,47 +287,82 @@ export default function FleetView({ onNavigate }) {
             <Box sx={{ minWidth: 0 }}>
               <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.25, flexWrap: 'wrap' }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 800, fontSize: { xs: '0.85rem', sm: '0.9375rem' } }}>
-                  Trung Tâm Nâng Cấp Tự Động (OTA)
+                  {lang === 'vi' ? 'Trung Tâm Nâng Cấp Tự Động (OTA)' : 'Automatic Upgrade Center (OTA)'}
                 </Typography>
                 <Label variant="filled" color="primary" sx={{ fontWeight: 800, fontSize: '0.7rem', px: 0.75, height: 20 }}>
                   Server v{otaStatus.latestAgentVersion}
                 </Label>
               </Stack>
               <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: { xs: '0.7rem', sm: '0.75rem' }, display: 'block' }} noWrap>
-                Agent mới sẵn sàng phát hành qua mạng • Không gián đoạn.
+                {lang === 'vi' ? 'Agent mới sẵn sàng phát hành qua mạng • Không gián đoạn.' : 'Latest agent release ready for seamless over-the-air deployment.'}
               </Typography>
             </Box>
           </Stack>
 
-          <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexWrap: 'wrap', gap: 0.75 }}>
+          {/* Right actions: Status Chips + OTA Upgrade Button + Approve Agents Button */}
+          <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexWrap: 'wrap', gap: 0.75, width: { xs: '100%', md: 'auto' }, justifyContent: { xs: 'flex-start', md: 'flex-end' } }}>
             <Chip
-              label={`${hosts.filter(h => h.version === otaStatus.latestAgentVersion).length} máy đã ở v${otaStatus.latestAgentVersion}`}
+              label={lang === 'vi' ? `${hosts.filter(h => h.version === otaStatus.latestAgentVersion).length} máy đã ở v${otaStatus.latestAgentVersion}` : `${hosts.filter(h => h.version === otaStatus.latestAgentVersion).length} at v${otaStatus.latestAgentVersion}`}
               color="success"
               variant="outlined"
               size="small"
-              sx={{ fontWeight: 700, height: 22, fontSize: 10 }}
+              sx={{ fontWeight: 700, height: 24, fontSize: 10 }}
             />
             {hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length > 0 && (
               <Chip
-                label={`${hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length} máy cần nâng cấp`}
+                label={lang === 'vi' ? `${hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length} máy cần nâng cấp` : `${hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length} update needed`}
                 color="warning"
                 size="small"
-                sx={{ fontWeight: 800, height: 22, fontSize: 10 }}
+                sx={{ fontWeight: 800, height: 24, fontSize: 10 }}
               />
             )}
-            {isSuperAdmin && hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length > 0 && (
+
+            {/* OTA Upgrade Button */}
+            {isSuperAdmin && (
               <Button
                 size="small"
                 variant="contained"
                 color="warning"
-                disabled={upgradingAll}
+                disabled={upgradingAll || hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length === 0}
                 startIcon={<UploadCloud size={14} className={upgradingAll ? 'animate-spin' : ''} />}
                 onClick={handleUpgradeAllFleet}
-                sx={{ fontWeight: 800, height: 26, fontSize: 11, px: 1.25, boxShadow: '0 4px 12px rgba(245, 158, 11, 0.35)' }}
+                sx={{
+                  fontWeight: 800,
+                  height: 28,
+                  fontSize: 11,
+                  px: 1.25,
+                  boxShadow: '0 4px 12px rgba(245, 158, 11, 0.35)',
+                  whiteSpace: 'nowrap'
+                }}
               >
-                Nâng Cấp ({hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length})
+                {upgradingAll
+                  ? (lang === 'vi' ? 'Đang nâng cấp...' : 'Upgrading...')
+                  : (lang === 'vi' ? `Nâng Cấp (${hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length})` : `Upgrade (${hosts.filter(h => h.version !== otaStatus.latestAgentVersion).length})`)}
               </Button>
             )}
+
+            {/* Approve Agents Button */}
+            {isSuperAdmin && (
+              <Button
+                size="small"
+                variant="contained"
+                color="primary"
+                startIcon={<Server size={14} />}
+                onClick={() => onNavigate('admin')}
+                sx={{
+                  fontWeight: 800,
+                  height: 28,
+                  fontSize: 11,
+                  px: 1.25,
+                  boxShadow: '0 4px 12px rgba(16, 185, 129, 0.35)',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                {t('fleet.approve')}
+              </Button>
+            )}
+
+            {/* Progress button if tasks running */}
             {otaTasks.length > 0 && (
               <Button
                 size="small"
@@ -368,14 +370,15 @@ export default function FleetView({ onNavigate }) {
                 color="info"
                 startIcon={<Activity size={14} />}
                 onClick={() => setOtaProgressOpen(true)}
-                sx={{ fontWeight: 700, height: 26, fontSize: 11, px: 1.25 }}
+                sx={{ fontWeight: 700, height: 28, fontSize: 11, px: 1.25 }}
               >
-                Tiến Trình ({otaTasks.length})
+                {lang === 'vi' ? `Tiến Trình (${otaTasks.length})` : `Progress (${otaTasks.length})`}
               </Button>
             )}
           </Stack>
         </Stack>
       </Card>
+
 
       {/* Infrastructure Health Score Widget */}
       {canViewHealth && <HealthScoreWidget />}

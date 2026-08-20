@@ -37,9 +37,11 @@ import {
 } from 'lucide-react';
 import { apiRequest } from '../../utils/api';
 import Label from '../common/Label';
+import { useLanguage } from '../../context/LanguageContext';
 
 export default function HealthScoreWidget() {
   const theme = useTheme();
+  const { lang } = useLanguage();
   const [health, setHealth] = useState(null);
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -192,12 +194,18 @@ export default function HealthScoreWidget() {
                 color={health.status === 'excellent' ? 'success' : health.status === 'good' ? 'info' : health.status === 'warning' ? 'warning' : 'error'}
                 sx={{ height: 18, fontSize: '0.65rem', px: 0.5 }}
               >
-                {health.status === 'excellent' ? 'Hoàn Hảo' : health.status === 'good' ? 'Tốt' : health.status === 'warning' ? 'Cần Lưu Ý' : 'Nghiêm Trọng'}
+                {health.status === 'excellent' 
+                  ? (lang === 'vi' ? 'Hoàn Hảo' : 'Excellent') 
+                  : health.status === 'good' 
+                  ? (lang === 'vi' ? 'Tốt' : 'Good') 
+                  : health.status === 'warning' 
+                  ? (lang === 'vi' ? 'Cần Lưu Ý' : 'Warning') 
+                  : (lang === 'vi' ? 'Nghiêm Trọng' : 'Critical')}
               </Label>
               {resolvedIssues.length > 0 && (
                 <Chip
                   icon={<CheckCircle2 size={10} />}
-                  label={`Đã xử lý ${resolvedIssues.length}`}
+                  label={lang === 'vi' ? `Đã xử lý ${resolvedIssues.length}` : `Resolved ${resolvedIssues.length}`}
                   size="small"
                   color="success"
                   variant="outlined"
@@ -208,12 +216,14 @@ export default function HealthScoreWidget() {
 
             <Typography variant="subtitle2" sx={{ fontWeight: 800, mt: 0.2, fontSize: { xs: '0.8125rem', sm: '0.9375rem' } }} noWrap>
               {totalActiveIssues === 0
-                ? (resolvedIssues.length > 0 ? 'Tất cả vấn đề đã xử lý xong • Hoạt động tối ưu' : 'Máy trạm, mạng & Gateway hoạt động ổn định')
-                : `Phát hiện ${totalActiveIssues} vấn đề cần lưu ý`}
+                ? (resolvedIssues.length > 0 
+                  ? (lang === 'vi' ? 'Tất cả vấn đề đã xử lý xong • Hoạt động tối ưu' : 'All issues resolved • Systems optimal') 
+                  : (lang === 'vi' ? 'Máy trạm, mạng & Gateway hoạt động ổn định' : 'Fleet, network & Gateway running smoothly'))
+                : (lang === 'vi' ? `Phát hiện ${totalActiveIssues} vấn đề cần lưu ý` : `Detected ${totalActiveIssues} issues requiring attention`)}
             </Typography>
 
             <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '0.72rem', display: 'block' }} noWrap>
-              {health.metrics?.onlineAgents || 0}/{health.metrics?.totalAgents || 0} máy online • {health.metrics?.networkTargetsCount || 0} ping • GW: {health.metrics?.gatewayOnline ? 'Online' : 'Offline'}
+              {health.metrics?.onlineAgents || 0}/{health.metrics?.totalAgents || 0} {lang === 'vi' ? 'máy online' : 'agents online'} • {health.metrics?.networkTargetsCount || 0} ping • GW: {health.metrics?.gatewayOnline ? 'Online' : 'Offline'}
             </Typography>
           </Box>
         </Stack>
@@ -225,7 +235,7 @@ export default function HealthScoreWidget() {
             <Box>
               <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.3 }}>
                 <Typography variant="caption" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <Server size={12} /> Máy trạm (Fleet)
+                  <Server size={12} /> {lang === 'vi' ? 'Máy trạm (Fleet)' : 'Fleet Agents'}
                 </Typography>
                 <Typography variant="caption" sx={{ fontWeight: 800 }}>
                   {health.categoryScores?.fleet ?? 100}%
@@ -242,7 +252,7 @@ export default function HealthScoreWidget() {
             <Box>
               <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.3 }}>
                 <Typography variant="caption" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <Network size={12} /> Mạng nội bộ (LAN/Ping)
+                  <Network size={12} /> {lang === 'vi' ? 'Mạng nội bộ (LAN/Ping)' : 'LAN & Ping Targets'}
                 </Typography>
                 <Typography variant="caption" sx={{ fontWeight: 800 }}>
                   {health.categoryScores?.network ?? 100}%
@@ -284,9 +294,13 @@ export default function HealthScoreWidget() {
             endIcon={expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             sx={{ fontWeight: 700, borderRadius: 2 }}
           >
-            {expanded ? 'Thu gọn' : totalActiveIssues > 0 ? `Xem ${totalActiveIssues} vấn đề` : 'Chi tiết'}
+            {expanded 
+              ? (lang === 'vi' ? 'Thu gọn' : 'Collapse') 
+              : totalActiveIssues > 0 
+              ? (lang === 'vi' ? `Xem ${totalActiveIssues} vấn đề` : `View ${totalActiveIssues} issues`) 
+              : (lang === 'vi' ? 'Chi tiết' : 'Details')}
           </Button>
-          <Tooltip title="Làm mới điểm số">
+          <Tooltip title={lang === 'vi' ? "Làm mới điểm số" : "Refresh Score"}>
             <IconButton size="small" onClick={() => loadHealth(false)} disabled={loading}>
               <RefreshCw size={16} />
             </IconButton>
@@ -302,7 +316,7 @@ export default function HealthScoreWidget() {
             <Grid item xs={12} md={6}>
               <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
                 <Typography variant="subtitle2" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <AlertTriangle size={16} color={theme.palette.warning.main} /> Vấn đề cần xử lý ({totalActiveIssues})
+                  <AlertTriangle size={16} color={theme.palette.warning.main} /> {lang === 'vi' ? `Vấn đề cần xử lý (${totalActiveIssues})` : `Action Items (${totalActiveIssues})`}
                 </Typography>
                 {resolvedIssues.length > 0 && (
                   <Button
@@ -313,7 +327,9 @@ export default function HealthScoreWidget() {
                     startIcon={showResolved ? <EyeOff size={14} /> : <CheckCircle2 size={14} />}
                     sx={{ fontSize: '0.725rem', fontWeight: 700, py: 0 }}
                   >
-                    {showResolved ? 'Ẩn mục đã xử lý' : `Xem đã xử lý (${resolvedIssues.length})`}
+                    {showResolved 
+                      ? (lang === 'vi' ? 'Ẩn mục đã xử lý' : 'Hide resolved') 
+                      : (lang === 'vi' ? `Xem đã xử lý (${resolvedIssues.length})` : `View resolved (${resolvedIssues.length})`)}
                   </Button>
                 )}
               </Stack>
@@ -321,8 +337,8 @@ export default function HealthScoreWidget() {
               {totalActiveIssues === 0 ? (
                 <Alert severity="success" sx={{ py: 0.5, borderRadius: 1.5, fontSize: '0.8rem', mb: 1 }}>
                   {resolvedIssues.length > 0
-                    ? `Không còn vấn đề tồn đọng (Đã xử lý xong ${resolvedIssues.length} vấn đề).`
-                    : 'Không có cảnh báo hay sự cố nào đang diễn ra trên hệ thống.'}
+                    ? (lang === 'vi' ? `Không còn vấn đề tồn đọng (Đã xử lý xong ${resolvedIssues.length} vấn đề).` : `All issues resolved (${resolvedIssues.length} marked resolved).`)
+                    : (lang === 'vi' ? 'Không có cảnh báo hay sự cố nào đang diễn ra trên hệ thống.' : 'No active alerts or incidents on the system.')}
                 </Alert>
               ) : (
                 <Stack spacing={1}>
@@ -348,7 +364,7 @@ export default function HealthScoreWidget() {
                           {iss.message}
                         </Typography>
                       </Box>
-                      <Tooltip title="Đánh dấu đã xử lý và xóa cảnh báo">
+                      <Tooltip title={lang === 'vi' ? "Đánh dấu đã xử lý và xóa cảnh báo" : "Mark resolved and clear alert"}>
                         <Button
                           size="small"
                           variant="outlined"
@@ -372,7 +388,7 @@ export default function HealthScoreWidget() {
                             }
                           }}
                         >
-                          {resolvingId === iss.id ? 'Đang lưu...' : 'Đã xử lý'}
+                          {resolvingId === iss.id ? (lang === 'vi' ? 'Đang lưu...' : 'Saving...') : (lang === 'vi' ? 'Đã xử lý' : 'Resolve')}
                         </Button>
                       </Tooltip>
                     </Box>
@@ -385,7 +401,7 @@ export default function HealthScoreWidget() {
                 <Box sx={{ mt: 1.5, p: 1.5, borderRadius: 2, bgcolor: alpha(theme.palette.success.main, 0.04), border: `1px dashed ${alpha(theme.palette.success.main, 0.3)}` }}>
                   <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
                     <Typography variant="caption" sx={{ fontWeight: 800, color: 'success.main', textTransform: 'uppercase' }}>
-                      CÁC VẤN ĐỀ ĐÃ XỬ LÝ ({resolvedIssues.length})
+                      {lang === 'vi' ? `CÁC VẤN ĐỀ ĐÃ XỬ LÝ (${resolvedIssues.length})` : `RESOLVED ISSUES (${resolvedIssues.length})`}
                     </Typography>
                     <Button
                       size="small"
@@ -395,7 +411,7 @@ export default function HealthScoreWidget() {
                       startIcon={<RotateCcw size={12} />}
                       sx={{ fontSize: '0.7rem', fontWeight: 700, py: 0 }}
                     >
-                      Khôi phục tất cả
+                      {lang === 'vi' ? 'Khôi phục tất cả' : 'Restore All'}
                     </Button>
                   </Stack>
                   <Stack spacing={0.75}>
@@ -428,7 +444,7 @@ export default function HealthScoreWidget() {
                           onClick={(e) => handleRestoreIssue(e, iss.id)}
                           sx={{ fontSize: '0.7rem', fontWeight: 700, minWidth: 'auto', p: 0.5 }}
                         >
-                          Khôi phục
+                          {lang === 'vi' ? 'Khôi phục' : 'Restore'}
                         </Button>
                       </Box>
                     ))}
@@ -441,7 +457,7 @@ export default function HealthScoreWidget() {
             {/* Smart Recommendations */}
             <Grid item xs={12} md={6}>
               <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Zap size={16} color={theme.palette.primary.main} /> Khuyến nghị vận hành (Smart Ops)
+                <Zap size={16} color={theme.palette.primary.main} /> {lang === 'vi' ? 'Khuyến nghị vận hành (Smart Ops)' : 'Smart Ops Recommendations'}
               </Typography>
               <Stack spacing={1}>
                 {(health.recommendations || []).map((rec, rIdx) => (
@@ -467,7 +483,7 @@ export default function HealthScoreWidget() {
                         endIcon={<ArrowRight size={13} />}
                         sx={{ fontSize: '0.75rem', fontWeight: 700, minWidth: 0, px: 1 }}
                       >
-                        Chuyển
+                        {lang === 'vi' ? 'Chuyển' : 'Go'}
                       </Button>
                     )}
                   </Box>
