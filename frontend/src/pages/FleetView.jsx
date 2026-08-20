@@ -51,7 +51,7 @@ export default function FleetView({ onNavigate }) {
   const isLight = theme.palette.mode === 'light';
   const { lang, t } = useLanguage();
   const { isSuperAdmin, user } = useAuth();
-  const { hosts, setSelectedHostId, telemetryMap } = useWebSocket();
+  const { hosts, setSelectedHostId, telemetryMap, refreshHosts } = useWebSocket();
 
   const canViewPower = isSuperAdmin || user?.permissions?.metrics?.power !== false;
   const canViewTemp = isSuperAdmin || user?.permissions?.metrics?.temperature !== false;
@@ -85,12 +85,20 @@ export default function FleetView({ onNavigate }) {
   const outdatedHosts = hosts.filter(h => h.version !== otaStatus.latestAgentVersion);
   const updatedHosts = hosts.filter(h => h.version === otaStatus.latestAgentVersion);
 
+  useEffect(() => {
+    if (typeof refreshHosts === 'function') {
+      refreshHosts();
+      const interval = setInterval(() => refreshHosts(), 5000);
+      return () => clearInterval(interval);
+    }
+  }, [refreshHosts]);
 
   useEffect(() => {
     apiRequest('/api/v1/ota/status')
       .then(data => setOtaStatus(data || { serverVersion: '2.1.5', latestAgentVersion: '2.1.5', releaseNotes: '', releaseDate: '2026-08-18' }))
       .catch(() => null);
   }, []);
+
 
   const startOtaTracking = (tasks) => {
     setOtaTasks(tasks);
@@ -371,138 +379,6 @@ export default function FleetView({ onNavigate }) {
       {/* Infrastructure Health Score Widget */}
       {canViewHealth && <HealthScoreWidget />}
 
-      {/* Fleet Summary Scorecards */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        {/* Total Machines */}
-        <Grid item xs={12} sm={canViewHealth ? 4 : 6}>
-          <Card
-            sx={{
-              p: 2.25,
-              height: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              position: 'relative',
-              overflow: 'hidden'
-            }}
-          >
-            <Box sx={{ minWidth: 0, mr: 1.5 }}>
-              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.6875rem' }}>
-                {t('fleet.summary.total')}
-              </Typography>
-              <Typography variant="h3" sx={{ fontWeight: 800, my: 0.25, letterSpacing: '-0.02em' }}>
-                {totalCount}
-              </Typography>
-              <Typography variant="body2" noWrap sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
-                {t('fleet.summary.totalHint')}
-              </Typography>
-            </Box>
-            <Box
-              sx={{
-                width: 48,
-                height: 48,
-                borderRadius: 2.5,
-                bgcolor: isLight ? 'rgba(16, 185, 129, 0.12)' : 'rgba(16, 185, 129, 0.18)',
-                color: 'primary.main',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0
-              }}
-            >
-              <Server size={24} />
-            </Box>
-          </Card>
-        </Grid>
-
-        {/* System Health */}
-        {canViewHealth && (
-          <Grid item xs={12} sm={4}>
-            <Card
-              sx={{
-                p: 2.25,
-                height: 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                position: 'relative',
-                overflow: 'hidden'
-              }}
-            >
-              <Box sx={{ minWidth: 0, mr: 1.5 }}>
-                <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.6875rem' }}>
-                  {t('fleet.summary.health')}
-                </Typography>
-                <Typography variant="h3" sx={{ fontWeight: 800, my: 0.25, letterSpacing: '-0.02em', color: healthPercent >= 80 ? 'success.main' : 'warning.main' }}>
-                  {totalCount > 0 ? `${healthPercent}%` : '--'}
-                </Typography>
-                <Typography variant="body2" noWrap sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
-                  {t('fleet.summary.healthHint')} ({onlineCount}/{totalCount})
-                </Typography>
-              </Box>
-              <Box
-                sx={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: 2.5,
-                  bgcolor: isLight ? 'rgba(22, 163, 74, 0.12)' : 'rgba(22, 163, 74, 0.18)',
-                  color: 'success.main',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0
-                }}
-              >
-                <Activity size={24} />
-              </Box>
-            </Card>
-          </Grid>
-        )}
-
-        {/* Attention Needed */}
-        <Grid item xs={12} sm={canViewHealth ? 4 : 6}>
-          <Card
-            sx={{
-              p: 2.25,
-              height: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              position: 'relative',
-              overflow: 'hidden',
-              bgcolor: attentionHosts.length > 0 ? (isLight ? 'rgba(239, 68, 68, 0.04)' : 'rgba(239, 68, 68, 0.08)') : undefined,
-              borderColor: attentionHosts.length > 0 ? (isLight ? 'rgba(239, 68, 68, 0.3)' : 'rgba(239, 68, 68, 0.4)') : undefined
-            }}
-          >
-            <Box sx={{ minWidth: 0, mr: 1.5 }}>
-              <Typography variant="caption" noWrap sx={{ color: attentionHosts.length > 0 ? 'error.main' : 'text.secondary', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.6875rem' }}>
-                {t('fleet.summary.attention')}
-              </Typography>
-              <Typography variant="h3" sx={{ fontWeight: 800, my: 0.25, letterSpacing: '-0.02em', color: attentionHosts.length > 0 ? 'error.main' : 'text.primary' }}>
-                {attentionHosts.length}
-              </Typography>
-              <Typography variant="body2" noWrap sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
-                {t('fleet.summary.attentionHint')}
-              </Typography>
-            </Box>
-            <Box
-              sx={{
-                width: 48,
-                height: 48,
-                borderRadius: 2.5,
-                bgcolor: isLight ? 'rgba(239, 68, 68, 0.12)' : 'rgba(239, 68, 68, 0.18)',
-                color: 'error.main',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0
-              }}
-            >
-              <AlertTriangle size={24} />
-            </Box>
-          </Card>
-        </Grid>
-      </Grid>
 
       {/* Filter & Search Toolbar */}
       <Stack

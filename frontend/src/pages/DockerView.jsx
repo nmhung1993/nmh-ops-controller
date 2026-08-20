@@ -611,93 +611,82 @@ export default function DockerView() {
         </Alert>
       )}
 
-      {/* KPI Cards */}
-      <Grid container spacing={2.5} sx={{ mb: 3.5 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ borderRadius: 3, boxShadow: theme.shadows[1] }}>
-            <CardContent sx={{ p: 2.5 }}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center">
-                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase' }}>
+      {/* Consolidated Docker Hero Metrics Bar */}
+      <Card sx={{ borderRadius: 2.5, mb: 3, p: 2, bgcolor: alpha(theme.palette.background.paper, 0.8), backdropFilter: 'blur(8px)', border: `1px solid ${theme.palette.divider}` }}>
+        <Grid container spacing={2} alignItems="center">
+          {/* Total Containers */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Stack direction="row" spacing={1.75} alignItems="center">
+              <Box sx={{ p: 1.25, borderRadius: 2, bgcolor: alpha(theme.palette.primary.main, 0.12), color: 'primary.main', display: 'flex' }}>
+                <Boxes size={22} />
+              </Box>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.6875rem' }}>
                   {t('docker.kpi.totalContainers')}
                 </Typography>
-                <Box sx={{ p: 1, borderRadius: 2, bgcolor: alpha(theme.palette.primary.main, 0.1) }}>
-                  <Boxes size={20} color={theme.palette.primary.main} />
-                </Box>
-              </Stack>
-              <Typography variant="h4" sx={{ fontWeight: 800, mt: 1 }}>
-                {containers.length}
-              </Typography>
-              <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
-                <Chip label={`${runningCount} ${t('docker.kpi.running')}`} size="small" color="success" sx={{ height: 20, fontSize: 11 }} />
-                <Chip label={`${stoppedCount} ${t('docker.kpi.stopped')}`} size="small" variant="outlined" sx={{ height: 20, fontSize: 11 }} />
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
+                <Stack direction="row" spacing={0.75} alignItems="baseline">
+                  <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                    {containers.length}
+                  </Typography>
+                  <Chip label={`${runningCount} chạy`} size="small" color="success" sx={{ height: 18, fontSize: 10, fontWeight: 700 }} />
+                  {stoppedCount > 0 && <Chip label={`${stoppedCount} dừng`} size="small" variant="outlined" sx={{ height: 18, fontSize: 10 }} />}
+                </Stack>
+              </Box>
+            </Stack>
+          </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ borderRadius: 3, boxShadow: theme.shadows[1] }}>
-            <CardContent sx={{ p: 2.5 }}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center">
-                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase' }}>
+          {/* Stacks */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Stack direction="row" spacing={1.75} alignItems="center">
+              <Box sx={{ p: 1.25, borderRadius: 2, bgcolor: alpha(theme.palette.info.main, 0.12), color: 'info.main', display: 'flex' }}>
+                <Layers size={22} />
+              </Box>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.6875rem' }}>
                   {t('docker.kpi.stacks')}
                 </Typography>
-                <Box sx={{ p: 1, borderRadius: 2, bgcolor: alpha(theme.palette.info.main, 0.1) }}>
-                  <Layers size={20} color={theme.palette.info.main} />
-                </Box>
-              </Stack>
-              <Typography variant="h4" sx={{ fontWeight: 800, mt: 1 }}>
-                {stacks.length}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                {t('docker.kpi.stacksDesc')}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+                <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                  {stacks.length} <Typography component="span" variant="caption" color="text.secondary">Compose</Typography>
+                </Typography>
+              </Box>
+            </Stack>
+          </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ borderRadius: 3, boxShadow: theme.shadows[1] }}>
-            <CardContent sx={{ p: 2.5 }}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center">
-                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase' }}>
+          {/* Images */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Stack direction="row" spacing={1.75} alignItems="center">
+              <Box sx={{ p: 1.25, borderRadius: 2, bgcolor: alpha(theme.palette.secondary.main, 0.12), color: 'secondary.main', display: 'flex' }}>
+                <Server size={22} />
+              </Box>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.6875rem' }}>
                   {t('docker.kpi.images')}
                 </Typography>
-                <Box sx={{ p: 1, borderRadius: 2, bgcolor: alpha(theme.palette.secondary.main, 0.1) }}>
-                  <Server size={20} color={theme.palette.secondary.main} />
-                </Box>
-              </Stack>
-              <Typography variant="h4" sx={{ fontWeight: 800, mt: 1 }}>
-                {images.length}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                {t('docker.kpi.imagesDesc')}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+                <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                  {images.length} <Typography component="span" variant="caption" color="text.secondary">Images</Typography>
+                </Typography>
+              </Box>
+            </Stack>
+          </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ borderRadius: 3, boxShadow: theme.shadows[1] }}>
-            <CardContent sx={{ p: 2.5 }}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center">
-                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase' }}>
+          {/* Volumes */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Stack direction="row" spacing={1.75} alignItems="center">
+              <Box sx={{ p: 1.25, borderRadius: 2, bgcolor: alpha(theme.palette.warning.main, 0.12), color: 'warning.main', display: 'flex' }}>
+                <HardDrive size={22} />
+              </Box>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.6875rem' }}>
                   {t('docker.kpi.volumes')}
                 </Typography>
-                <Box sx={{ p: 1, borderRadius: 2, bgcolor: alpha(theme.palette.warning.main, 0.1) }}>
-                  <HardDrive size={20} color={theme.palette.warning.main} />
-                </Box>
-              </Stack>
-              <Typography variant="h4" sx={{ fontWeight: 800, mt: 1 }}>
-                {volumes.length}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                {t('docker.kpi.volumesDesc')}
-              </Typography>
-            </CardContent>
-          </Card>
+                <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                  {volumes.length} <Typography component="span" variant="caption" color="text.secondary">Volumes</Typography>
+                </Typography>
+              </Box>
+            </Stack>
+          </Grid>
         </Grid>
-      </Grid>
+      </Card>
 
       {/* Main Tabs */}
       <Card sx={{ borderRadius: 3, overflow: 'hidden', boxShadow: theme.shadows[1] }}>

@@ -346,7 +346,10 @@ function broadcastUi(type, payload, agentId = null, options = {}) {
     const user = db.prepare('SELECT username, role FROM users WHERE username = ?').get(client.user?.username);
     if (!user || (options.superOnly && user.role !== 'super_admin')) continue;
     if (agentId && !hasHostAccess(user, agentId)) continue;
-    if (!agentId || !client.subscribedAgentId || client.subscribedAgentId === agentId) {
+    
+    // Global fleet & status events should be delivered to any client with access to this host
+    const isFleetEvent = type === 'ui.telemetry' || type === 'ui.host.status' || type === 'ui.event' || type === 'ui.health.updated' || type === 'ui.access.changed';
+    if (isFleetEvent || !agentId || !client.subscribedAgentId || client.subscribedAgentId === agentId) {
       let sendingPayload = payload;
       if (systemSettings.restrictPowerMetrics && user.role !== 'super_admin' && payload) {
         if (type === 'ui.host.telemetry' && payload.telemetry) {
@@ -1094,7 +1097,74 @@ app.post('/api/v1/agents/:id/revoke', authenticate, requireSuperAdmin, (req, res
   agentSockets.delete(agent.id);
   pendingSockets.delete(agent.id);
   broadcastUi('ui.host.status', serializeHost(getHost(agent.id)));
+  logAuditEvent(db, {
+    agentId: agent.id,
+    type: 'audit.agent.revoke',
+    user: req.user.username,
+    action: `Thu hồi quyền máy trạm: ${agent.display_name || agent.hostname} (${agent.id})`,
+    details: { id: agent.id, hostname: agent.hostname }
+  });
   res.json({ success: true });
+});
+
+app.delete('/api/v1/agents/:id', authenticate, requireSuperAdmin, (req, res) => {
+  const agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(req.params.id);
+  if (!agent) return res.status(404).json({ error: 'Agent not found' });
+  const agentId = agent.id;
+
+  db.prepare('DELETE FROM user_host_access WHERE agent_id = ?').run(agentId);
+  db.prepare('DELETE FROM latest_state WHERE agent_id = ?').run(agentId);
+  db.prepare('DELETE FROM watchdog_configs WHERE agent_id = ?').run(agentId);
+  db.prepare('DELETE FROM telemetry WHERE agent_id = ?').run(agentId);
+  db.prepare('DELETE FROM events WHERE agent_id = ?').run(agentId);
+  db.prepare('DELETE FROM commands WHERE agent_id = ?').run(agentId);
+  db.prepare('DELETE FROM screenshots WHERE agent_id = ?').run(agentId);
+  db.prepare('DELETE FROM agents WHERE id = ?').run(agentId);
+
+  const ws = agentSockets.get(agentId) || pendingSockets.get(agentId);
+  if (ws) ws.close(4005, 'agent deleted');
+  agentSockets.delete(agentId);
+  pendingSockets.delete(agentId);
+
+  broadcastUi('ui.host.status', { id: agentId, deleted: true, status: 'deleted' });
+  logAuditEvent(db, {
+    agentId,
+    type: 'audit.agent.delete',
+    user: req.user.username,
+    action: `Xóa vĩnh viễn máy trạm: ${agent.display_name || agent.hostname} (${agentId})`,
+    details: { id: agentId, hostname: agent.hostname }
+  });
+  res.json({ success: true, deletedId: agentId });
+});
+
+app.post('/api/v1/agents/:id/delete', authenticate, requireSuperAdmin, (req, res) => {
+  const agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(req.params.id);
+  if (!agent) return res.status(404).json({ error: 'Agent not found' });
+  const agentId = agent.id;
+
+  db.prepare('DELETE FROM user_host_access WHERE agent_id = ?').run(agentId);
+  db.prepare('DELETE FROM latest_state WHERE agent_id = ?').run(agentId);
+  db.prepare('DELETE FROM watchdog_configs WHERE agent_id = ?').run(agentId);
+  db.prepare('DELETE FROM telemetry WHERE agent_id = ?').run(agentId);
+  db.prepare('DELETE FROM events WHERE agent_id = ?').run(agentId);
+  db.prepare('DELETE FROM commands WHERE agent_id = ?').run(agentId);
+  db.prepare('DELETE FROM screenshots WHERE agent_id = ?').run(agentId);
+  db.prepare('DELETE FROM agents WHERE id = ?').run(agentId);
+
+  const ws = agentSockets.get(agentId) || pendingSockets.get(agentId);
+  if (ws) ws.close(4005, 'agent deleted');
+  agentSockets.delete(agentId);
+  pendingSockets.delete(agentId);
+
+  broadcastUi('ui.host.status', { id: agentId, deleted: true, status: 'deleted' });
+  logAuditEvent(db, {
+    agentId,
+    type: 'audit.agent.delete',
+    user: req.user.username,
+    action: `Xóa vĩnh viễn máy trạm: ${agent.display_name || agent.hostname} (${agentId})`,
+    details: { id: agentId, hostname: agent.hostname }
+  });
+  res.json({ success: true, deletedId: agentId });
 });
 
 app.get('/api/v1/users', authenticate, requireSuperAdmin, (req, res) => {
@@ -1239,6 +1309,92 @@ app.put('/api/v1/system/settings', authenticate, requireSuperAdmin, (req, res) =
   broadcastUi('ui.system.settings', systemSettings);
   res.json({ success: true, settings: systemSettings });
 });
+
+// Upload custom logo (Super Admin only)
+app.post('/api/v1/system/logo', authenticate, requireSuperAdmin, (req, res) => {
+  try {
+    const { data, filename, mimeType } = req.body || {};
+    if (!data) return res.status(400).json({ error: 'No logo image data provided' });
+
+    let base64Data = data;
+    let ext = '.png';
+    let contentType = 'image/png';
+
+    if (data.startsWith('data:')) {
+      const matches = data.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+      if (matches && matches.length === 3) {
+        contentType = matches[1];
+        base64Data = matches[2];
+        if (contentType.includes('svg')) ext = '.svg';
+        else if (contentType.includes('jpeg') || contentType.includes('jpg')) ext = '.jpg';
+        else if (contentType.includes('webp')) ext = '.webp';
+        else ext = '.png';
+      }
+    } else if (mimeType) {
+      contentType = mimeType;
+      if (mimeType.includes('svg')) ext = '.svg';
+      else if (mimeType.includes('jpeg') || mimeType.includes('jpg')) ext = '.jpg';
+      else if (mimeType.includes('webp')) ext = '.webp';
+    }
+
+    const buffer = Buffer.from(base64Data, 'base64');
+    if (buffer.length > 5 * 1024 * 1024) {
+      return res.status(400).json({ error: 'Logo size must be less than 5MB' });
+    }
+
+    const logoDir = path.join(DATA_DIR, 'branding');
+    fs.mkdirSync(logoDir, { recursive: true });
+    ['.png', '.jpg', '.jpeg', '.webp', '.svg'].forEach(e => {
+      try { fs.unlinkSync(path.join(logoDir, `custom-logo${e}`)); } catch {}
+    });
+
+    const targetFile = path.join(logoDir, `custom-logo${ext}`);
+    fs.writeFileSync(targetFile, buffer);
+
+    systemSettings.logoUrl = `/api/v1/system/logo?t=${Date.now()}`;
+    saveJsonFile(SYSTEM_SETTINGS_FILE, systemSettings);
+    broadcastUi('ui.system.settings', systemSettings);
+
+    logAuditEvent(db, {
+      type: 'audit.system.logo',
+      user: req.user.username,
+      action: 'Tải lên logo thương hiệu mới cho hệ thống',
+      details: { ext, sizeBytes: buffer.length }
+    });
+
+    res.json({ success: true, logoUrl: systemSettings.logoUrl });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET custom logo (Public)
+app.get('/api/v1/system/logo', (req, res) => {
+  const logoDir = path.join(DATA_DIR, 'branding');
+  for (const ext of ['.png', '.svg', '.webp', '.jpg', '.jpeg']) {
+    const file = path.join(logoDir, `custom-logo${ext}`);
+    if (fs.existsSync(file)) {
+      const mime = ext === '.svg' ? 'image/svg+xml' : ext === '.webp' ? 'image/webp' : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : 'image/png';
+      res.setHeader('Content-Type', mime);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return res.sendFile(file);
+    }
+  }
+  res.status(404).send('Logo not found');
+});
+
+// DELETE custom logo (Super Admin only)
+app.delete('/api/v1/system/logo', authenticate, requireSuperAdmin, (req, res) => {
+  const logoDir = path.join(DATA_DIR, 'branding');
+  ['.png', '.jpg', '.jpeg', '.webp', '.svg'].forEach(e => {
+    try { fs.unlinkSync(path.join(logoDir, `custom-logo${e}`)); } catch {}
+  });
+  systemSettings.logoUrl = '';
+  saveJsonFile(SYSTEM_SETTINGS_FILE, systemSettings);
+  broadcastUi('ui.system.settings', systemSettings);
+  res.json({ success: true, logoUrl: '' });
+});
+
 
 // GET Alert Rules & Notification Channels
 app.get('/api/v1/alerts/rules', authenticate, (req, res) => {

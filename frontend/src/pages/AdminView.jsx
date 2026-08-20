@@ -44,7 +44,9 @@ import {
   Fingerprint,
   Palette,
   Sliders,
-  Globe
+  Globe,
+  Upload,
+  Image as ImageIcon
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
@@ -70,17 +72,74 @@ export default function AdminView() {
   const [toastMessage, setToastMessage] = useState('');
 
   // System & Brand Settings Form State
-  const [brandForm, setBrandForm] = useState({
-    appName: '',
-    appSubtitle: '',
-    tagline: '',
-    logoText: '',
-    logoUrl: '',
-    ownerSignature: '',
-    timezone: 'Asia/Ho_Chi_Minh',
-    environmentLabel: 'LAN tin cậy'
-  });
   const [savingBrand, setSavingBrand] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [brandForm, setBrandForm] = useState({
+    appName: 'NMH Ops Controller',
+    appSubtitle: 'Unified Fleet & LAN Controller',
+    tagline: 'Quản trị tập trung toàn bộ hạ tầng Máy trạm, Mạng LAN & Container Docker',
+    logoText: 'NMH',
+    logoUrl: '',
+    ownerSignature: '@nmhung1993',
+    timezone: 'Asia/Ho_Chi_Minh',
+    environmentLabel: 'LAN tin cậy',
+    restrictPowerMetrics: false
+  });
+
+  const handleLogoFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Vui lòng chọn tệp hình ảnh (PNG, JPG, SVG, WebP)');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Kích thước logo không được vượt quá 5MB');
+      return;
+    }
+
+    setUploadingLogo(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const res = await apiRequest('/api/v1/system/logo', {
+            method: 'POST',
+            body: JSON.stringify({
+              data: reader.result,
+              filename: file.name,
+              mimeType: file.type
+            })
+          });
+          if (res?.logoUrl) {
+            setBrandForm(prev => ({ ...prev, logoUrl: res.logoUrl }));
+            setToastMessage('Đã tải lên logo mới thành công');
+          }
+        } catch (err) {
+          alert(`Lỗi khi tải logo: ${err.message}`);
+        } finally {
+          setUploadingLogo(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      alert(err.message);
+      setUploadingLogo(false);
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    if (!window.confirm('Bạn có chắc muốn xóa logo tùy biến và trở về ký tự mặc định?')) return;
+    try {
+      await apiRequest('/api/v1/system/logo', { method: 'DELETE' });
+      setBrandForm(prev => ({ ...prev, logoUrl: '' }));
+      setToastMessage('Đã xóa logo tùy biến');
+    } catch (err) {
+      alert(err.message);
+    }
+  };
 
   useEffect(() => {
     if (systemSettings) {
@@ -111,6 +170,9 @@ export default function AdminView() {
 
   // Agent Revoke Dialog
   const [revokingAgent, setRevokingAgent] = useState(null);
+
+  // Agent Delete Dialog
+  const [deletingAgent, setDeletingAgent] = useState(null);
 
   // User Add/Edit Dialog
   const DEFAULT_PAGE_PERMISSIONS = {
@@ -284,6 +346,21 @@ export default function AdminView() {
       });
       setToastMessage(t('admin.agentRevoked'));
       setRevokingAgent(null);
+      fetchAdminData();
+      refreshHosts();
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  const handleDeleteAgent = async () => {
+    if (!deletingAgent) return;
+    try {
+      await apiRequest(`/api/v1/agents/${deletingAgent.id}`, {
+        method: 'DELETE'
+      });
+      setToastMessage('Đã xóa vĩnh viễn máy trạm khỏi hệ thống');
+      setDeletingAgent(null);
       fetchAdminData();
       refreshHosts();
     } catch (err) {
@@ -536,14 +613,32 @@ export default function AdminView() {
                             )}
                           </Box>
 
-                          <Stack direction="row" spacing={1}>
-                            <IconButton size="small" onClick={() => handleOpenEditAgent(agent)}>
-                              <Edit2 size={16} />
-                            </IconButton>
-                            {agent.status === 'approved' && (
-                              <IconButton size="small" color="error" onClick={() => setRevokingAgent(agent)}>
-                                <Trash2 size={16} />
+                          <Stack direction="row" spacing={0.75} alignItems="center">
+                            <Tooltip title="Chỉnh sửa thông tin">
+                              <IconButton size="small" onClick={() => handleOpenEditAgent(agent)}>
+                                <Edit2 size={16} />
                               </IconButton>
+                            </Tooltip>
+                            {agent.status === 'approved' && (
+                              <Tooltip title="Thu hồi quyền kết nối (Revoke)">
+                                <IconButton size="small" color="warning" onClick={() => setRevokingAgent(agent)}>
+                                  <ShieldCheck size={16} />
+                                </IconButton>
+                              </Tooltip>
+                            )}
+                            {agent.status === 'revoked' && (
+                              <>
+                                <Tooltip title="Phê duyệt lại (Re-approve)">
+                                  <IconButton size="small" color="success" onClick={() => handleOpenApprove(agent)}>
+                                    <CheckCircle2 size={16} />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Xóa vĩnh viễn khỏi hệ thống">
+                                  <IconButton size="small" color="error" onClick={() => setDeletingAgent(agent)}>
+                                    <Trash2 size={16} />
+                                  </IconButton>
+                                </Tooltip>
+                              </>
                             )}
                           </Stack>
                         </Stack>
@@ -670,15 +765,84 @@ export default function AdminView() {
                       fullWidth
                     />
                   </Grid>
+                  {/* Logo Configuration & Upload */}
+                  <Grid item xs={12} sm={6} md={4}>
+                    <Box sx={{ p: 2, borderRadius: 2, border: `1px dashed ${theme.palette.divider}`, bgcolor: alpha(theme.palette.background.default, 0.5) }}>
+                      <Typography variant="caption" sx={{ fontWeight: 700, textTransform: 'uppercase', color: 'text.secondary', display: 'block', mb: 1 }}>
+                        Logo Hệ Thống
+                      </Typography>
+
+                      <Stack direction="row" spacing={2} alignItems="center">
+                        <Box
+                          sx={{
+                            width: 52,
+                            height: 52,
+                            borderRadius: 2,
+                            bgcolor: 'primary.main',
+                            color: 'primary.contrastText',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            overflow: 'hidden',
+                            fontWeight: 800,
+                            fontSize: '1rem',
+                            flexShrink: 0,
+                            boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)'
+                          }}
+                        >
+                          {brandForm.logoUrl ? (
+                            <Box component="img" src={brandForm.logoUrl} alt="Logo" sx={{ width: 1, height: 1, objectFit: 'contain', bgcolor: 'background.paper', p: 0.5 }} />
+                          ) : (
+                            brandForm.logoText || 'NMH'
+                          )}
+                        </Box>
+
+                        <Stack direction="column" spacing={0.75} sx={{ minWidth: 0 }}>
+                          <Button
+                            variant="contained"
+                            component="label"
+                            size="small"
+                            startIcon={<Upload size={14} />}
+                            disabled={uploadingLogo}
+                            sx={{ fontWeight: 700, fontSize: '0.75rem' }}
+                          >
+                            {uploadingLogo ? 'Đang tải...' : 'Tải lên Logo'}
+                            <input
+                              type="file"
+                              hidden
+                              accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                              onChange={handleLogoFileUpload}
+                            />
+                          </Button>
+
+                          {brandForm.logoUrl && (
+                            <Button
+                              variant="text"
+                              color="error"
+                              size="small"
+                              startIcon={<Trash2 size={13} />}
+                              onClick={handleRemoveLogo}
+                              sx={{ fontSize: '0.72rem', p: 0 }}
+                            >
+                              Xóa logo tùy biến
+                            </Button>
+                          )}
+                        </Stack>
+                      </Stack>
+                    </Box>
+                  </Grid>
+
                   <Grid item xs={12} sm={6} md={4}>
                     <TextField
                       label="Đường dẫn ảnh Logo URL (Tùy chọn)"
                       value={brandForm.logoUrl}
                       onChange={(e) => setBrandForm({ ...brandForm, logoUrl: e.target.value })}
                       placeholder="https://... hoặc data:image/..."
+                      helperText="Nhập link trực tiếp hoặc dùng nút Tải lên ở trên"
                       fullWidth
                     />
                   </Grid>
+
                   <Grid item xs={12} sm={6} md={4}>
                     <FormControl fullWidth>
                       <InputLabel>Múi giờ hiển thị (Timezone)</InputLabel>
@@ -1037,9 +1201,22 @@ export default function AdminView() {
           title={t('admin.revokeAgent')}
           content={t('admin.revokeConfirm', { host: revokingAgent.displayName || revokingAgent.hostname })}
           confirmText={t('admin.revokeAgent')}
-          color="error"
+          color="warning"
           onConfirm={handleRevokeAgent}
           onClose={() => setRevokingAgent(null)}
+        />
+      )}
+
+      {/* Delete Agent Permanently Confirmation */}
+      {deletingAgent && (
+        <ConfirmDialog
+          open={Boolean(deletingAgent)}
+          title="Xác nhận xóa vĩnh viễn máy trạm"
+          content={`Bạn có chắc muốn xóa vĩnh viễn máy trạm ${deletingAgent.displayName || deletingAgent.hostname} (${deletingAgent.id})? Toàn bộ lịch sử telemetry, sự kiện, kịch bản và cấu hình sẽ bị xóa sạch khỏi cơ sở dữ liệu.`}
+          confirmText="Xóa Vĩnh Viễn"
+          color="error"
+          onConfirm={handleDeleteAgent}
+          onClose={() => setDeletingAgent(null)}
         />
       )}
 

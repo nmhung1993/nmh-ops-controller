@@ -111,24 +111,41 @@ export default function ActivityView() {
     loadAuditLogs();
   }, [loadAuditLogs]);
 
-  // Insert live event
+  const lastProcessedEventRef = React.useRef(null);
+
+  // Insert live event safely without infinite loop and respecting filters
   useEffect(() => {
-    if (lastEvent) {
-      setAuditLogs(prev => [
-        {
-          id: `live-${Date.now()}`,
-          messageId: lastEvent.messageId,
-          agentId: lastEvent.agentId || 'system',
-          hostName: hosts?.find(h => h.id === lastEvent.agentId)?.hostname || 'Hệ thống',
-          type: lastEvent.type || lastEvent.eventType,
-          severity: lastEvent.severity || 'info',
-          payload: lastEvent.payload || lastEvent,
-          occurredAt: lastEvent.occurredAt || new Date().toISOString()
-        },
-        ...prev
-      ]);
-    }
-  }, [lastEvent, hosts]);
+    if (!lastEvent) return;
+    const eventKey = lastEvent.messageId || `${lastEvent.agentId}_${lastEvent.eventType || lastEvent.type}_${lastEvent.occurredAt || ''}`;
+    if (lastProcessedEventRef.current === eventKey) return;
+    lastProcessedEventRef.current = eventKey;
+
+    // Respect host scope filter
+    if (targetAgentId !== 'all' && lastEvent.agentId !== targetAgentId) return;
+
+    // Respect severity filter
+    const severity = lastEvent.severity || 'info';
+    if (severityFilter !== 'all' && severity !== severityFilter) return;
+
+    setAuditLogs(prev => {
+      if (prev.some(item => (item.messageId && item.messageId === lastEvent.messageId) || item.id === eventKey)) {
+        return prev;
+      }
+      const host = hosts?.find(h => h.id === lastEvent.agentId);
+      const newEntry = {
+        id: eventKey,
+        messageId: lastEvent.messageId,
+        agentId: lastEvent.agentId || 'system',
+        hostName: host?.displayName || host?.hostname || 'Hệ thống',
+        type: lastEvent.type || lastEvent.eventType,
+        severity,
+        payload: lastEvent.payload || lastEvent,
+        occurredAt: lastEvent.occurredAt || new Date().toISOString()
+      };
+      return [newEntry, ...prev.slice(0, 249)];
+    });
+  }, [lastEvent, targetAgentId, severityFilter, hosts]);
+
 
   // Export CSV Handler
   const handleExportCsv = () => {
@@ -273,9 +290,10 @@ export default function ActivityView() {
                 <MenuItem value="system">Trung tâm Điều khiển (Server)</MenuItem>
                 {(hosts || []).map((h) => (
                   <MenuItem key={h.id} value={h.id}>
-                    {h.hostname || h.id} ({h.ip_address || 'N/A'})
+                    {h.displayName || h.hostname || h.id} {h.ip ? `(${h.ip})` : ''}
                   </MenuItem>
                 ))}
+
               </Select>
             </FormControl>
           </Grid>

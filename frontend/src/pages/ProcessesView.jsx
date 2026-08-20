@@ -213,7 +213,7 @@ export default function ProcessesView() {
         alignItems={{ xs: 'flex-start', md: 'center' }}
         justifyContent="space-between"
         spacing={2}
-        sx={{ mb: 3 }}
+        sx={{ mb: 2.5 }}
       >
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 800, mb: 0.5 }}>
@@ -224,13 +224,13 @@ export default function ProcessesView() {
           </Typography>
         </Box>
 
-        <Stack direction="row" spacing={1.5} sx={{ width: { xs: 1, sm: 'auto' } }}>
+        <Stack direction="row" spacing={1.5} sx={{ width: { xs: 1, md: 'auto' }, flexWrap: 'wrap', gap: 1 }}>
           <TextField
             placeholder={t('process.search')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             size="small"
-            sx={{ width: { xs: 1, sm: 260 }, bgcolor: 'background.paper', borderRadius: 1.5 }}
+            sx={{ width: { xs: '100%', sm: 240 }, bgcolor: 'background.paper', borderRadius: 1.5 }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -244,7 +244,7 @@ export default function ProcessesView() {
             startIcon={<RotateCw size={18} className={loading ? 'animate-spin' : ''} />}
             onClick={fetchProcesses}
             disabled={loading}
-            sx={{ whiteSpace: 'nowrap' }}
+            sx={{ whiteSpace: 'nowrap', fontWeight: 700 }}
           >
             {t('process.fetch')}
           </Button>
@@ -257,7 +257,7 @@ export default function ProcessesView() {
               onClick={() => setTerminalOpen(true)}
               sx={{ whiteSpace: 'nowrap', fontWeight: 700 }}
             >
-              Console / Terminal
+              Console
             </Button>
           )}
         </Stack>
@@ -270,8 +270,8 @@ export default function ProcessesView() {
       )}
 
       {/* Process Table Card */}
-      <Card>
-        <Box sx={{ p: 2, px: 3, borderBottom: `1px solid ${theme.palette.divider}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Card sx={{ borderRadius: 2.5, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <Box sx={{ p: 1.75, px: 2.5, borderBottom: `1px solid ${theme.palette.divider}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
             {filteredProcesses.length} {t('process.snapshotCount')}
           </Typography>
@@ -282,16 +282,16 @@ export default function ProcessesView() {
           )}
         </Box>
 
-        <TableContainer sx={{ maxHeight: 600 }}>
-          <Table stickyHeader size="small">
+        <TableContainer sx={{ maxHeight: 'calc(100vh - 310px)', minHeight: 360, overflowY: 'auto', overflowX: 'auto' }}>
+          <Table stickyHeader size="small" sx={{ minWidth: 650, tableLayout: { xs: 'auto', md: 'fixed' } }}>
             <TableHead>
               <TableRow>
-                <TableCell sx={{ minWidth: 200 }}>{t('process.name')}</TableCell>
-                <TableCell sx={{ minWidth: 100 }}>{t('process.pid')}</TableCell>
-                <TableCell sx={{ minWidth: 100 }}>{t('process.cpu')}</TableCell>
-                <TableCell sx={{ minWidth: 120 }}>{t('process.memory')}</TableCell>
-                <TableCell sx={{ minWidth: 280 }}>{t('process.path')}</TableCell>
-                {isAdmin && <TableCell align="right" sx={{ minWidth: 80 }}>{t('common.actions')}</TableCell>}
+                <TableCell sx={{ width: { xs: 160, md: '22%' }, fontWeight: 700 }}>{t('process.name')}</TableCell>
+                <TableCell sx={{ width: { xs: 80, md: '10%' }, fontWeight: 700 }}>{t('process.pid')}</TableCell>
+                <TableCell sx={{ width: { xs: 90, md: '12%' }, fontWeight: 700 }}>{t('process.cpu')}</TableCell>
+                <TableCell sx={{ width: { xs: 110, md: '14%' }, fontWeight: 700 }}>{t('process.memory')}</TableCell>
+                <TableCell sx={{ width: { xs: 200, md: '34%' }, fontWeight: 700 }}>{t('process.path')}</TableCell>
+                {isAdmin && <TableCell align="right" sx={{ width: { xs: 70, md: '8%' }, fontWeight: 700 }}>{t('common.actions')}</TableCell>}
               </TableRow>
             </TableHead>
             <TableBody>
@@ -311,7 +311,11 @@ export default function ProcessesView() {
 
                     return (
                       <TableRow key={proc.pid} hover>
-                        <TableCell sx={{ fontWeight: 700 }}>{proc.name}</TableCell>
+                        <TableCell sx={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <Tooltip title={proc.name}>
+                            <span>{proc.name}</span>
+                          </Tooltip>
+                        </TableCell>
                         <TableCell sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>{proc.pid}</TableCell>
                         <TableCell>
                           <Label variant="soft" color={cpu > 20 ? 'error' : cpu > 5 ? 'warning' : 'default'}>
@@ -319,8 +323,14 @@ export default function ProcessesView() {
                           </Label>
                         </TableCell>
                         <TableCell sx={{ fontWeight: 600 }}>{formatBytes(mem)}</TableCell>
-                        <TableCell sx={{ color: 'text.secondary', fontSize: '0.8125rem', fontFamily: proc.path ? 'monospace' : 'inherit' }}>
-                          {proc.path || <Typography variant="caption" sx={{ color: 'text.disabled', fontStyle: 'italic' }}>{t('common.pathHidden')}</Typography>}
+                        <TableCell sx={{ color: 'text.secondary', fontSize: '0.8125rem', fontFamily: proc.path ? 'monospace' : 'inherit', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {proc.path ? (
+                            <Tooltip title={proc.path} placement="top-start">
+                              <span>{proc.path}</span>
+                            </Tooltip>
+                          ) : (
+                            <Typography variant="caption" sx={{ color: 'text.disabled', fontStyle: 'italic' }}>{t('common.pathHidden')}</Typography>
+                          )}
                         </TableCell>
                         {isAdmin && (
                           <TableCell align="right">
@@ -355,6 +365,7 @@ export default function ProcessesView() {
             setRowsPerPage(parseInt(e.target.value, 10));
             setPage(0);
           }}
+          sx={{ borderTop: `1px solid ${theme.palette.divider}` }}
         />
       </Card>
 

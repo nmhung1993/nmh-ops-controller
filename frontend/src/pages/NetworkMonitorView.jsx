@@ -1307,88 +1307,94 @@ export default function NetworkMonitorView() {
         </Stack>
       </Stack>
 
-      {/* Summary 4 Scorecards */}
-      <Grid container spacing={2.5} sx={{ mb: 3.5 }}>
-        {/* Card 1: Total Targets */}
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ p: 2.5, height: 1, minHeight: 105, display: 'flex', alignItems: 'center', justifyContent: 'space-between', overflow: 'hidden' }}>
-            <Box sx={{ minWidth: 0, mr: 1.5 }}>
-              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700 }}>
-                Tổng số Target
-              </Typography>
-              <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5 }}>
-                {summary.total}
-              </Typography>
-              <Typography variant="body2" noWrap sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
-                {summary.paused > 0 ? `${summary.paused} target đang tạm dừng` : 'Đang theo dõi liên tục'}
-              </Typography>
-            </Box>
-            <Box sx={{ width: 50, height: 50, borderRadius: 2, bgcolor: alpha(theme.palette.primary.main, 0.12), color: 'primary.main', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Globe size={24} />
-            </Box>
-          </Card>
-        </Grid>
+      {/* Consolidated Network Hero Metrics Bar */}
+      <Card sx={{ borderRadius: 2.5, mb: 3, p: 2, bgcolor: alpha(theme.palette.background.paper, 0.8), backdropFilter: 'blur(8px)', border: `1px solid ${theme.palette.divider}` }}>
+        <Grid container spacing={2} alignItems="center">
+          {/* Total Targets */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Stack direction="row" spacing={1.75} alignItems="center">
+              <Box sx={{ p: 1.25, borderRadius: 2, bgcolor: alpha(theme.palette.primary.main, 0.12), color: 'primary.main', display: 'flex' }}>
+                <Globe size={22} />
+              </Box>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.6875rem' }}>
+                  Tổng số Target
+                </Typography>
+                <Stack direction="row" spacing={1} alignItems="baseline">
+                  <Typography variant="h5" sx={{ fontWeight: 800 }}>
+                    {summary.total}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {summary.paused > 0 ? `(${summary.paused} tạm dừng)` : 'Đang ping'}
+                  </Typography>
+                </Stack>
+              </Box>
+            </Stack>
+          </Grid>
 
-        {/* Card 2: Online / Active */}
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ p: 2.5, height: 1, minHeight: 105, display: 'flex', alignItems: 'center', justifyContent: 'space-between', overflow: 'hidden' }}>
-            <Box sx={{ minWidth: 0, mr: 1.5 }}>
-              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700 }}>
-                Trực tuyến / Ổn định
-              </Typography>
-              <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5, color: 'success.main' }}>
-                {summary.online}
-              </Typography>
-              <Typography variant="body2" noWrap sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
-                Độ trễ tốt (&lt;150ms)
-              </Typography>
-            </Box>
-            <Box sx={{ width: 50, height: 50, borderRadius: 2, bgcolor: alpha(theme.palette.success.main, 0.12), color: 'success.main', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <CheckCircle2 size={24} />
-            </Box>
-          </Card>
-        </Grid>
+          {/* Online / Stable */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Stack direction="row" spacing={1.75} alignItems="center">
+              <Box sx={{ p: 1.25, borderRadius: 2, bgcolor: alpha(theme.palette.success.main, 0.12), color: 'success.main', display: 'flex' }}>
+                <CheckCircle2 size={22} />
+              </Box>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.6875rem' }}>
+                  Trực tuyến / Ổn định
+                </Typography>
+                <Stack direction="row" spacing={1} alignItems="baseline">
+                  <Typography variant="h5" sx={{ fontWeight: 800, color: 'success.main' }}>
+                    {summary.online}
+                  </Typography>
+                  <Chip label="Độ trễ tốt" size="small" color="success" sx={{ height: 18, fontSize: 10, fontWeight: 700 }} />
+                </Stack>
+              </Box>
+            </Stack>
+          </Grid>
 
-        {/* Card 3: Degraded / Offline */}
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ p: 2.5, height: 1, minHeight: 105, display: 'flex', alignItems: 'center', justifyContent: 'space-between', overflow: 'hidden' }}>
-            <Box sx={{ minWidth: 0, mr: 1.5 }}>
-              <Typography variant="caption" noWrap sx={{ color: summary.offline > 0 ? 'error.main' : 'text.secondary', fontWeight: 700 }}>
-                Suy giảm / Mất kết nối
-              </Typography>
-              <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5, color: summary.offline > 0 ? 'error.main' : 'text.primary' }}>
-                {summary.degraded + summary.offline}
-              </Typography>
-              <Typography variant="body2" noWrap sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
-                {summary.offline} mất kết nối • {summary.degraded} độ trễ cao
-              </Typography>
-            </Box>
-            <Box sx={{ width: 50, height: 50, borderRadius: 2, bgcolor: alpha(theme.palette.error.main, 0.12), color: 'error.main', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <AlertTriangle size={24} />
-            </Box>
-          </Card>
-        </Grid>
+          {/* Degraded / Offline */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Stack direction="row" spacing={1.75} alignItems="center">
+              <Box sx={{ p: 1.25, borderRadius: 2, bgcolor: alpha(theme.palette.error.main, 0.12), color: 'error.main', display: 'flex' }}>
+                <AlertTriangle size={22} />
+              </Box>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.6875rem' }}>
+                  Suy giảm / Mất kết nối
+                </Typography>
+                <Stack direction="row" spacing={1} alignItems="baseline">
+                  <Typography variant="h5" sx={{ fontWeight: 800, color: summary.offline > 0 ? 'error.main' : 'text.primary' }}>
+                    {summary.degraded + summary.offline}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {summary.offline} offline • {summary.degraded} trễ cao
+                  </Typography>
+                </Stack>
+              </Box>
+            </Stack>
+          </Grid>
 
-        {/* Card 4: WAN & Gateway */}
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ p: 2.5, height: 1, minHeight: 105, display: 'flex', alignItems: 'center', justifyContent: 'space-between', overflow: 'hidden' }}>
-            <Box sx={{ minWidth: 0, mr: 1.5 }}>
-              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700 }}>
-                Cấu hình WAN & Gateway
-              </Typography>
-              <Typography variant="h4" noWrap sx={{ fontWeight: 800, my: 0.5, color: 'primary.main', fontFamily: 'monospace' }}>
-                {wanIp}
-              </Typography>
-              <Typography variant="body2" noWrap sx={{ color: 'text.secondary', fontSize: '0.72rem' }}>
-                GW: {gatewayStr} • DNS: {dnsStr}
-              </Typography>
-            </Box>
-            <Box sx={{ width: 50, height: 50, borderRadius: 2, bgcolor: alpha(theme.palette.info.main, 0.12), color: 'info.main', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <Globe size={24} />
-            </Box>
-          </Card>
+          {/* WAN IP & Gateway */}
+          <Grid item xs={12} sm={6} md={3}>
+            <Stack direction="row" spacing={1.75} alignItems="center">
+              <Box sx={{ p: 1.25, borderRadius: 2, bgcolor: alpha(theme.palette.info.main, 0.12), color: 'info.main', display: 'flex' }}>
+                <RouterIcon size={22} />
+              </Box>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.6875rem' }}>
+                  WAN & Gateway
+                </Typography>
+                <Typography variant="subtitle2" noWrap sx={{ fontWeight: 800, color: 'primary.main', fontFamily: 'monospace' }}>
+                  {wanIp}
+                </Typography>
+                <Typography variant="caption" noWrap sx={{ color: 'text.secondary', display: 'block', fontSize: '0.7rem' }}>
+                  GW: {gatewayStr}
+                </Typography>
+              </Box>
+            </Stack>
+          </Grid>
         </Grid>
-      </Grid>
+      </Card>
 
       {/* Tabs Selector */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
