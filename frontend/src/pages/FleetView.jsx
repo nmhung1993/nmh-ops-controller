@@ -32,13 +32,11 @@ import {
   Zap,
   Thermometer,
   ArrowRight,
-  ShieldAlert,
   Clock,
   UploadCloud,
   Sparkles,
-  Terminal,
-  RotateCw,
-  Check
+  LayoutGrid,
+  List as ListIcon
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
@@ -50,6 +48,7 @@ import HealthScoreWidget from '../components/dashboard/HealthScoreWidget';
 
 export default function FleetView({ onNavigate }) {
   const theme = useTheme();
+  const isLight = theme.palette.mode === 'light';
   const { lang, t } = useLanguage();
   const { isSuperAdmin, user } = useAuth();
   const { hosts, setSelectedHostId, telemetryMap } = useWebSocket();
@@ -71,7 +70,7 @@ export default function FleetView({ onNavigate }) {
   };
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all'); // 'all' | 'online' | 'offline'
+  const [filterStatus, setFilterStatus] = useState('all'); // 'all' | 'online' | 'offline' | 'attention'
 
   // OTA Upgrade State
   const [otaStatus, setOtaStatus] = useState({ serverVersion: '2.1.4', latestAgentVersion: '2.1.4', releaseNotes: 'Tối ưu hiệu năng, S.M.A.R.T Disks, Remote Web Terminal & Telegram Topics', releaseDate: '2026-08-18' });
@@ -93,9 +92,7 @@ export default function FleetView({ onNavigate }) {
     setOtaTasks(tasks);
     setOtaProgressOpen(true);
 
-    // Simulate multi-step progress tracking for each host task
     tasks.forEach((task) => {
-      // Step 1: Sent (0s)
       setTimeout(() => {
         setOtaTasks(prev => prev.map(t => t.hostId === task.hostId ? {
           ...t,
@@ -106,7 +103,6 @@ export default function FleetView({ onNavigate }) {
         } : t));
       }, 1200);
 
-      // Step 2: Applying & Restarting (2.5s)
       setTimeout(() => {
         setOtaTasks(prev => prev.map(t => t.hostId === task.hostId ? {
           ...t,
@@ -117,7 +113,6 @@ export default function FleetView({ onNavigate }) {
         } : t));
       }, 2800);
 
-      // Step 3: Success & Back Online (4.5s)
       setTimeout(() => {
         setOtaTasks(prev => prev.map(t => t.hostId === task.hostId ? {
           ...t,
@@ -215,11 +210,12 @@ export default function FleetView({ onNavigate }) {
       const matchStatus =
         filterStatus === 'all' ||
         (filterStatus === 'online' && h.online) ||
-        (filterStatus === 'offline' && !h.online);
+        (filterStatus === 'offline' && !h.online) ||
+        (filterStatus === 'attention' && attentionHosts.some(ah => ah.id === h.id));
 
       return matchSearch && matchStatus;
     });
-  }, [hosts, searchTerm, filterStatus]);
+  }, [hosts, searchTerm, filterStatus, attentionHosts]);
 
   const handleSelectHost = (hostId) => {
     setSelectedHostId(hostId);
@@ -227,17 +223,17 @@ export default function FleetView({ onNavigate }) {
   };
 
   return (
-    <Box>
+    <Box sx={{ width: '100%', maxWidth: 1600, mx: 'auto' }}>
       {/* Top Action Header */}
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
         alignItems={{ xs: 'flex-start', sm: 'center' }}
         justifyContent="space-between"
         spacing={2}
-        sx={{ mb: 4 }}
+        sx={{ mb: 3 }}
       >
         <Box>
-          <Typography variant="h4" sx={{ fontWeight: 800, mb: 0.5 }}>
+          <Typography variant="h4" sx={{ fontWeight: 800, mb: 0.5, letterSpacing: '-0.025em' }}>
             {t('fleet.title')}
           </Typography>
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
@@ -245,17 +241,17 @@ export default function FleetView({ onNavigate }) {
           </Typography>
         </Box>
 
-        <Stack direction="row" spacing={1.5} alignItems="center">
+        <Stack direction="row" spacing={1.5} alignItems="center" sx={{ width: { xs: '100%', sm: 'auto' }, flexWrap: 'wrap' }}>
           {isSuperAdmin && (
             <Button
               variant="outlined"
               color="primary"
-              startIcon={<UploadCloud size={18} className={upgradingAll ? 'animate-spin' : ''} />}
+              startIcon={<UploadCloud size={16} className={upgradingAll ? 'animate-spin' : ''} />}
               onClick={handleUpgradeAllFleet}
               disabled={upgradingAll}
-              sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}
+              sx={{ fontWeight: 700, whiteSpace: 'nowrap', flexGrow: { xs: 1, sm: 0 } }}
             >
-              {upgradingAll ? 'Đang nâng cấp Fleet...' : 'Nâng cấp toàn bộ Fleet (OTA)'}
+              {upgradingAll ? 'Đang nâng cấp...' : 'Nâng cấp toàn bộ (OTA)'}
             </Button>
           )}
 
@@ -263,9 +259,9 @@ export default function FleetView({ onNavigate }) {
             <Button
               variant="contained"
               color="primary"
-              startIcon={<Server size={18} />}
+              startIcon={<Server size={16} />}
               onClick={() => onNavigate('admin')}
-              sx={{ boxShadow: theme.customShadows.primary, whiteSpace: 'nowrap' }}
+              sx={{ whiteSpace: 'nowrap', flexGrow: { xs: 1, sm: 0 } }}
             >
               {t('fleet.approve')}
             </Button>
@@ -274,7 +270,7 @@ export default function FleetView({ onNavigate }) {
       </Stack>
 
       {toastMessage && (
-        <Alert severity="success" sx={{ mb: 3, borderRadius: 1.5 }} onClose={() => setToastMessage('')}>
+        <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setToastMessage('')}>
           {toastMessage}
         </Alert>
       )}
@@ -282,20 +278,20 @@ export default function FleetView({ onNavigate }) {
       {/* OTA Center Banner */}
       <Card
         sx={{
-          mb: 3.5,
-          p: 2.5,
-          background: theme.palette.mode === 'dark'
-            ? 'linear-gradient(135deg, rgba(14, 165, 233, 0.12) 0%, rgba(99, 102, 241, 0.08) 100%)'
-            : 'linear-gradient(135deg, #f0f9ff 0%, #e0e7ff 100%)',
-          border: `1px solid ${alpha(theme.palette.primary.main, 0.25)}`
+          mb: 3,
+          p: { xs: 2, sm: 2.5 },
+          background: isLight
+            ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(99, 102, 241, 0.06) 100%)'
+            : 'linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(99, 102, 241, 0.1) 100%)',
+          border: `1px solid ${isLight ? 'rgba(16, 185, 129, 0.25)' : 'rgba(16, 185, 129, 0.3)'}`
         }}
       >
         <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ xs: 'flex-start', md: 'center' }} justifyContent="space-between" spacing={2}>
           <Stack direction="row" spacing={2} alignItems="center">
             <Box
               sx={{
-                width: 48,
-                height: 48,
+                width: 44,
+                height: 44,
                 borderRadius: 2,
                 bgcolor: 'primary.main',
                 color: '#ffffff',
@@ -303,29 +299,29 @@ export default function FleetView({ onNavigate }) {
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
-                boxShadow: theme.customShadows.primary
+                boxShadow: '0 4px 14px rgba(16, 185, 129, 0.35)'
               }}
             >
-              <Sparkles size={24} />
+              <Sparkles size={22} />
             </Box>
             <Box>
-              <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 0.5 }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 800 }}>
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.25, flexWrap: 'wrap' }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 800, letterSpacing: '-0.01em' }}>
                   Trung Tâm Nâng Cấp Tự Động (OTA Center)
                 </Typography>
-                <Label variant="filled" color="primary" sx={{ fontWeight: 800 }}>
-                  Bản mới nhất: v{otaStatus.latestAgentVersion}
+                <Label variant="filled" color="primary" sx={{ fontWeight: 700, fontSize: '0.7rem' }}>
+                  Mới nhất: v{otaStatus.latestAgentVersion}
                 </Label>
               </Stack>
-              <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.85rem' }}>
-                Hệ thống hỗ trợ nạp cập nhật qua mạng (Over-The-Air) cho toàn bộ máy trạm mà không cần cài đặt lại thủ công.
+              <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.8125rem' }}>
+                Nâng cấp tức thì qua mạng không gián đoạn cho toàn bộ máy trạm.
               </Typography>
             </Box>
           </Stack>
 
-          <Stack direction="row" spacing={1.5} alignItems="center">
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap', gap: 1 }}>
             <Chip
-              label={`${hosts.filter(h => h.version === otaStatus.latestAgentVersion).length} máy đã ở v${otaStatus.latestAgentVersion}`}
+              label={`${hosts.filter(h => h.version === otaStatus.latestAgentVersion).length} máy đã cập nhật`}
               color="success"
               variant="outlined"
               size="small"
@@ -344,7 +340,7 @@ export default function FleetView({ onNavigate }) {
                 size="small"
                 variant="contained"
                 color="info"
-                startIcon={<Activity size={16} />}
+                startIcon={<Activity size={15} />}
                 onClick={() => setOtaProgressOpen(true)}
                 sx={{ fontWeight: 700 }}
               >
@@ -359,26 +355,25 @@ export default function FleetView({ onNavigate }) {
       {canViewHealth && <HealthScoreWidget />}
 
       {/* Fleet Summary Scorecards */}
-      <Grid container spacing={2.5} sx={{ mb: 3.5 }}>
+      <Grid container spacing={2} sx={{ mb: 3 }}>
         {/* Total Machines */}
         <Grid item xs={12} sm={canViewHealth ? 4 : 6}>
           <Card
             sx={{
-              p: 2.5,
+              p: 2.25,
               height: 1,
-              minHeight: 110,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              bgcolor: 'background.paper',
+              position: 'relative',
               overflow: 'hidden'
             }}
           >
             <Box sx={{ minWidth: 0, mr: 1.5 }}>
-              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700, display: 'block' }}>
+              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.6875rem' }}>
                 {t('fleet.summary.total')}
               </Typography>
-              <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5 }}>
+              <Typography variant="h3" sx={{ fontWeight: 800, my: 0.25, letterSpacing: '-0.02em' }}>
                 {totalCount}
               </Typography>
               <Typography variant="body2" noWrap sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
@@ -387,10 +382,10 @@ export default function FleetView({ onNavigate }) {
             </Box>
             <Box
               sx={{
-                width: 52,
-                height: 52,
-                borderRadius: 2,
-                bgcolor: alpha(theme.palette.primary.main, 0.12),
+                width: 48,
+                height: 48,
+                borderRadius: 2.5,
+                bgcolor: isLight ? 'rgba(16, 185, 129, 0.12)' : 'rgba(16, 185, 129, 0.18)',
                 color: 'primary.main',
                 display: 'flex',
                 alignItems: 'center',
@@ -398,7 +393,7 @@ export default function FleetView({ onNavigate }) {
                 flexShrink: 0
               }}
             >
-              <Server size={26} />
+              <Server size={24} />
             </Box>
           </Card>
         </Grid>
@@ -408,21 +403,20 @@ export default function FleetView({ onNavigate }) {
           <Grid item xs={12} sm={4}>
             <Card
               sx={{
-                p: 2.5,
+                p: 2.25,
                 height: 1,
-                minHeight: 110,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                bgcolor: 'background.paper',
+                position: 'relative',
                 overflow: 'hidden'
               }}
             >
               <Box sx={{ minWidth: 0, mr: 1.5 }}>
-                <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700, display: 'block' }}>
+                <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.6875rem' }}>
                   {t('fleet.summary.health')}
                 </Typography>
-                <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5, color: healthPercent >= 80 ? 'success.main' : 'warning.main' }}>
+                <Typography variant="h3" sx={{ fontWeight: 800, my: 0.25, letterSpacing: '-0.02em', color: healthPercent >= 80 ? 'success.main' : 'warning.main' }}>
                   {totalCount > 0 ? `${healthPercent}%` : '--'}
                 </Typography>
                 <Typography variant="body2" noWrap sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
@@ -431,10 +425,10 @@ export default function FleetView({ onNavigate }) {
               </Box>
               <Box
                 sx={{
-                  width: 52,
-                  height: 52,
-                  borderRadius: 2,
-                  bgcolor: alpha(theme.palette.success.main, 0.12),
+                  width: 48,
+                  height: 48,
+                  borderRadius: 2.5,
+                  bgcolor: isLight ? 'rgba(22, 163, 74, 0.12)' : 'rgba(22, 163, 74, 0.18)',
                   color: 'success.main',
                   display: 'flex',
                   alignItems: 'center',
@@ -442,7 +436,7 @@ export default function FleetView({ onNavigate }) {
                   flexShrink: 0
                 }}
               >
-                <Activity size={26} />
+                <Activity size={24} />
               </Box>
             </Card>
           </Grid>
@@ -452,22 +446,22 @@ export default function FleetView({ onNavigate }) {
         <Grid item xs={12} sm={canViewHealth ? 4 : 6}>
           <Card
             sx={{
-              p: 2.5,
+              p: 2.25,
               height: 1,
-              minHeight: 110,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              bgcolor: attentionHosts.length > 0 ? alpha(theme.palette.error.main, 0.04) : 'background.paper',
-              borderColor: attentionHosts.length > 0 ? alpha(theme.palette.error.main, 0.24) : undefined,
-              overflow: 'hidden'
+              position: 'relative',
+              overflow: 'hidden',
+              bgcolor: attentionHosts.length > 0 ? (isLight ? 'rgba(239, 68, 68, 0.04)' : 'rgba(239, 68, 68, 0.08)') : undefined,
+              borderColor: attentionHosts.length > 0 ? (isLight ? 'rgba(239, 68, 68, 0.3)' : 'rgba(239, 68, 68, 0.4)') : undefined
             }}
           >
             <Box sx={{ minWidth: 0, mr: 1.5 }}>
-              <Typography variant="caption" noWrap sx={{ color: attentionHosts.length > 0 ? 'error.main' : 'text.secondary', fontWeight: 700, display: 'block' }}>
+              <Typography variant="caption" noWrap sx={{ color: attentionHosts.length > 0 ? 'error.main' : 'text.secondary', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.6875rem' }}>
                 {t('fleet.summary.attention')}
               </Typography>
-              <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5, color: attentionHosts.length > 0 ? 'error.main' : 'text.primary' }}>
+              <Typography variant="h3" sx={{ fontWeight: 800, my: 0.25, letterSpacing: '-0.02em', color: attentionHosts.length > 0 ? 'error.main' : 'text.primary' }}>
                 {attentionHosts.length}
               </Typography>
               <Typography variant="body2" noWrap sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
@@ -476,10 +470,10 @@ export default function FleetView({ onNavigate }) {
             </Box>
             <Box
               sx={{
-                width: 52,
-                height: 52,
-                borderRadius: 2,
-                bgcolor: alpha(theme.palette.error.main, 0.12),
+                width: 48,
+                height: 48,
+                borderRadius: 2.5,
+                bgcolor: isLight ? 'rgba(239, 68, 68, 0.12)' : 'rgba(239, 68, 68, 0.18)',
                 color: 'error.main',
                 display: 'flex',
                 alignItems: 'center',
@@ -487,7 +481,7 @@ export default function FleetView({ onNavigate }) {
                 flexShrink: 0
               }}
             >
-              <AlertTriangle size={26} />
+              <AlertTriangle size={24} />
             </Box>
           </Card>
         </Grid>
@@ -498,30 +492,31 @@ export default function FleetView({ onNavigate }) {
         direction={{ xs: 'column', sm: 'row' }}
         alignItems={{ xs: 'stretch', sm: 'center' }}
         justifyContent="space-between"
-        spacing={2}
-        sx={{ mb: 3 }}
+        spacing={1.5}
+        sx={{ mb: 2.5 }}
       >
         <TextField
-          placeholder="Tìm theo tên máy, hostname..."
+          placeholder="Tìm theo tên máy, IP, hostname..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           size="small"
-          sx={{ width: { xs: 1, sm: 340 }, bgcolor: 'background.paper', borderRadius: 1.5 }}
+          sx={{ width: { xs: '100%', sm: 320 } }}
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
-                <Search size={18} color={theme.palette.text.secondary} />
+                <Search size={16} color={theme.palette.text.secondary} />
               </InputAdornment>
             )
           }}
         />
 
-        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.75 }}>
           <Button
             size="small"
             variant={filterStatus === 'all' ? 'contained' : 'outlined'}
             color={filterStatus === 'all' ? 'primary' : 'inherit'}
             onClick={() => setFilterStatus('all')}
+            sx={{ px: 1.5, py: 0.6 }}
           >
             Tất cả ({totalCount})
           </Button>
@@ -530,6 +525,7 @@ export default function FleetView({ onNavigate }) {
             variant={filterStatus === 'online' ? 'contained' : 'outlined'}
             color={filterStatus === 'online' ? 'success' : 'inherit'}
             onClick={() => setFilterStatus('online')}
+            sx={{ px: 1.5, py: 0.6 }}
           >
             Trực tuyến ({onlineCount})
           </Button>
@@ -538,22 +534,34 @@ export default function FleetView({ onNavigate }) {
             variant={filterStatus === 'offline' ? 'contained' : 'outlined'}
             color={filterStatus === 'offline' ? 'warning' : 'inherit'}
             onClick={() => setFilterStatus('offline')}
+            sx={{ px: 1.5, py: 0.6 }}
           >
             Mất kết nối ({hosts.length - onlineCount})
           </Button>
+          {attentionHosts.length > 0 && (
+            <Button
+              size="small"
+              variant={filterStatus === 'attention' ? 'contained' : 'outlined'}
+              color={filterStatus === 'attention' ? 'error' : 'inherit'}
+              onClick={() => setFilterStatus('attention')}
+              sx={{ px: 1.5, py: 0.6 }}
+            >
+              Cần chú ý ({attentionHosts.length})
+            </Button>
+          )}
         </Stack>
       </Stack>
 
       {/* Host Cards Grid */}
       {filteredHosts.length === 0 ? (
-        <Card sx={{ p: 6, textAlign: 'center', bgcolor: 'background.paper' }}>
+        <Card sx={{ p: 6, textAlign: 'center', bgcolor: 'background.paper', borderRadius: 3 }}>
           <Box sx={{ color: 'text.disabled', mb: 2 }}>
-            <Server size={48} />
+            <Server size={44} />
           </Box>
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
             {t('fleet.emptyTitle')}
           </Typography>
-          <Typography variant="body2" sx={{ color: 'text.secondary', maxWidth: 460, mx: 'auto', mb: 3 }}>
+          <Typography variant="body2" sx={{ color: 'text.secondary', maxWidth: 440, mx: 'auto', mb: 3 }}>
             {t('fleet.emptyDescription')}
           </Typography>
           {isSuperAdmin && (
@@ -585,12 +593,15 @@ export default function FleetView({ onNavigate }) {
                     flexDirection: 'column',
                     justifyContent: 'space-between',
                     cursor: 'pointer',
+                    position: 'relative',
                     overflow: 'hidden',
-                    transition: 'all 0.25s ease-in-out',
+                    transition: 'all 200ms cubic-bezier(0.4, 0, 0.2, 1)',
                     '&:hover': {
-                      transform: 'translateY(-4px)',
-                      boxShadow: theme.customShadows.z16,
-                      borderColor: 'primary.main'
+                      transform: 'translateY(-3px)',
+                      borderColor: 'primary.main',
+                      boxShadow: isLight
+                        ? '0 12px 28px -10px rgba(16, 185, 129, 0.18)'
+                        : '0 16px 36px -12px rgba(0, 0, 0, 0.8)'
                     }
                   }}
                   onClick={() => handleSelectHost(host.id)}
@@ -598,18 +609,18 @@ export default function FleetView({ onNavigate }) {
                   <Box sx={{ minWidth: 0, width: 1 }}>
                     {/* Card Header: Host Title & Status */}
                     <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={1.5} sx={{ mb: 2 }}>
-                      <Box sx={{ flexGrow: 1, minWidth: 0, overflow: 'hidden' }}>
-                        <Typography variant="subtitle1" noWrap sx={{ fontWeight: 800, fontSize: '1.05rem', textOverflow: 'ellipsis' }}>
+                      <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                        <Typography variant="subtitle1" noWrap sx={{ fontWeight: 800, fontSize: '1rem', letterSpacing: '-0.015em' }}>
                           {getFriendlyHostName(host)}
                         </Typography>
-                        <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.25 }}>
-                          <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 600, textOverflow: 'ellipsis' }}>
-                            {host.ip ? `IP: ${host.ip} • ` : ''}{host.platform || 'Windows'}
+                        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mt: 0.5, flexWrap: 'wrap' }}>
+                          <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 600 }}>
+                            {host.ip ? `${host.ip} • ` : ''}{host.platform || 'Windows'}
                           </Typography>
                           <Label
                             variant="outlined"
                             color={host.version === otaStatus.latestAgentVersion ? 'success' : 'warning'}
-                            sx={{ fontSize: '0.65rem', height: 18, px: 0.5 }}
+                            sx={{ fontSize: '0.65rem', height: 18, px: 0.6 }}
                           >
                             v{host.version || '2.1.4'}
                           </Label>
@@ -617,34 +628,52 @@ export default function FleetView({ onNavigate }) {
                             <Label
                               variant="soft"
                               color="default"
-                              sx={{ fontSize: '0.65rem', height: 18, px: 0.5 }}
+                              sx={{ fontSize: '0.65rem', height: 18, px: 0.6 }}
                             >
-                              Máy cá nhân
+                              Cá nhân
                             </Label>
                           )}
                         </Stack>
                       </Box>
 
-                      <Stack direction="row" spacing={1} alignItems="center">
+                      <Stack direction="row" spacing={0.75} alignItems="center">
                         <Label
                           variant="soft"
                           color={host.online ? 'success' : 'default'}
-                          startIcon={host.online ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
-                          sx={{ flexShrink: 0 }}
+                          startIcon={
+                            host.online ? (
+                              <Box
+                                sx={{
+                                  width: 7,
+                                  height: 7,
+                                  borderRadius: '50%',
+                                  bgcolor: 'success.main',
+                                  boxShadow: `0 0 0 2px ${alpha(theme.palette.success.main, 0.3)}`
+                                }}
+                              />
+                            ) : (
+                              <XCircle size={12} />
+                            )
+                          }
+                          sx={{ flexShrink: 0, fontSize: '0.72rem' }}
                         >
                           {host.online ? t('common.online') : t('common.offline')}
                         </Label>
 
                         {isSuperAdmin && host.online && (
-                          <Tooltip title="Nâng cấp Agent OTA (Tự động tải & cập nhật code mới)">
+                          <Tooltip title="Nâng cấp Agent OTA">
                             <IconButton
                               size="small"
                               color="primary"
                               disabled={Boolean(upgradingMap[host.id])}
                               onClick={(e) => handleUpgradeHost(e, host.id)}
-                              sx={{ bgcolor: alpha(theme.palette.primary.main, 0.08) }}
+                              sx={{
+                                width: 28,
+                                height: 28,
+                                bgcolor: isLight ? 'rgba(16, 185, 129, 0.08)' : 'rgba(16, 185, 129, 0.15)'
+                              }}
                             >
-                              <UploadCloud size={15} className={upgradingMap[host.id] ? 'animate-spin' : ''} />
+                              <UploadCloud size={14} className={upgradingMap[host.id] ? 'animate-spin' : ''} />
                             </IconButton>
                           </Tooltip>
                         )}
@@ -653,14 +682,14 @@ export default function FleetView({ onNavigate }) {
 
                     {/* Telemetry Progress Bars */}
                     {host.online ? (
-                      <Stack spacing={2} sx={{ my: 2 }}>
+                      <Stack spacing={1.75} sx={{ my: 2 }}>
                         {/* CPU Bar */}
                         <Box>
                           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
-                            <Typography variant="caption" noWrap sx={{ fontWeight: 700, color: 'text.secondary', display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                              <Cpu size={14} /> CPU
+                            <Typography variant="caption" noWrap sx={{ fontWeight: 700, color: 'text.secondary', display: 'flex', alignItems: 'center', gap: 0.5, fontSize: '0.75rem' }}>
+                              <Cpu size={13} /> CPU
                             </Typography>
-                            <Typography variant="caption" sx={{ fontWeight: 800, color: cpuUsage > 80 ? 'error.main' : 'text.primary', flexShrink: 0 }}>
+                            <Typography variant="caption" sx={{ fontWeight: 800, color: cpuUsage > 80 ? 'error.main' : 'text.primary', flexShrink: 0, fontSize: '0.75rem' }}>
                               {cpuUsage.toFixed(1)}%
                             </Typography>
                           </Stack>
@@ -670,7 +699,6 @@ export default function FleetView({ onNavigate }) {
                             sx={{
                               height: 6,
                               borderRadius: 3,
-                              bgcolor: alpha(theme.palette.grey[500], 0.16),
                               '& .MuiLinearProgress-bar': {
                                 bgcolor: cpuUsage > 80 ? 'error.main' : cpuUsage > 50 ? 'warning.main' : 'primary.main',
                                 borderRadius: 3
@@ -682,10 +710,10 @@ export default function FleetView({ onNavigate }) {
                         {/* Memory Bar */}
                         <Box>
                           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
-                            <Typography variant="caption" noWrap sx={{ fontWeight: 700, color: 'text.secondary', display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              <HardDrive size={14} /> RAM ({memUsed} / {memTotal})
+                            <Typography variant="caption" noWrap sx={{ fontWeight: 700, color: 'text.secondary', display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0, fontSize: '0.75rem' }}>
+                              <HardDrive size={13} /> RAM ({memUsed} / {memTotal})
                             </Typography>
-                            <Typography variant="caption" sx={{ fontWeight: 800, color: memPercent > 85 ? 'error.main' : 'text.primary', flexShrink: 0, ml: 1 }}>
+                            <Typography variant="caption" sx={{ fontWeight: 800, color: memPercent > 85 ? 'error.main' : 'text.primary', flexShrink: 0, ml: 1, fontSize: '0.75rem' }}>
                               {memPercent.toFixed(1)}%
                             </Typography>
                           </Stack>
@@ -695,7 +723,6 @@ export default function FleetView({ onNavigate }) {
                             sx={{
                               height: 6,
                               borderRadius: 3,
-                              bgcolor: alpha(theme.palette.grey[500], 0.16),
                               '& .MuiLinearProgress-bar': {
                                 bgcolor: memPercent > 85 ? 'error.main' : 'info.main',
                                 borderRadius: 3
@@ -706,14 +733,14 @@ export default function FleetView({ onNavigate }) {
 
                         {/* Power & Temp Pill only if valid sensors exist and user has permission */}
                         {(((canViewPower && Number.isFinite(powerWatts) && powerWatts > 0)) || ((canViewTemp && Number.isFinite(hardware.temperatures?.maxCelsius) && hardware.temperatures.maxCelsius > 0))) && (
-                          <Stack direction="row" spacing={1} sx={{ pt: 0.5 }}>
+                          <Stack direction="row" spacing={0.75} sx={{ pt: 0.25 }}>
                             {canViewPower && Number.isFinite(powerWatts) && powerWatts > 0 && (
-                              <Label variant="soft" color="warning" startIcon={<Zap size={12} />}>
+                              <Label variant="soft" color="warning" startIcon={<Zap size={11} />} sx={{ fontSize: '0.7rem', height: 22 }}>
                                 {formatWatts(powerWatts)}
                               </Label>
                             )}
                             {canViewTemp && Number.isFinite(hardware.temperatures?.maxCelsius) && hardware.temperatures.maxCelsius > 0 && (
-                              <Label variant="soft" color={hardware.temperatures.maxCelsius > 75 ? 'error' : 'success'} startIcon={<Thermometer size={12} />}>
+                              <Label variant="soft" color={hardware.temperatures.maxCelsius > 75 ? 'error' : 'success'} startIcon={<Thermometer size={11} />} sx={{ fontSize: '0.7rem', height: 22 }}>
                                 {hardware.temperatures.maxCelsius.toFixed(0)}°C
                               </Label>
                             )}
@@ -724,13 +751,15 @@ export default function FleetView({ onNavigate }) {
                       <Box
                         sx={{
                           my: 2,
-                          p: 2,
+                          py: 2.5,
+                          px: 2,
                           borderRadius: 2,
-                          bgcolor: alpha(theme.palette.grey[500], 0.08),
-                          textAlign: 'center'
+                          bgcolor: isLight ? 'rgba(0,0,0,0.03)' : 'rgba(255,255,255,0.03)',
+                          textAlign: 'center',
+                          border: `1px dashed ${theme.palette.divider}`
                         }}
                       >
-                        <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 500 }}>
+                        <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, fontSize: '0.75rem' }}>
                           {t('machine.waiting')}
                         </Typography>
                       </Box>
@@ -738,16 +767,16 @@ export default function FleetView({ onNavigate }) {
                   </Box>
 
                   {/* Card Footer */}
-                  <Box sx={{ pt: 2, borderTop: `1px solid ${theme.palette.divider}`, minWidth: 0 }}>
+                  <Box sx={{ pt: 1.75, borderTop: `1px solid ${theme.palette.divider}`, minWidth: 0 }}>
                     <Stack direction="row" alignItems="center" justifyContent="space-between">
-                      <Typography variant="caption" noWrap sx={{ color: 'text.secondary', display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        <Clock size={12} /> {formatRelativeTime(host.lastSeen, lang)}
+                      <Typography variant="caption" noWrap sx={{ color: 'text.secondary', display: 'flex', alignItems: 'center', gap: 0.5, fontSize: '0.7rem' }}>
+                        <Clock size={11} /> {formatRelativeTime(host.lastSeen, lang)}
                       </Typography>
 
                       <Button
                         size="small"
-                        endIcon={<ArrowRight size={14} />}
-                        sx={{ fontWeight: 700, p: 0 }}
+                        endIcon={<ArrowRight size={13} />}
+                        sx={{ fontWeight: 700, p: 0, fontSize: '0.75rem', minWidth: 'auto' }}
                         onClick={(e) => {
                           e.stopPropagation();
                           handleSelectHost(host.id);
@@ -770,16 +799,10 @@ export default function FleetView({ onNavigate }) {
         onClose={() => setOtaProgressOpen(false)}
         maxWidth="md"
         fullWidth
-        PaperProps={{
-          sx: {
-            borderRadius: 2,
-            bgcolor: theme.palette.mode === 'dark' ? '#0f172a' : '#ffffff'
-          }
-        }}
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1.5, borderBottom: `1px solid ${theme.palette.divider}` }}>
           <Stack direction="row" alignItems="center" spacing={1.5}>
-            <UploadCloud size={22} color={theme.palette.primary.main} />
+            <UploadCloud size={20} color={theme.palette.primary.main} />
             <Typography variant="h6" sx={{ fontWeight: 800 }}>
               Tiến Trình Nâng Cấp Agent OTA • v{otaStatus.latestAgentVersion}
             </Typography>
@@ -794,10 +817,10 @@ export default function FleetView({ onNavigate }) {
             Quá trình nâng cấp OTA tự động tải gói bundle mã nguồn mới nhất từ Central Server, áp dụng file runtime và tự khởi động lại Agent.
           </Typography>
 
-          <Stack spacing={2.5}>
+          <Stack spacing={2}>
             {otaTasks.map((task) => (
-              <Card key={task.hostId} variant="outlined" sx={{ p: 2.5, borderRadius: 2 }}>
-                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.5 }}>
+              <Card key={task.hostId} variant="outlined" sx={{ p: 2.25, borderRadius: 2 }}>
+                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1.25 }}>
                   <Box>
                     <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
                       {task.displayName} {task.ip ? `• IP: ${task.ip}` : ''}
@@ -818,36 +841,35 @@ export default function FleetView({ onNavigate }) {
                   variant="determinate"
                   value={task.progress}
                   sx={{
-                    height: 8,
-                    borderRadius: 4,
-                    mb: 1.5,
-                    bgcolor: alpha(theme.palette.primary.main, 0.12),
+                    height: 7,
+                    borderRadius: 3.5,
+                    mb: 1.25,
                     '& .MuiLinearProgress-bar': {
                       bgcolor: task.isDone ? 'success.main' : 'primary.main',
-                      borderRadius: 4
+                      borderRadius: 3.5
                     }
                   }}
                 />
 
                 {/* Step Indicators */}
-                <Grid container spacing={1} sx={{ mb: 1.5 }}>
+                <Grid container spacing={1} sx={{ mb: 1.25 }}>
                   <Grid item xs={3}>
-                    <Typography variant="caption" sx={{ fontWeight: 700, color: task.step >= 1 ? 'primary.main' : 'text.disabled' }}>
+                    <Typography variant="caption" sx={{ fontWeight: 700, color: task.step >= 1 ? 'primary.main' : 'text.disabled', fontSize: '0.7rem' }}>
                       1. Gửi lệnh
                     </Typography>
                   </Grid>
                   <Grid item xs={3}>
-                    <Typography variant="caption" sx={{ fontWeight: 700, color: task.step >= 2 ? 'primary.main' : 'text.disabled' }}>
+                    <Typography variant="caption" sx={{ fontWeight: 700, color: task.step >= 2 ? 'primary.main' : 'text.disabled', fontSize: '0.7rem' }}>
                       2. Tải bundle
                     </Typography>
                   </Grid>
                   <Grid item xs={3}>
-                    <Typography variant="caption" sx={{ fontWeight: 700, color: task.step >= 3 ? 'primary.main' : 'text.disabled' }}>
+                    <Typography variant="caption" sx={{ fontWeight: 700, color: task.step >= 3 ? 'primary.main' : 'text.disabled', fontSize: '0.7rem' }}>
                       3. Ghi đè & Restart
                     </Typography>
                   </Grid>
                   <Grid item xs={3}>
-                    <Typography variant="caption" sx={{ fontWeight: 700, color: task.step >= 4 ? 'success.main' : 'text.disabled' }}>
+                    <Typography variant="caption" sx={{ fontWeight: 700, color: task.step >= 4 ? 'success.main' : 'text.disabled', fontSize: '0.7rem' }}>
                       4. Hoàn tất
                     </Typography>
                   </Grid>
@@ -855,9 +877,9 @@ export default function FleetView({ onNavigate }) {
 
                 {/* Live Task Log */}
                 {task.logs && task.logs.length > 0 && (
-                  <Box sx={{ p: 1.5, bgcolor: theme.palette.mode === 'dark' ? '#020617' : '#f8fafc', borderRadius: 1, fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                  <Box sx={{ p: 1.25, bgcolor: isLight ? '#F8FAFC' : '#0B0F17', borderRadius: 1.5, fontFamily: 'monospace', fontSize: '0.72rem', border: `1px solid ${theme.palette.divider}` }}>
                     {task.logs.map((log, idx) => (
-                      <Typography key={idx} variant="caption" sx={{ display: 'block', color: 'text.secondary', fontFamily: 'inherit' }}>
+                      <Typography key={idx} variant="caption" sx={{ display: 'block', color: 'text.secondary', fontFamily: 'inherit', fontSize: 'inherit' }}>
                         {log}
                       </Typography>
                     ))}
@@ -870,10 +892,11 @@ export default function FleetView({ onNavigate }) {
 
         <DialogActions sx={{ p: 2, px: 3, borderTop: `1px solid ${theme.palette.divider}` }}>
           <Button onClick={() => setOtaProgressOpen(false)} variant="contained" color="primary">
-            Đóng Màn Hình
+            Đóng
           </Button>
         </DialogActions>
       </Dialog>
     </Box>
   );
 }
+

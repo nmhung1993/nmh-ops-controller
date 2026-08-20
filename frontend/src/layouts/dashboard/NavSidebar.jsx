@@ -25,8 +25,6 @@ import {
   Globe,
   Boxes,
   Terminal,
-  ChevronLeft,
-  ChevronRight,
   PanelLeftClose,
   PanelLeftOpen
 } from 'lucide-react';
@@ -47,11 +45,12 @@ export const NAV_ITEMS = [
   { id: 'admin', path: '#admin', labelKey: 'nav.admin', icon: Settings, superAdminOnly: true }
 ];
 
-export const NAV_WIDTH = 280;
-export const NAV_COLLAPSED_WIDTH = 88;
+export const NAV_WIDTH = 270;
+export const NAV_COLLAPSED_WIDTH = 84;
 
 export default function NavSidebar({ openNav, onCloseNav, currentPage, onNavigate, isCollapsed, onToggleCollapse }) {
   const theme = useTheme();
+  const isLight = theme.palette.mode === 'light';
   const { t } = useLanguage();
   const { isSuperAdmin, user } = useAuth();
   const { hosts } = useWebSocket();
@@ -67,10 +66,10 @@ export default function NavSidebar({ openNav, onCloseNav, currentPage, onNavigat
         height: 1,
         display: 'flex',
         flexDirection: 'column',
-        bgcolor: 'background.paper',
+        bgcolor: isLight ? '#FFFFFF' : '#0B0F17',
         borderRight: `1px solid ${theme.palette.divider}`,
-        px: isCollapsed ? 1.5 : 2.5,
-        py: 2.5,
+        px: isCollapsed ? 1.25 : 2,
+        py: 2,
         transition: theme.transitions.create(['width', 'padding'], {
           duration: theme.transitions.duration.shorter
         })
@@ -81,28 +80,28 @@ export default function NavSidebar({ openNav, onCloseNav, currentPage, onNavigat
         direction="row"
         alignItems="center"
         justifyContent={isCollapsed ? 'center' : 'space-between'}
-        sx={{ mb: isCollapsed ? 3 : 3.5, px: 0.5 }}
+        sx={{ mb: isCollapsed ? 2.5 : 3, px: 0.5 }}
       >
         <Stack
           direction="row"
           alignItems="center"
           spacing={1.5}
-          sx={{ cursor: 'pointer' }}
+          sx={{ cursor: 'pointer', minWidth: 0 }}
           onClick={() => onNavigate('network')}
         >
           <Box
             sx={{
-              width: 44,
-              height: 44,
-              borderRadius: '12px',
+              width: 40,
+              height: 40,
+              borderRadius: '11px',
               bgcolor: 'primary.main',
               color: 'primary.contrastText',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: theme.customShadows.primary,
+              boxShadow: '0 4px 14px rgba(16, 185, 129, 0.3)',
               fontWeight: 800,
-              fontSize: '1.1rem',
+              fontSize: '1rem',
               letterSpacing: -0.5,
               flexShrink: 0,
               overflow: 'hidden'
@@ -115,12 +114,12 @@ export default function NavSidebar({ openNav, onCloseNav, currentPage, onNavigat
             )}
           </Box>
           {!isCollapsed && (
-            <Box>
-              <Typography variant="subtitle1" sx={{ fontWeight: 800, lineHeight: 1.15 }}>
-                {settings.appName || 'NMH Ops Controller'}
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="subtitle1" noWrap sx={{ fontWeight: 800, lineHeight: 1.15, letterSpacing: '-0.02em' }}>
+                {settings.appName || 'NMH Ops'}
               </Typography>
-              <Typography variant="body2" sx={{ color: 'text.secondary', fontWeight: 600, fontSize: '0.8125rem' }}>
-                {settings.appSubtitle || 'Controller'}
+              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 600, fontSize: '0.75rem', display: 'block' }}>
+                {settings.appSubtitle || 'Fleet Controller'}
               </Typography>
             </Box>
           )}
@@ -135,11 +134,12 @@ export default function NavSidebar({ openNav, onCloseNav, currentPage, onNavigat
               sx={{
                 display: { xs: 'none', lg: 'inline-flex' },
                 color: 'text.secondary',
-                bgcolor: alpha(theme.palette.grey[500], 0.08),
-                '&:hover': { bgcolor: alpha(theme.palette.grey[500], 0.16) }
+                bgcolor: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.05)',
+                borderRadius: 2,
+                '&:hover': { bgcolor: isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.1)' }
               }}
             >
-              <PanelLeftClose size={18} />
+              <PanelLeftClose size={16} />
             </IconButton>
           </Tooltip>
         )}
@@ -154,11 +154,12 @@ export default function NavSidebar({ openNav, onCloseNav, currentPage, onNavigat
               onClick={onToggleCollapse}
               sx={{
                 color: 'text.secondary',
-                bgcolor: alpha(theme.palette.grey[500], 0.08),
-                '&:hover': { bgcolor: alpha(theme.palette.grey[500], 0.16) }
+                bgcolor: isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.05)',
+                borderRadius: 2,
+                '&:hover': { bgcolor: isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.1)' }
               }}
             >
-              <PanelLeftOpen size={18} />
+              <PanelLeftOpen size={16} />
             </IconButton>
           </Tooltip>
         </Box>
@@ -168,14 +169,15 @@ export default function NavSidebar({ openNav, onCloseNav, currentPage, onNavigat
       {!isCollapsed && (
         <Box
           sx={{
-            p: 1.75,
-            mb: 2.5,
-            borderRadius: 2,
-            bgcolor: alpha(theme.palette.primary.main, 0.08),
-            border: `1px solid ${alpha(theme.palette.primary.main, 0.16)}`,
+            p: 1.25,
+            px: 1.5,
+            mb: 2,
+            borderRadius: 2.5,
+            bgcolor: isLight ? 'rgba(16, 185, 129, 0.08)' : 'rgba(16, 185, 129, 0.12)',
+            border: `1px solid ${isLight ? 'rgba(16, 185, 129, 0.2)' : 'rgba(16, 185, 129, 0.25)'}`,
             display: 'flex',
             alignItems: 'center',
-            gap: 1.5
+            gap: 1.25
           }}
         >
           <Box
@@ -184,18 +186,18 @@ export default function NavSidebar({ openNav, onCloseNav, currentPage, onNavigat
               height: 8,
               borderRadius: '50%',
               bgcolor: 'success.main',
-              boxShadow: `0 0 0 3px ${alpha(theme.palette.success.main, 0.24)}`
+              boxShadow: `0 0 0 3px ${alpha(theme.palette.success.main, 0.25)}`
             }}
           />
-          <Box sx={{ flexGrow: 1 }}>
-            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', fontWeight: 700, letterSpacing: 0.5 }}>
+          <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+            <Typography variant="caption" noWrap sx={{ color: 'text.secondary', display: 'block', fontWeight: 700, letterSpacing: '0.04em', fontSize: '0.65rem', textTransform: 'uppercase' }}>
               {t('sidebar.environment')}
             </Typography>
-            <Typography variant="subtitle2" sx={{ color: 'primary.darker', fontWeight: 700 }}>
+            <Typography variant="subtitle2" noWrap sx={{ color: 'primary.main', fontWeight: 700, fontSize: '0.8125rem' }}>
               {t('sidebar.environmentValue')}
             </Typography>
           </Box>
-          <Radio size={16} color={theme.palette.primary.main} />
+          <Radio size={14} color={theme.palette.primary.main} />
         </Box>
       )}
 
@@ -205,27 +207,27 @@ export default function NavSidebar({ openNav, onCloseNav, currentPage, onNavigat
           direction="row"
           spacing={1}
           sx={{
-            mb: 2.5,
-            p: 1.25,
+            mb: 2,
+            p: 1,
             borderRadius: 2,
-            bgcolor: theme.palette.mode === 'light' ? theme.palette.grey[100] : alpha(theme.palette.grey[800], 0.5),
+            bgcolor: isLight ? '#F1F5F9' : '#111827',
             border: `1px solid ${theme.palette.divider}`
           }}
         >
           <Box sx={{ flex: 1, textAlign: 'center' }}>
-            <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 800 }}>
+            <Typography variant="h6" sx={{ color: 'success.main', fontWeight: 800, lineHeight: 1.2 }}>
               {onlineCount}
             </Typography>
-            <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, fontSize: '0.7rem' }}>
+            <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, fontSize: '0.6875rem' }}>
               {t('common.online')}
             </Typography>
           </Box>
           <Box sx={{ width: '1px', bgcolor: 'divider', my: 0.5 }} />
           <Box sx={{ flex: 1, textAlign: 'center' }}>
-            <Typography variant="h6" sx={{ color: offlineCount > 0 ? 'warning.main' : 'text.disabled', fontWeight: 800 }}>
+            <Typography variant="h6" sx={{ color: offlineCount > 0 ? 'warning.main' : 'text.disabled', fontWeight: 800, lineHeight: 1.2 }}>
               {offlineCount}
             </Typography>
-            <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, fontSize: '0.7rem' }}>
+            <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, fontSize: '0.6875rem' }}>
               {t('common.offline')}
             </Typography>
           </Box>
@@ -233,7 +235,7 @@ export default function NavSidebar({ openNav, onCloseNav, currentPage, onNavigat
       )}
 
       {/* Navigation Links */}
-      <List component="nav" sx={{ px: 0, flexGrow: 1 }}>
+      <List component="nav" sx={{ px: 0, flexGrow: 1, overflowY: 'auto' }}>
         {NAV_ITEMS.map((item) => {
           if (item.superAdminOnly && !isSuperAdmin) return null;
           if (!isSuperAdmin && user?.permissions?.pages && user.permissions.pages[item.id] === false) return null;
@@ -249,44 +251,62 @@ export default function NavSidebar({ openNav, onCloseNav, currentPage, onNavigat
                 if (onCloseNav) onCloseNav();
               }}
               sx={{
-                mb: 0.75,
-                py: isCollapsed ? 1.5 : 1.25,
-                px: isCollapsed ? 1 : 2,
-                borderRadius: 1.5,
+                mb: 0.5,
+                py: isCollapsed ? 1.25 : 1,
+                px: isCollapsed ? 1 : 1.5,
+                borderRadius: 2,
                 justifyContent: isCollapsed ? 'center' : 'flex-start',
                 typography: 'body2',
                 fontWeight: active ? 700 : 500,
-                color: active ? 'primary.main' : 'text.secondary',
-                bgcolor: active ? alpha(theme.palette.primary.main, 0.08) : 'transparent',
+                color: active ? (isLight ? 'primary.dark' : '#FFFFFF') : 'text.secondary',
+                bgcolor: active
+                  ? (isLight ? 'rgba(16, 185, 129, 0.12)' : 'rgba(16, 185, 129, 0.16)')
+                  : 'transparent',
+                border: active
+                  ? `1px solid ${isLight ? 'rgba(16, 185, 129, 0.3)' : 'rgba(16, 185, 129, 0.35)'}`
+                  : '1px solid transparent',
+                transition: 'all 150ms ease',
                 '&:hover': {
-                  bgcolor: active ? alpha(theme.palette.primary.main, 0.12) : theme.palette.action.hover,
-                  color: active ? 'primary.dark' : 'text.primary'
+                  bgcolor: active
+                    ? (isLight ? 'rgba(16, 185, 129, 0.16)' : 'rgba(16, 185, 129, 0.22)')
+                    : (isLight ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.05)'),
+                  color: active ? 'primary.main' : 'text.primary',
+                  transform: 'translateX(2px)'
                 }
               }}
             >
               <ListItemIcon
                 sx={{
-                  minWidth: isCollapsed ? 0 : 32,
+                  minWidth: isCollapsed ? 0 : 30,
                   justifyContent: 'center',
                   color: active ? 'primary.main' : 'text.secondary',
-                  '& svg': { width: 20, height: 20 }
+                  '& svg': { width: 18, height: 18 }
                 }}
               >
                 <IconComponent />
               </ListItemIcon>
               {!isCollapsed && (
                 <>
-                  <ListItemText primary={t(item.labelKey)} primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 'inherit' }} />
+                  <ListItemText
+                    primary={t(item.labelKey)}
+                    primaryTypographyProps={{
+                      fontSize: '0.84rem',
+                      fontWeight: active ? 700 : 500,
+                      letterSpacing: '-0.01em'
+                    }}
+                  />
                   {item.id === 'fleet' && (
                     <Chip
                       label={hosts.length}
                       size="small"
                       sx={{
                         height: 20,
+                        minWidth: 20,
                         fontSize: '0.7rem',
                         fontWeight: 700,
-                        bgcolor: active ? 'primary.main' : alpha(theme.palette.grey[500], 0.16),
-                        color: active ? 'primary.contrastText' : 'text.secondary'
+                        bgcolor: active ? 'primary.main' : (isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.08)'),
+                        color: active ? 'primary.contrastText' : 'text.secondary',
+                        borderRadius: 1.5
                       }}
                     />
                   )}
@@ -308,10 +328,10 @@ export default function NavSidebar({ openNav, onCloseNav, currentPage, onNavigat
       </List>
 
       {/* Footer Info */}
-      <Box sx={{ pt: 2, borderTop: `1px solid ${theme.palette.divider}`, textAlign: 'center' }}>
+      <Box sx={{ pt: 1.5, borderTop: `1px solid ${theme.palette.divider}`, textAlign: 'center' }}>
         {!isCollapsed ? (
-          <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, letterSpacing: 0.5 }}>
-            <Box component="span" sx={{ color: 'primary.main', fontWeight: 800 }}>{settings.ownerSignature || '@nmhung1993'}</Box>
+          <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, letterSpacing: 0.2, fontSize: '0.7rem' }}>
+            <Box component="span" sx={{ color: 'primary.main', fontWeight: 700 }}>{settings.ownerSignature || '@nmhung1993'}</Box>
           </Typography>
         ) : (
           <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 800 }}>
@@ -347,7 +367,7 @@ export default function NavSidebar({ openNav, onCloseNav, currentPage, onNavigat
           sx: {
             width: currentNavWidth,
             bgcolor: 'background.paper',
-            borderRightStyle: 'dashed',
+            borderRight: 'none',
             transition: theme.transitions.create('width', {
               duration: theme.transitions.duration.shorter
             })
@@ -360,3 +380,4 @@ export default function NavSidebar({ openNav, onCloseNav, currentPage, onNavigat
     </Box>
   );
 }
+

@@ -20,7 +20,7 @@ export function responsiveFontSizes({ sm, md, lg }) {
   };
 }
 
-export const FONT_PRIMARY = '"Public Sans", "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+export const FONT_PRIMARY = '"Plus Jakarta Sans", "Inter", "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
 export const FONT_MONO = '"JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace';
 
 export const typography = {
@@ -31,73 +31,86 @@ export const typography = {
   fontWeightBold: 700,
   h1: {
     fontWeight: 800,
-    lineHeight: 80 / 64,
-    fontSize: pxToRem(40),
-    ...responsiveFontSizes({ sm: 52, md: 58, lg: 64 })
+    lineHeight: 1.15,
+    letterSpacing: '-0.03em',
+    fontSize: pxToRem(36),
+    ...responsiveFontSizes({ sm: 44, md: 52, lg: 58 })
   },
   h2: {
     fontWeight: 800,
-    lineHeight: 64 / 48,
-    fontSize: pxToRem(32),
-    ...responsiveFontSizes({ sm: 40, md: 44, lg: 48 })
+    lineHeight: 1.2,
+    letterSpacing: '-0.025em',
+    fontSize: pxToRem(28),
+    ...responsiveFontSizes({ sm: 34, md: 38, lg: 42 })
   },
   h3: {
     fontWeight: 700,
-    lineHeight: 1.5,
-    fontSize: pxToRem(24),
-    ...responsiveFontSizes({ sm: 26, md: 30, lg: 32 })
+    lineHeight: 1.25,
+    letterSpacing: '-0.02em',
+    fontSize: pxToRem(22),
+    ...responsiveFontSizes({ sm: 24, md: 28, lg: 30 })
   },
   h4: {
     fontWeight: 700,
-    lineHeight: 1.5,
-    fontSize: pxToRem(20),
-    ...responsiveFontSizes({ sm: 20, md: 24, lg: 24 })
+    lineHeight: 1.3,
+    letterSpacing: '-0.015em',
+    fontSize: pxToRem(18),
+    ...responsiveFontSizes({ sm: 20, md: 22, lg: 24 })
   },
   h5: {
     fontWeight: 700,
-    lineHeight: 1.5,
-    fontSize: pxToRem(18),
-    ...responsiveFontSizes({ sm: 19, md: 20, lg: 20 })
+    lineHeight: 1.35,
+    letterSpacing: '-0.01em',
+    fontSize: pxToRem(16),
+    ...responsiveFontSizes({ sm: 17, md: 18, lg: 20 })
   },
   h6: {
     fontWeight: 700,
-    lineHeight: 28 / 18,
-    fontSize: pxToRem(16),
-    ...responsiveFontSizes({ sm: 16, md: 17, lg: 18 })
+    lineHeight: 1.4,
+    letterSpacing: '-0.005em',
+    fontSize: pxToRem(14),
+    ...responsiveFontSizes({ sm: 15, md: 16, lg: 17 })
   },
   subtitle1: {
     fontWeight: 600,
     lineHeight: 1.5,
-    fontSize: pxToRem(16)
+    letterSpacing: '-0.005em',
+    fontSize: pxToRem(15)
   },
   subtitle2: {
     fontWeight: 600,
-    lineHeight: 22 / 14,
-    fontSize: pxToRem(14)
+    lineHeight: 1.5,
+    letterSpacing: '0.005em',
+    fontSize: pxToRem(13.5)
   },
   body1: {
-    lineHeight: 1.5,
-    fontSize: pxToRem(16)
+    lineHeight: 1.6,
+    letterSpacing: '0.005em',
+    fontSize: pxToRem(14.5)
   },
   body2: {
-    lineHeight: 22 / 14,
-    fontSize: pxToRem(14)
+    lineHeight: 1.55,
+    letterSpacing: '0.01em',
+    fontSize: pxToRem(13)
   },
   caption: {
-    lineHeight: 1.5,
-    fontSize: pxToRem(12)
+    lineHeight: 1.45,
+    letterSpacing: '0.02em',
+    fontSize: pxToRem(11.5)
   },
   overline: {
     fontWeight: 700,
-    lineHeight: 1.5,
+    lineHeight: 1.4,
     fontSize: pxToRem(11),
     textTransform: 'uppercase',
-    letterSpacing: 1.1
+    letterSpacing: '0.12em'
   },
   button: {
     fontWeight: 700,
-    lineHeight: 24 / 14,
-    fontSize: pxToRem(14),
-    textTransform: 'none'
+    lineHeight: 1.5,
+    fontSize: pxToRem(13.5),
+    textTransform: 'none',
+    letterSpacing: '0.01em'
   }
 };
+
