@@ -7,7 +7,7 @@
 [![License](https://img.shields.io/badge/Author-%40nmhung1993-orange.svg)](https://github.com/nmhung1993)
 [![Timezone](https://img.shields.io/badge/Timezone-GMT%2B7%20(Asia%2FHo__Chi__Minh)-blueviolet.svg)]()
 
-**NMH Ops Controller** là nền tảng quản trị và giám sát tập trung toàn diện cho hạ tầng máy chủ, máy trạm Windows, Linux, Synology NAS, MikroTik RouterOS và cụm container Docker trong mạng LAN tin cậy. Hệ thống tích hợp khả năng quản lý Docker chuẩn Dockhand, giám sát phần cứng S.M.A.R.T, tự phục hồi Watchdog với cảnh báo Telegram Topic/Discord riêng biệt từng máy, kiểm tra mạng/Router Mesh, và thực thi lệnh từ xa an toàn.
+**NMH Ops Controller** là nền tảng quản trị và giám sát tập trung toàn diện cho hạ tầng máy chủ, máy trạm Windows, Linux, Synology NAS, Network Gateway và cụm container Docker trong mạng LAN tin cậy. Hệ thống tích hợp khả năng quản lý Docker chuẩn Dockhand, giám sát phần cứng S.M.A.R.T, tự phục hồi Watchdog với cảnh báo Telegram Topic/Discord riêng biệt từng máy, kiểm tra mạng/Gateway, và thực thi lệnh từ xa an toàn.
 
 ---
 
@@ -45,14 +45,23 @@
   - Hỗ trợ **Discord Webhook URL riêng**: Tách biệt kênh thông báo cho từng cụm máy trạm.
 - **Chụp ảnh màn hình tự động**: Chụp ảnh cửa sổ ứng dụng khi khởi chạy qua Watchdog hoặc khởi chạy thủ công.
 
-### 🌐 5. Giám sát Mạng & Router Mesh
+### 🌐 5. Giám sát Mạng & Danh Sách Router / Gateway Được Hỗ Trợ
 - **Ping Latency Monitor**: Theo dõi độ trễ kết nối mạng theo các mốc 1 giờ, 8 giờ, 1 ngày, 1 tuần.
-- **LAN Subnet Scanner**: Quét và phát hiện toàn bộ thiết bị trong dải mạng nội bộ.
-- **Xiaomi Router & Mesh Topology**: Hiển thị cấu trúc các node Router chính và Router phụ (Mesh).
+- **LAN Subnet Scanner**: Quét và tự động nhận diện toàn bộ thiết bị trong dải mạng nội bộ.
+- **Danh sách Router & Gateway được hỗ trợ chính thức**:
+  1. 🛡️ **MikroTik RouterOS (v6 / v7)**: Kết nối qua Binary API (Port 8728/8729) hoặc REST API. Đọc thông lượng WAN PPPoE thực tế, tải CPU/RAM, nhiệt độ bo mạch, điện áp, danh sách IP DHCP Lease, Active PPPoE Sessions và hỗ trợ khởi động lại từ xa.
+  2. 🌐 **OpenWrt / ImmortalWrt**: Kết nối qua LuCI ubus / JSON-RPC API. Giám sát WAN IP, System load, thông lượng giao diện mạng, danh sách thiết bị kết nối và cấu hình Wi-Fi.
+  3. 📡 **ZTE EasyMesh & GPON ONT** (*ZTE H196A, ZXHN F670L, H3601, F6600, F680...*): Đọc cấu trúc cây mạng Mesh, trạng thái các node phụ, cường độ tín hiệu sóng và danh sách client.
+  4. 📶 **TP-Link Deco Wi-Fi 6/7 Mesh** (*Deco X20, X50, X60, XE75, M4, M5, W3600...*): Tự động phát hiện topology các node Deco, kiểm tra kết nối Internet và thiết bị đang phát sóng.
+  5. 📲 **Xiaomi MiWiFi & Mesh Router** (*Xiaomi AX3000, AX6000, AX9000, BE3600, Redmi AX6S, AX5, CR6608...*): Giám sát các node Mesh chính/phụ, đo tốc độ truyền dẫn và danh sách thiết bị LAN/Wi-Fi.
+  6. 🏢 **Gecoos Enterprise AP & AC Controller**: Hỗ trợ đồng bộ trạng thái các Access Point doanh nghiệp và bộ điều khiển tập trung Cloud AC.
+  7. 🔌 **Generic Router, Firewall & Switch**: Hỗ trợ giám sát mọi dòng thiết bị mạng khác (*pfSense, OPNsense, Cisco, DrayTek Vigor, Ubiquiti UniFi, ASUSWRT, Ruijie Reyee, Huawei ONT...*) thông qua giao thức ICMP Ping và kiểm tra cổng dịch vụ TCP.
 
-### 💻 6. Remote PowerShell Console & OTA Upgrade
-- **PowerShell Console**: Chạy lệnh và script PowerShell từ xa an toàn với preset câu lệnh tiện lợi.
+### 💻 6. Remote PowerShell / Shell Console & OTA Upgrade
+- **PowerShell / Web Console**: Chạy lệnh và script từ xa an toàn với preset câu lệnh tiện lợi.
 - **Trung tâm Nâng cấp OTA (Over-The-Air)**: Nâng cấp phiên bản Agent hàng loạt chỉ với 1 click kèm Release Notes.
+
+
 
 ---
 

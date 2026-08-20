@@ -24,10 +24,10 @@ const CUSTOM_NAMES_FILE = path.join(DATA_DIR, 'network-custom-names.json');
 
 const DEFAULT_DEVICES = [
   {
-    id: 'dev_mikrotik_1',
+    id: 'dev_gateway_1',
     role: 'gateway',
     type: 'mikrotik',
-    name: 'MikroTik Core Gateway',
+    name: 'Gateway',
     host: '192.168.1.1',
     port: 8728,
     username: 'admin',
@@ -35,71 +35,19 @@ const DEFAULT_DEVICES = [
     useHttps: false,
     pppoeInterface: 'pppoe-out1',
     isDefault: true
-  },
-  {
-    id: 'dev_openwrt_1',
-    role: 'gateway',
-    type: 'openwrt',
-    name: 'OpenWrt / ImmortalWrt Gateway',
-    host: '192.168.1.1',
-    port: 80,
-    username: 'root',
-    password: '',
-    useHttps: false,
-    isDefault: false
-  },
-  {
-    id: 'dev_xiaomi_1',
-    role: 'router_mesh',
-    type: 'xiaomi',
-    name: 'Xiaomi Mesh (Router Chính)',
-    host: '192.168.1.2',
-    password: '@nmhung1993',
-    isDefault: true
-  },
-  {
-    id: 'dev_gecoos_1',
-    role: 'router_mesh',
-    type: 'gecoos',
-    name: 'Gecoos Enterprise AP',
-    host: '192.168.1.43',
-    password: '@nmhung1993',
-    isDefault: false
-  },
-  {
-    id: 'dev_deco_1',
-    role: 'router_mesh',
-    type: 'tplink_deco',
-    name: 'TP-Link Deco Wi-Fi 6 Mesh',
-    host: '192.168.68.1',
-    password: '',
-    isDefault: false
-  },
-  {
-    id: 'dev_zte_1',
-    role: 'router_mesh',
-    type: 'zte',
-    name: 'ZTE H196A / F670L EasyMesh',
-    host: '192.168.1.1',
-    port: 80,
-    username: 'admin',
-    password: '',
-    useHttps: false,
-    isDefault: false
   }
 ];
 
 let managedDevices = loadJson(DEVICES_CONFIG_FILE, DEFAULT_DEVICES);
 
-// Default targets in 192.168.1.0/24 with MikroTik Gateway (192.168.1.1)
+// Default targets in 192.168.1.0/24 with Gateway (192.168.1.1)
 const DEFAULT_TARGETS = [
-  { id: 't_gateway', name: 'MikroTik RouterOS (Gateway)', host: '192.168.1.1', tag: 'Router', interval: 3000, enabled: true },
-  { id: 't_xiaomi_ap', name: 'Xiaomi Router (Wi-Fi AP)', host: '192.168.1.2', tag: 'Router', interval: 3000, enabled: true },
-  { id: 't_gecoos', name: 'Gecoos AP (Enterprise)', host: '192.168.1.43', tag: 'Router', interval: 3000, enabled: true },
-  { id: 't_server', name: 'Local Server (Host)', host: '127.0.0.1', tag: 'Server', interval: 3000, enabled: true },
-  { id: 't_google', name: 'Google Public DNS', host: '8.8.8.8', tag: 'Cloud', interval: 3000, enabled: true },
+  { id: 't_gateway', name: 'Gateway', host: '192.168.1.1', tag: 'Gateway', interval: 3000, enabled: true },
+  { id: 't_server', name: 'Local Server', host: '127.0.0.1', tag: 'Server', interval: 3000, enabled: true },
+  { id: 't_google', name: 'Google DNS', host: '8.8.8.8', tag: 'Cloud', interval: 3000, enabled: true },
   { id: 't_cloudflare', name: 'Cloudflare DNS', host: '1.1.1.1', tag: 'Cloud', interval: 3000, enabled: true }
 ];
+
 
 let targets = [];
 let scanHistory = [];

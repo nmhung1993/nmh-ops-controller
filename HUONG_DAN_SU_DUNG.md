@@ -167,14 +167,19 @@ Script Hub là thư viện kịch bản vận hành tự động giúp bạn th�
 
 ---
 
-## 10. Giám Sát Mạng & Hạ Tầng Router (Network Monitor)
+## 10. Giám Sát Mạng & Danh Sách Router / Gateway Được Hỗ Trợ (Network Monitor)
 
-Theo dõi toàn bộ thiết bị mạng, gateway và độ ổn định đường truyền Internet:
+Hệ thống tích hợp sẵn các driver kết nối chuyên dụng cho đa dạng các dòng Router, Gateway và Hệ thống Wi-Fi Mesh phổ biến:
 
-- **Tích Hợp MikroTik RouterOS**: Đọc thông lượng WAN PPPoE, tải CPU router, nhiệt độ board và kết nối PPPoE.
-- **Tích Hợp OpenWrt / ImmortalWrt**: Kiểm tra dịch vụ, băng thông và danh sách DHCP clients.
-- **Tích Hợp Xiaomi Mesh**: Quản lý các nốt sóng Wi-Fi Mesh trong gia đình hoặc văn phòng.
-- **Mục Tiêu Kiểm Tra Độ Trễ (Ping Targets)**: Đo độ trễ ping liên tục đến các DNS lớn (Google 8.8.8.8, Cloudflare 1.1.1.1, Gateway) để cảnh báo tức thì khi mạng chập chờn.
+1. 🛡️ **MikroTik RouterOS (v6 & v7)**: Kết nối trực tiếp qua Binary API (Cổng 8728 / 8729) hoặc REST API. Giám sát thông lượng WAN PPPoE thực tế, đo tải CPU/RAM, đọc cảm biến nhiệt độ và điện áp, quản lý danh sách DHCP Leases, Active PPPoE Sessions và hỗ trợ khởi động lại từ xa.
+2. 🌐 **OpenWrt / ImmortalWrt**: Kết nối qua LuCI ubus / JSON-RPC API. Giám sát WAN IP, System load, thông lượng các giao diện mạng, danh sách thiết bị kết nối và cấu hình Wi-Fi.
+3. 📡 **ZTE EasyMesh & GPON ONT** (*ZTE H196A, ZXHN F670L, H3601, F6600, F680...*): Tự động vẽ sơ đồ cây mạng Mesh, trạng thái các node phụ, đo cường độ tín hiệu sóng và thống kê client.
+4. 📶 **TP-Link Deco Wi-Fi 6/7 Mesh** (*Deco X20, X50, X60, XE75, M4, M5, W3600...*): Tự động phát hiện topology các node Deco, kiểm tra trạng thái kết nối Internet và các thiết bị đang phát sóng.
+5. 📲 **Xiaomi MiWiFi & Mesh Router** (*Xiaomi AX3000, AX6000, AX9000, BE3600, Redmi AX6S, AX5, CR6608...*): Giám sát các node Mesh chính/phụ, đo tốc độ truyền dẫn và danh sách thiết bị LAN/Wi-Fi.
+6. 🏢 **Gecoos Enterprise AP & AC Controller**: Hỗ trợ đồng bộ trạng thái các Access Point doanh nghiệp và bộ điều khiển tập trung Cloud AC.
+7. 🔌 **Generic Router, Firewall & Switch**: Hỗ trợ giám sát mọi dòng thiết bị mạng khác (*pfSense, OPNsense, Cisco, DrayTek Vigor, Ubiquiti UniFi, ASUSWRT, Ruijie Reyee, Huawei ONT...*) thông qua giao thức ICMP Ping và kiểm tra cổng dịch vụ TCP.
+
+
 
 ---
 
