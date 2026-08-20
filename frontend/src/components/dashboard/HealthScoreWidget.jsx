@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
   Card,
@@ -28,16 +28,57 @@ import {
   Network,
   Shield,
   ArrowRight,
-  Zap
+  Zap,
+  EyeOff,
+  RotateCcw,
+  Eye
 } from 'lucide-react';
 import { apiRequest } from '../../utils/api';
 import Label from '../common/Label';
+
+const IGNORED_ISSUES_STORAGE_KEY = 'minhhungops_ignored_health_issues';
 
 export default function HealthScoreWidget() {
   const theme = useTheme();
   const [health, setHealth] = useState(null);
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [showIgnored, setShowIgnored] = useState(false);
+
+  // Ignored issues state persisted in localStorage
+  const [ignoredIssueIds, setIgnoredIssueIds] = useState(() => {
+    try {
+      const stored = localStorage.getItem(IGNORED_ISSUES_STORAGE_KEY);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const saveIgnored = (ids) => {
+    setIgnoredIssueIds(ids);
+    try {
+      localStorage.setItem(IGNORED_ISSUES_STORAGE_KEY, JSON.stringify(ids));
+    } catch (e) {
+      console.error('Failed to save ignored issues:', e);
+    }
+  };
+
+  const handleIgnoreIssue = (e, issueId) => {
+    e?.stopPropagation();
+    if (!ignoredIssueIds.includes(issueId)) {
+      saveIgnored([...ignoredIssueIds, issueId]);
+    }
+  };
+
+  const handleRestoreIssue = (e, issueId) => {
+    e?.stopPropagation();
+    saveIgnored(ignoredIssueIds.filter((id) => id !== issueId));
+  };
+
+  const handleClearAllIgnored = () => {
+    saveIgnored([]);
+  };
 
   const loadHealth = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -56,6 +97,16 @@ export default function HealthScoreWidget() {
     const interval = setInterval(() => loadHealth(true), 15000);
     return () => clearInterval(interval);
   }, [loadHealth]);
+
+  const rawIssues = health?.issues || [];
+  const activeIssues = useMemo(
+    () => rawIssues.filter((iss) => !ignoredIssueIds.includes(iss.id)),
+    [rawIssues, ignoredIssueIds]
+  );
+  const ignoredList = useMemo(
+    () => rawIssues.filter((iss) => ignoredIssueIds.includes(iss.id)),
+    [rawIssues, ignoredIssueIds]
+  );
 
   if (!health && loading) {
     return (
@@ -83,7 +134,7 @@ export default function HealthScoreWidget() {
     ? alpha(theme.palette.warning.main, 0.08)
     : alpha(theme.palette.error.main, 0.08);
 
-  const totalIssues = (health.issues || []).length;
+  const totalActiveIssues = activeIssues.length;
 
   return (
     <Card
@@ -139,7 +190,7 @@ export default function HealthScoreWidget() {
           </Box>
 
           <Box>
-            <Stack direction="row" spacing={1} alignItems="center">
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ flexWrap: 'wrap', gap: 0.5 }}>
               <Typography variant="overline" sx={{ color: scoreColor, fontWeight: 800, letterSpacing: 1.2 }}>
                 ĐIỂM SỨC KHỎE HẠ TẦNG (HEALTH SCORE)
               </Typography>
@@ -149,10 +200,20 @@ export default function HealthScoreWidget() {
               >
                 {health.status === 'excellent' ? 'Hoàn Hảo' : health.status === 'good' ? 'Tốt' : health.status === 'warning' ? 'Cần Lưu Ý' : 'Nghiêm Trọng'}
               </Label>
+              {ignoredList.length > 0 && (
+                <Chip
+                  label={`Đã bỏ qua ${ignoredList.length}`}
+                  size="small"
+                  variant="outlined"
+                  sx={{ height: 20, fontSize: '0.6875rem', fontWeight: 700 }}
+                />
+              )}
             </Stack>
 
             <Typography variant="h6" sx={{ fontWeight: 800, mt: 0.2 }}>
-              {totalIssues === 0 ? 'Toàn bộ máy trạm, kết nối mạng & Gateway hoạt động ổn định' : `Phát hiện ${totalIssues} vấn đề cần lưu ý trong hạ tầng`}
+              {totalActiveIssues === 0
+                ? (ignoredList.length > 0 ? 'Tất cả vấn đề đã được bỏ qua / Hệ thống ổn định' : 'Toàn bộ máy trạm, kết nối mạng & Gateway hoạt động ổn định')
+                : `Phát hiện ${totalActiveIssues} vấn đề cần lưu ý trong hạ tầng`}
             </Typography>
 
             <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.8rem' }}>
@@ -222,11 +283,11 @@ export default function HealthScoreWidget() {
           <Button
             size="small"
             variant="outlined"
-            onClick={() => setExpanded(v => !v)}
+            onClick={() => setExpanded((v) => !v)}
             endIcon={expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             sx={{ fontWeight: 700, borderRadius: 2 }}
           >
-            {expanded ? 'Thu gọn' : totalIssues > 0 ? `Xem ${totalIssues} vấn đề` : 'Chi tiết'}
+            {expanded ? 'Thu gọn' : totalActiveIssues > 0 ? `Xem ${totalActiveIssues} vấn đề` : 'Chi tiết'}
           </Button>
           <Tooltip title="Làm mới điểm số">
             <IconButton size="small" onClick={() => loadHealth(false)} disabled={loading}>
@@ -242,35 +303,135 @@ export default function HealthScoreWidget() {
           <Grid container spacing={2}>
             {/* Active Issues */}
             <Grid item xs={12} md={6}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <AlertTriangle size={16} color={theme.palette.warning.main} /> Vấn đề phát hiện ({totalIssues})
-              </Typography>
-              {totalIssues === 0 ? (
-                <Alert severity="success" sx={{ py: 0.5, borderRadius: 1.5, fontSize: '0.8rem' }}>
-                  Không có cảnh báo hay sự cố nào đang diễn ra trên hệ thống.
+              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <AlertTriangle size={16} color={theme.palette.warning.main} /> Vấn đề phát hiện ({totalActiveIssues})
+                </Typography>
+                {ignoredList.length > 0 && (
+                  <Button
+                    size="small"
+                    variant="text"
+                    color="inherit"
+                    onClick={() => setShowIgnored((v) => !v)}
+                    startIcon={showIgnored ? <Eye size={14} /> : <EyeOff size={14} />}
+                    sx={{ fontSize: '0.725rem', fontWeight: 700, py: 0 }}
+                  >
+                    {showIgnored ? 'Ẩn mục đã bỏ qua' : `Xem đã bỏ qua (${ignoredList.length})`}
+                  </Button>
+                )}
+              </Stack>
+
+              {totalActiveIssues === 0 ? (
+                <Alert severity="success" sx={{ py: 0.5, borderRadius: 1.5, fontSize: '0.8rem', mb: 1 }}>
+                  {ignoredList.length > 0
+                    ? `Không còn vấn đề chưa xử lý (Đã bỏ qua ${ignoredList.length} vấn đề).`
+                    : 'Không có cảnh báo hay sự cố nào đang diễn ra trên hệ thống.'}
                 </Alert>
               ) : (
                 <Stack spacing={1}>
-                  {health.issues.map((iss) => (
+                  {activeIssues.map((iss) => (
                     <Box
                       key={iss.id}
                       sx={{
-                        p: 1.2,
+                        p: 1.25,
                         borderRadius: 1.5,
                         bgcolor: alpha(iss.type === 'error' ? theme.palette.error.main : theme.palette.warning.main, 0.08),
-                        borderLeft: `3px solid ${iss.type === 'error' ? theme.palette.error.main : theme.palette.warning.main}`
+                        borderLeft: `3px solid ${iss.type === 'error' ? theme.palette.error.main : theme.palette.warning.main}`,
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        justifyContent: 'space-between',
+                        gap: 1
                       }}
                     >
-                      <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.8rem' }}>
-                        {iss.title}
-                      </Typography>
-                      <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
-                        {iss.message}
-                      </Typography>
+                      <Box sx={{ minWidth: 0, flexGrow: 1 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.8125rem' }}>
+                          {iss.title}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 0.25 }}>
+                          {iss.message}
+                        </Typography>
+                      </Box>
+                      <Tooltip title="Bỏ qua cảnh báo này">
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="inherit"
+                          onClick={(e) => handleIgnoreIssue(e, iss.id)}
+                          startIcon={<EyeOff size={12} />}
+                          sx={{
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            py: 0.25,
+                            px: 0.75,
+                            minWidth: 'auto',
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
+                            borderColor: alpha(theme.palette.divider, 0.8)
+                          }}
+                        >
+                          Bỏ qua
+                        </Button>
+                      </Tooltip>
                     </Box>
                   ))}
                 </Stack>
               )}
+
+              {/* Show Ignored Issues Collapsible */}
+              <Collapse in={showIgnored && ignoredList.length > 0}>
+                <Box sx={{ mt: 1.5, p: 1.5, borderRadius: 2, bgcolor: alpha(theme.palette.grey[500], 0.06), border: `1px dashed ${theme.palette.divider}` }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                    <Typography variant="caption" sx={{ fontWeight: 800, color: 'text.secondary', textTransform: 'uppercase' }}>
+                      CÁC VẤN ĐỀ ĐÃ BỎ QUA ({ignoredList.length})
+                    </Typography>
+                    <Button
+                      size="small"
+                      variant="text"
+                      color="primary"
+                      onClick={handleClearAllIgnored}
+                      startIcon={<RotateCcw size={12} />}
+                      sx={{ fontSize: '0.7rem', fontWeight: 700, py: 0 }}
+                    >
+                      Khôi phục tất cả
+                    </Button>
+                  </Stack>
+                  <Stack spacing={0.75}>
+                    {ignoredList.map((iss) => (
+                      <Box
+                        key={iss.id}
+                        sx={{
+                          p: 1,
+                          borderRadius: 1,
+                          bgcolor: alpha(theme.palette.background.paper, 0.8),
+                          border: `1px solid ${theme.palette.divider}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 1
+                        }}
+                      >
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography variant="caption" noWrap sx={{ fontWeight: 700, display: 'block' }}>
+                            {iss.title}
+                          </Typography>
+                          <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
+                            {iss.message}
+                          </Typography>
+                        </Box>
+                        <Button
+                          size="small"
+                          variant="text"
+                          color="primary"
+                          onClick={(e) => handleRestoreIssue(e, iss.id)}
+                          sx={{ fontSize: '0.7rem', fontWeight: 700, minWidth: 'auto', p: 0.5 }}
+                        >
+                          Khôi phục
+                        </Button>
+                      </Box>
+                    ))}
+                  </Stack>
+                </Box>
+              </Collapse>
             </Grid>
 
             {/* Smart Recommendations */}
@@ -315,3 +476,4 @@ export default function HealthScoreWidget() {
     </Card>
   );
 }
+
