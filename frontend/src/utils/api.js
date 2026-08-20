@@ -12,6 +12,10 @@ export async function apiRequest(path, optionsOrMethod = {}, body = null, extraH
     reqOptions = { ...optionsOrMethod };
   }
 
+  if (reqOptions.body && typeof reqOptions.body === 'object' && !(reqOptions.body instanceof FormData) && !(reqOptions.body instanceof Blob)) {
+    reqOptions.body = JSON.stringify(reqOptions.body);
+  }
+
   const token = localStorage.getItem('wc_token') || '';
   const headers = {
     'Content-Type': 'application/json',
@@ -27,6 +31,7 @@ export async function apiRequest(path, optionsOrMethod = {}, body = null, extraH
     ...reqOptions,
     headers
   });
+
 
 
   if (response.status === 401) {

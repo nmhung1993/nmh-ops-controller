@@ -9,7 +9,9 @@ const DEFAULT_SETTINGS = {
   logoUrl: '',
   ownerSignature: '@nmhung1993',
   timezone: 'Asia/Ho_Chi_Minh',
-  environmentLabel: 'LAN tin cậy'
+  environmentLabel: 'LAN tin cậy',
+  primaryColor: '#10B981',
+  defaultThemeMode: 'dark'
 };
 
 const SystemSettingsContext = createContext({

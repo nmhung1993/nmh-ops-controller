@@ -69,8 +69,11 @@ const DEFAULT_SYSTEM_SETTINGS = {
   logoUrl: '',
   ownerSignature: '@nmhung1993',
   timezone: 'Asia/Ho_Chi_Minh',
-  environmentLabel: 'LAN tin cậy'
+  environmentLabel: 'LAN tin cậy',
+  primaryColor: '#10B981',
+  defaultThemeMode: 'dark'
 };
+
 
 function loadJsonFile(filePath, defaultValue) {
   try {
@@ -1293,7 +1296,7 @@ app.get('/api/v1/system/settings', (req, res) => {
 
 // PUT System & Brand Settings (Super Admin only)
 app.put('/api/v1/system/settings', authenticate, requireSuperAdmin, (req, res) => {
-  const { appName, appSubtitle, tagline, logoText, logoUrl, ownerSignature, timezone, environmentLabel, restrictPowerMetrics } = req.body || {};
+  const { appName, appSubtitle, tagline, logoText, logoUrl, ownerSignature, timezone, environmentLabel, restrictPowerMetrics, primaryColor, defaultThemeMode } = req.body || {};
 
   if (appName !== undefined) systemSettings.appName = String(appName).trim() || 'NMH Ops Controller';
   if (appSubtitle !== undefined) systemSettings.appSubtitle = String(appSubtitle).trim();
@@ -1304,11 +1307,14 @@ app.put('/api/v1/system/settings', authenticate, requireSuperAdmin, (req, res) =
   if (timezone !== undefined) systemSettings.timezone = String(timezone).trim() || 'Asia/Ho_Chi_Minh';
   if (environmentLabel !== undefined) systemSettings.environmentLabel = String(environmentLabel).trim() || 'LAN tin cậy';
   if (restrictPowerMetrics !== undefined) systemSettings.restrictPowerMetrics = Boolean(restrictPowerMetrics);
+  if (primaryColor !== undefined) systemSettings.primaryColor = String(primaryColor).trim() || '#10B981';
+  if (defaultThemeMode !== undefined) systemSettings.defaultThemeMode = defaultThemeMode === 'light' ? 'light' : 'dark';
 
   saveJsonFile(SYSTEM_SETTINGS_FILE, systemSettings);
   broadcastUi('ui.system.settings', systemSettings);
   res.json({ success: true, settings: systemSettings });
 });
+
 
 // Upload custom logo (Super Admin only)
 app.post('/api/v1/system/logo', authenticate, requireSuperAdmin, (req, res) => {

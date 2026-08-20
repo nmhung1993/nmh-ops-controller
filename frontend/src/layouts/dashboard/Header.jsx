@@ -29,7 +29,9 @@ import {
   CheckCircle2,
   AlertCircle,
   Clock,
-  Search
+  Search,
+  Palette,
+  Check
 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useThemeMode } from '../../context/ThemeContext';
@@ -47,12 +49,13 @@ export const NAV_COLLAPSED_WIDTH = 88;
 export default function Header({ onOpenNav, currentPage, onOpenPasswordDialog, onOpenCommandPalette, isCollapsed }) {
   const theme = useTheme();
   const { lang, setLang, t } = useLanguage();
-  const { themeMode, toggleTheme } = useThemeMode();
+  const { themeMode, themeColor, setThemeMode, toggleTheme, setThemeColor, colorPresets } = useThemeMode();
   const { user, logout } = useAuth();
   const { status, hosts, selectedHostId, setSelectedHostId, refreshHosts } = useWebSocket();
 
   const [anchorElUser, setAnchorElUser] = useState(null);
   const [anchorElLang, setAnchorElLang] = useState(null);
+  const [anchorElTheme, setAnchorElTheme] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const handleRefresh = async () => {
@@ -287,10 +290,10 @@ export default function Header({ onOpenNav, currentPage, onOpenPasswordDialog, o
             </MenuItem>
           </Menu>
 
-          {/* Theme Toggle */}
-          <Tooltip title={themeMode === 'dark' ? t('theme.switchToLight') : t('theme.switchToDark')}>
+          {/* Theme & Color Switcher */}
+          <Tooltip title="Tùy chỉnh Giao diện & Màu sắc (Theme & Color)">
             <IconButton
-              onClick={toggleTheme}
+              onClick={(e) => setAnchorElTheme(e.currentTarget)}
               sx={{
                 width: 38,
                 height: 38,
@@ -299,9 +302,98 @@ export default function Header({ onOpenNav, currentPage, onOpenPasswordDialog, o
                 '&:hover': { bgcolor: alpha(theme.palette.grey[500], 0.16) }
               }}
             >
-              {themeMode === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+              <Palette size={18} />
             </IconButton>
           </Tooltip>
+
+          {/* Theme & Color Popover Menu */}
+          <Menu
+            anchorEl={anchorElTheme}
+            open={Boolean(anchorElTheme)}
+            onClose={() => setAnchorElTheme(null)}
+            PaperProps={{
+              sx: {
+                width: 280,
+                p: 2,
+                mt: 1,
+                borderRadius: 2.5,
+                boxShadow: theme.customShadows.dropdown
+              }
+            }}
+          >
+            <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Palette size={16} /> Giao diện & Màu sắc
+            </Typography>
+
+            {/* Mode Switcher */}
+            <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, textTransform: 'uppercase', mb: 1, display: 'block' }}>
+              Chế độ hiển thị
+            </Typography>
+            <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+              <Button
+                variant={themeMode === 'light' ? 'contained' : 'outlined'}
+                size="small"
+                fullWidth
+                startIcon={<Sun size={15} />}
+                onClick={() => setThemeMode('light')}
+                sx={{ borderRadius: 1.5, fontWeight: 700 }}
+              >
+                Sáng
+              </Button>
+              <Button
+                variant={themeMode === 'dark' ? 'contained' : 'outlined'}
+                size="small"
+                fullWidth
+                startIcon={<Moon size={15} />}
+                onClick={() => setThemeMode('dark')}
+                sx={{ borderRadius: 1.5, fontWeight: 700 }}
+              >
+                Tối
+              </Button>
+            </Stack>
+
+            <Divider sx={{ my: 1.5, borderStyle: 'dashed' }} />
+
+            {/* Color Presets */}
+            <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700, textTransform: 'uppercase', mb: 1, display: 'block' }}>
+              Tông màu chủ đạo
+            </Typography>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(4, 1fr)',
+                gap: 1.25,
+                mb: 1
+              }}
+            >
+              {(colorPresets || []).map((preset) => {
+                const isSelected = themeColor === preset.id || themeColor.toLowerCase() === preset.main.toLowerCase();
+                return (
+                  <Tooltip key={preset.id} title={preset.label} arrow>
+                    <Box
+                      onClick={() => setThemeColor(preset.id)}
+                      sx={{
+                        height: 36,
+                        borderRadius: 1.5,
+                        bgcolor: preset.main,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#FFFFFF',
+                        border: isSelected ? '2.5px solid #FFFFFF' : 'none',
+                        boxShadow: isSelected ? `0 0 0 2px ${preset.main}, 0 4px 10px ${alpha(preset.main, 0.4)}` : `0 2px 4px ${alpha(preset.main, 0.2)}`,
+                        transition: 'transform 0.15s ease',
+                        '&:hover': { transform: 'scale(1.08)' }
+                      }}
+                    >
+                      {isSelected && <Check size={16} strokeWidth={3} />}
+                    </Box>
+                  </Tooltip>
+                );
+              })}
+            </Box>
+          </Menu>
 
           {/* User Profile Avatar Popover */}
           <IconButton

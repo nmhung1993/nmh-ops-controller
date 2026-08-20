@@ -127,13 +127,14 @@ export default function App() {
 }
 
 function AppWithTheme() {
-  const { themeMode } = useThemeMode();
+  const { themeMode, themeColor } = useThemeMode();
 
   return (
-    <ThemeProvider themeMode={themeMode}>
+    <ThemeProvider themeMode={themeMode} themeColor={themeColor}>
       <AuthProvider>
         <MainApp />
       </AuthProvider>
     </ThemeProvider>
   );
 }
+

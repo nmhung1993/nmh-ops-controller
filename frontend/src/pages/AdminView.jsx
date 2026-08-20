@@ -46,12 +46,17 @@ import {
   Sliders,
   Globe,
   Upload,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Sun,
+  Moon,
+  Check
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import { useWebSocket } from '../context/WebSocketContext';
 import { useSystemSettings } from '../context/SystemSettingsContext';
+import { useThemeMode } from '../context/ThemeContext';
+import { COLOR_PRESETS } from '../theme/palette';
 import { apiRequest } from '../utils/api';
 import { formatDateTime } from '../utils/formatters';
 import Label from '../components/common/Label';
@@ -62,7 +67,8 @@ export default function AdminView() {
   const { lang, t } = useLanguage();
   const { user: currentUser } = useAuth();
   const { hosts, refreshHosts } = useWebSocket();
-  const { settings: systemSettings, updateSettings: updateSystemSettings } = useSystemSettings();
+  const { settings: systemSettings, updateSettings } = useSystemSettings();
+  const { setThemeColor, setThemeMode } = useThemeMode();
 
   const [allAgents, setAllAgents] = useState([]);
   const [pendingAgents, setPendingAgents] = useState([]);
@@ -83,6 +89,8 @@ export default function AdminView() {
     ownerSignature: '@nmhung1993',
     timezone: 'Asia/Ho_Chi_Minh',
     environmentLabel: 'LAN tin cậy',
+    primaryColor: '#10B981',
+    defaultThemeMode: 'dark',
     restrictPowerMetrics: false
   });
 
@@ -151,7 +159,10 @@ export default function AdminView() {
         logoUrl: systemSettings.logoUrl || '',
         ownerSignature: systemSettings.ownerSignature || '@nmhung1993',
         timezone: systemSettings.timezone || 'Asia/Ho_Chi_Minh',
-        environmentLabel: systemSettings.environmentLabel || 'LAN tin cậy'
+        environmentLabel: systemSettings.environmentLabel || 'LAN tin cậy',
+        primaryColor: systemSettings.primaryColor || '#10B981',
+        defaultThemeMode: systemSettings.defaultThemeMode || 'dark',
+        restrictPowerMetrics: Boolean(systemSettings.restrictPowerMetrics)
       });
     }
   }, [systemSettings]);
@@ -477,14 +488,16 @@ export default function AdminView() {
     }
   };
 
-  const handleSaveBrand = async (e) => {
+  const handleSaveBrandSettings = async (e) => {
     e.preventDefault();
     setSavingBrand(true);
     try {
-      await updateSystemSettings(brandForm);
-      setToastMessage('Đã lưu cấu hình hệ thống & nhận diện thành công!');
+      await updateSettings(brandForm);
+      if (brandForm.primaryColor) setThemeColor(brandForm.primaryColor);
+      if (brandForm.defaultThemeMode) setThemeMode(brandForm.defaultThemeMode);
+      setToastMessage('Đã lưu cấu hình thương hiệu, giao diện và màu sắc thành công');
     } catch (err) {
-      alert(err.message);
+      alert(`Lỗi khi lưu cấu hình: ${err.message}`);
     } finally {
       setSavingBrand(false);
     }
@@ -710,17 +723,18 @@ export default function AdminView() {
           </Card>
         </Grid>
 
-        {/* Section 4: System & Brand Customization (Super Admin Only) */}
+        {/* Section 4: System, Brand, Theme & Color Customization (Super Admin Only) */}
         <Grid item xs={12}>
           <Card>
             <CardHeader
-              title="Cấu hình Hệ thống, Nhận diện & Múi giờ"
-              subheader="Tùy biến tên hệ thống, logo, chữ ký owner và múi giờ hiển thị toàn cục"
+              title="Cấu hình Hệ thống, Giao diện & Màu sắc"
+              subheader="Tùy biến tên hệ thống, logo, chế độ Sáng/Tối, tông màu chủ đạo và múi giờ hiển thị toàn cục"
               titleTypographyProps={{ typography: 'h6', fontWeight: 700 }}
               action={<Palette size={22} color={theme.palette.text.secondary} />}
             />
             <CardContent>
-              <form onSubmit={handleSaveBrand}>
+              <form onSubmit={handleSaveBrandSettings}>
+
                 <Grid container spacing={2.5}>
                   <Grid item xs={12} sm={6} md={3}>
                     <TextField
@@ -843,6 +857,7 @@ export default function AdminView() {
                     />
                   </Grid>
 
+                  {/* Múi giờ */}
                   <Grid item xs={12} sm={6} md={4}>
                     <FormControl fullWidth>
                       <InputLabel>Múi giờ hiển thị (Timezone)</InputLabel>
@@ -860,6 +875,123 @@ export default function AdminView() {
                         <MenuItem value="UTC">🌐 UTC (Coordinated Universal Time)</MenuItem>
                       </Select>
                     </FormControl>
+                  </Grid>
+
+                  {/* Theme Mode & Primary Accent Color Controls */}
+                  <Grid item xs={12}>
+                    <Divider sx={{ my: 1, borderStyle: 'dashed' }} />
+                  </Grid>
+
+                  <Grid item xs={12} md={6}>
+                    <Box sx={{ p: 2.5, borderRadius: 2, bgcolor: alpha(theme.palette.background.default, 0.6), border: `1px solid ${theme.palette.divider}` }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Sun size={18} /> Chế Độ Giao Diện Mặc Định
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 2 }}>
+                        Chế độ hiển thị sáng/tối mặc định cho toàn bộ người dùng khi truy cập hệ thống.
+                      </Typography>
+
+                      <Stack direction="row" spacing={2}>
+                        <Button
+                          variant={brandForm.defaultThemeMode === 'light' ? 'contained' : 'outlined'}
+                          startIcon={<Sun size={16} />}
+                          onClick={() => {
+                            setBrandForm({ ...brandForm, defaultThemeMode: 'light' });
+                            setThemeMode('light');
+                          }}
+                          sx={{ flex: 1, py: 1.25, fontWeight: 700, borderRadius: 2 }}
+                        >
+                          Sáng (Light)
+                        </Button>
+                        <Button
+                          variant={brandForm.defaultThemeMode === 'dark' ? 'contained' : 'outlined'}
+                          startIcon={<Moon size={16} />}
+                          onClick={() => {
+                            setBrandForm({ ...brandForm, defaultThemeMode: 'dark' });
+                            setThemeMode('dark');
+                          }}
+                          sx={{ flex: 1, py: 1.25, fontWeight: 700, borderRadius: 2 }}
+                        >
+                          Tối (Dark)
+                        </Button>
+                      </Stack>
+                    </Box>
+                  </Grid>
+
+                  <Grid item xs={12} md={6}>
+                    <Box sx={{ p: 2.5, borderRadius: 2, bgcolor: alpha(theme.palette.background.default, 0.6), border: `1px solid ${theme.palette.divider}` }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Palette size={18} /> Tông Màu Chủ Đạo Hệ Thống
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1.5 }}>
+                        Chọn bảng màu hoặc nhập mã HEX tùy biến cho nút bấm, badge, biểu đồ và hiệu ứng glow.
+                      </Typography>
+
+                      {/* Presets Grid */}
+                      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 1, mb: 2 }}>
+                        {COLOR_PRESETS.map((preset) => {
+                          const isSelected = brandForm.primaryColor === preset.main || brandForm.primaryColor === preset.id;
+                          return (
+                            <Tooltip key={preset.id} title={preset.label} arrow>
+                              <Button
+                                size="small"
+                                onClick={() => {
+                                  setBrandForm({ ...brandForm, primaryColor: preset.main });
+                                  setThemeColor(preset.main);
+                                }}
+                                sx={{
+                                  bgcolor: preset.main,
+                                  color: '#FFFFFF',
+                                  height: 36,
+                                  borderRadius: 1.5,
+                                  minWidth: 0,
+                                  border: isSelected ? '2px solid #FFFFFF' : 'none',
+                                  boxShadow: isSelected ? `0 0 0 2px ${preset.main}, 0 4px 8px ${alpha(preset.main, 0.4)}` : 'none',
+                                  '&:hover': { bgcolor: preset.dark, transform: 'scale(1.04)' }
+                                }}
+                              >
+                                {isSelected ? <Check size={16} strokeWidth={3} /> : preset.name.slice(0, 3)}
+                              </Button>
+                            </Tooltip>
+                          );
+                        })}
+                      </Box>
+
+                      {/* Custom Hex Picker Input */}
+                      <Stack direction="row" spacing={1.5} alignItems="center">
+                        <Box
+                          component="input"
+                          type="color"
+                          value={brandForm.primaryColor.startsWith('#') ? brandForm.primaryColor : '#10B981'}
+                          onChange={(e) => {
+                            setBrandForm({ ...brandForm, primaryColor: e.target.value });
+                            setThemeColor(e.target.value);
+                          }}
+                          sx={{
+                            width: 44,
+                            height: 40,
+                            p: 0.5,
+                            border: `1px solid ${theme.palette.divider}`,
+                            borderRadius: 1.5,
+                            cursor: 'pointer',
+                            bgcolor: 'background.paper'
+                          }}
+                        />
+                        <TextField
+                          size="small"
+                          label="Mã màu HEX tùy biến"
+                          value={brandForm.primaryColor}
+                          onChange={(e) => {
+                            setBrandForm({ ...brandForm, primaryColor: e.target.value });
+                            if (/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) {
+                              setThemeColor(e.target.value);
+                            }
+                          }}
+                          placeholder="#10B981"
+                          fullWidth
+                        />
+                      </Stack>
+                    </Box>
                   </Grid>
                 </Grid>
 

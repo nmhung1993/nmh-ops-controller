@@ -5,11 +5,11 @@ import { typography } from './typography';
 import { createShadows, createCustomShadows } from './shadows';
 import { componentsOverrides } from './components';
 
-export default function ThemeProvider({ themeMode = 'light', children }) {
+export default function ThemeProvider({ themeMode = 'dark', themeColor = 'emerald', children }) {
   const theme = useMemo(() => {
-    const palette = getPalette(themeMode);
+    const palette = getPalette(themeMode, themeColor);
     const shadows = createShadows(themeMode === 'light' ? '#919EAB' : '#000000');
-    const customShadows = createCustomShadows(themeMode === 'light' ? '#919EAB' : '#000000');
+    const customShadows = createCustomShadows(themeMode === 'light' ? '#919EAB' : '#000000', palette.primary.main);
 
     const themeOptions = {
       palette,
@@ -24,7 +24,8 @@ export default function ThemeProvider({ themeMode = 'light', children }) {
     baseTheme.components = componentsOverrides(baseTheme);
 
     return baseTheme;
-  }, [themeMode]);
+  }, [themeMode, themeColor]);
+
 
   return (
     <StyledEngineProvider injectFirst>

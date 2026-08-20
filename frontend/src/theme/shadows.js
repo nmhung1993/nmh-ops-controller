@@ -32,7 +32,7 @@ export function createShadows(color) {
   ];
 }
 
-export function createCustomShadows(color) {
+export function createCustomShadows(color, primaryMain = PRIMARY.main) {
   const transparent = alpha(color, 0.16);
   return {
     z1: `0 1px 2px 0 ${transparent}`,
@@ -45,7 +45,7 @@ export function createCustomShadows(color) {
     card: `0 0 2px 0 ${alpha(color, 0.2)}, 0 12px 24px -4px ${alpha(color, 0.12)}`,
     dropdown: `0 0 2px 0 ${alpha(color, 0.24)}, -20px 20px 40px -4px ${alpha(color, 0.24)}`,
     dialog: `-40px 40px 80px -8px ${alpha(color, 0.24)}`,
-    primary: `0 8px 16px 0 ${alpha(PRIMARY.main, 0.24)}`,
+    primary: `0 8px 16px 0 ${alpha(primaryMain, 0.24)}`,
     info: `0 8px 16px 0 ${alpha(INFO.main, 0.24)}`,
     secondary: `0 8px 16px 0 ${alpha(SECONDARY.main, 0.24)}`,
     success: `0 8px 16px 0 ${alpha(SUCCESS.main, 0.24)}`,
@@ -53,3 +53,4 @@ export function createCustomShadows(color) {
     error: `0 8px 16px 0 ${alpha(ERROR.main, 0.24)}`
   };
 }
+
