@@ -101,7 +101,7 @@ export default function DockerView() {
   const [viewMode, setViewMode] = useState('grouped'); // 'grouped' or 'flat'
   const [sortBy, setSortBy] = useState('name'); // 'name', 'cpu', 'memory', 'status'
   const [sortOrder, setSortOrder] = useState('asc'); // 'asc' or 'desc'
-  const [collapsedStacks, setCollapsedStacks] = useState(new Set());
+  const [expandedStacks, setExpandedStacks] = useState(new Set());
 
   // Modals state
   const [detailModal, setDetailModal] = useState({ open: false, container: null, data: null, activeSubTab: 'overview' });
@@ -238,7 +238,7 @@ export default function DockerView() {
 
   // Toggle Single Stack
   const toggleStackCollapse = (stackName) => {
-    setCollapsedStacks((prev) => {
+    setExpandedStacks((prev) => {
       const next = new Set(prev);
       if (next.has(stackName)) next.delete(stackName);
       else next.add(stackName);
@@ -247,11 +247,11 @@ export default function DockerView() {
   };
 
   // Expand / Collapse All Stacks
-  const handleExpandAllStacks = () => setCollapsedStacks(new Set());
-  const handleCollapseAllStacks = () => {
+  const handleExpandAllStacks = () => {
     const allNames = stacks.map((s) => s.name);
-    setCollapsedStacks(new Set(allNames));
+    setExpandedStacks(new Set(allNames));
   };
+  const handleCollapseAllStacks = () => setExpandedStacks(new Set());
 
   // Open Container Detail Dialog
   const handleOpenContainerDetail = async (container, initialTab = 'overview') => {
@@ -869,7 +869,7 @@ export default function DockerView() {
             {viewMode === 'grouped' ? (
               <Stack spacing={2.5}>
                 {groupedStacks.map((st) => {
-                  const isCollapsed = collapsedStacks.has(st.name);
+                  const isExpanded = expandedStacks.has(st.name);
                   const isAllRunning = st.runningCount === st.totalCount && st.totalCount > 0;
 
                   return (
@@ -898,7 +898,7 @@ export default function DockerView() {
                       >
                         <Stack direction="row" spacing={1.5} alignItems="center">
                           <IconButton size="small" sx={{ p: 0.5 }}>
-                            {isCollapsed ? <ChevronRight size={18} /> : <ChevronDown size={18} />}
+                            {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
                           </IconButton>
                           <Box sx={{ p: 0.75, borderRadius: 1.5, bgcolor: alpha(theme.palette.primary.main, 0.1) }}>
                             <Layers size={18} color={theme.palette.primary.main} />
@@ -967,7 +967,7 @@ export default function DockerView() {
                       </Box>
 
                       {/* Stack Containers Table */}
-                      <Collapse in={!isCollapsed}>
+                      <Collapse in={isExpanded}>
                         <Divider />
                         <Table size="small">
                           <TableHead sx={{ bgcolor: 'background.paper' }}>

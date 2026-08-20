@@ -129,6 +129,10 @@ function createDatabase() {
 
   const agentColumns = new Set(db.prepare('PRAGMA table_info(agents)').all().map(column => column.name));
   if (!agentColumns.has('notes')) db.exec("ALTER TABLE agents ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
+  if (!agentColumns.has('include_health')) db.exec("ALTER TABLE agents ADD COLUMN include_health INTEGER NOT NULL DEFAULT 1");
+
+  const userColumns = new Set(db.prepare('PRAGMA table_info(users)').all().map(column => column.name));
+  if (!userColumns.has('permissions_json')) db.exec("ALTER TABLE users ADD COLUMN permissions_json TEXT NOT NULL DEFAULT '{}'");
 
   migrateUserRoleSchema(db);
   db.exec(`

@@ -7,6 +7,9 @@ const dns = require('dns');
 const querystring = require('querystring');
 const express = require('express');
 const { MikroTikManager } = require('./mikrotik-manager');
+const { OpenWrtManager } = require('./openwrt-manager');
+const { TPLinkDecoManager } = require('./tplink-deco-manager');
+const { ZTEManager } = require('./zte-manager');
 const { alertEngine } = require('./alert-engine');
 
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../data');
@@ -14,9 +17,79 @@ const TARGETS_FILE = path.join(DATA_DIR, 'network-targets.json');
 const LOGS_FILE = path.join(DATA_DIR, 'network-logs.json');
 const ROUTER_CONFIG_FILE = path.join(DATA_DIR, 'xiaomi-config.json');
 const MIKROTIK_CONFIG_FILE = path.join(DATA_DIR, 'mikrotik-config.json');
+const DEVICES_CONFIG_FILE = path.join(DATA_DIR, 'network-devices.json');
 const SCAN_HISTORY_FILE = path.join(DATA_DIR, 'network-scan-history.json');
 const HISTORY_FILE = path.join(DATA_DIR, 'network-history.json');
 const CUSTOM_NAMES_FILE = path.join(DATA_DIR, 'network-custom-names.json');
+
+const DEFAULT_DEVICES = [
+  {
+    id: 'dev_mikrotik_1',
+    role: 'gateway',
+    type: 'mikrotik',
+    name: 'MikroTik Core Gateway',
+    host: '192.168.1.1',
+    port: 8728,
+    username: 'admin',
+    password: '',
+    useHttps: false,
+    pppoeInterface: 'pppoe-out1',
+    isDefault: true
+  },
+  {
+    id: 'dev_openwrt_1',
+    role: 'gateway',
+    type: 'openwrt',
+    name: 'OpenWrt / ImmortalWrt Gateway',
+    host: '192.168.1.1',
+    port: 80,
+    username: 'root',
+    password: '',
+    useHttps: false,
+    isDefault: false
+  },
+  {
+    id: 'dev_xiaomi_1',
+    role: 'router_mesh',
+    type: 'xiaomi',
+    name: 'Xiaomi Mesh (Router Chính)',
+    host: '192.168.1.2',
+    password: '@nmhung1993',
+    isDefault: true
+  },
+  {
+    id: 'dev_gecoos_1',
+    role: 'router_mesh',
+    type: 'gecoos',
+    name: 'Gecoos Enterprise AP',
+    host: '192.168.1.43',
+    password: '@nmhung1993',
+    isDefault: false
+  },
+  {
+    id: 'dev_deco_1',
+    role: 'router_mesh',
+    type: 'tplink_deco',
+    name: 'TP-Link Deco Wi-Fi 6 Mesh',
+    host: '192.168.68.1',
+    password: '',
+    isDefault: false
+  },
+  {
+    id: 'dev_zte_1',
+    role: 'router_mesh',
+    type: 'zte',
+    name: 'ZTE H196A / F670L EasyMesh',
+    host: '192.168.1.1',
+    port: 80,
+    username: 'admin',
+    password: '',
+    useHttps: false,
+    isDefault: false
+  }
+];
+
+let managedDevices = loadJson(DEVICES_CONFIG_FILE, DEFAULT_DEVICES);
 
 // Default targets in 192.168.1.0/24 with MikroTik Gateway (192.168.1.1)
 const DEFAULT_TARGETS = [
@@ -197,6 +270,9 @@ function compactNetworkHistory() {
           host: item.host,
           sumLatency: 0,
           countLatency: 0,
+          maxLatency: 0,
+          minLatency: 999999,
+          dropCount: 0,
           isDrop: false,
           isSpike: false,
           status: 'online'
@@ -206,12 +282,15 @@ function compactNetworkHistory() {
       if (item.latency !== null && item.latency !== undefined) {
         b.sumLatency += item.latency;
         b.countLatency += 1;
+        b.maxLatency = Math.max(b.maxLatency, item.latency);
+        b.minLatency = Math.min(b.minLatency, item.latency);
       }
-      if (item.isDrop) {
+      if (item.isDrop || item.status === 'offline') {
         b.isDrop = true;
+        b.dropCount = (b.dropCount || 0) + (item.dropCount || 1);
         b.status = 'offline';
       }
-      if (item.isSpike) b.isSpike = true;
+      if (item.isSpike || (item.latency !== null && item.latency > 100)) b.isSpike = true;
     }
   }
 
@@ -220,7 +299,13 @@ function compactNetworkHistory() {
     targetId: b.targetId,
     targetName: b.targetName,
     host: b.host,
-    latency: b.countLatency > 0 ? Math.round(b.sumLatency / b.countLatency) : null,
+    latency: b.isSpike && b.maxLatency > 0
+      ? b.maxLatency
+      : (b.countLatency > 0 ? Math.round(b.sumLatency / b.countLatency) : null),
+    maxLatency: b.maxLatency > 0 ? b.maxLatency : null,
+    minLatency: b.minLatency < 999999 ? b.minLatency : null,
+    avgLatency: b.countLatency > 0 ? Math.round(b.sumLatency / b.countLatency) : null,
+    dropCount: b.dropCount || 0,
     status: b.isDrop ? 'offline' : 'online',
     isDrop: b.isDrop,
     isSpike: b.isSpike
@@ -1327,55 +1412,58 @@ router.get('/metrics', (req, res) => {
   rawItems.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
   const maxPoints = 80;
-  if (targetId === 'all') {
-    const bucketDurationMs = Math.max(15000, Math.floor(rangeMs / maxPoints));
-    const buckets = new Map();
+  const bucketDurationMs = Math.max(10000, Math.floor(rangeMs / maxPoints));
+  const buckets = new Map();
 
-    rawItems.forEach(item => {
-      const itemMs = new Date(item.timestamp).getTime();
-      const bucketKey = Math.floor(itemMs / bucketDurationMs) * bucketDurationMs;
-      if (!buckets.has(bucketKey)) {
-        buckets.set(bucketKey, {
-          timestamp: new Date(bucketKey).toISOString(),
-          latencies: [],
-          isDrop: false,
-          isSpike: false
-        });
-      }
-      const b = buckets.get(bucketKey);
-      if (item.latency !== null && item.latency !== undefined) b.latencies.push(item.latency);
-      if (item.isDrop) b.isDrop = true;
-      if (item.isSpike) b.isSpike = true;
-    });
+  rawItems.forEach(item => {
+    const itemMs = new Date(item.timestamp).getTime();
+    const bucketKey = Math.floor(itemMs / bucketDurationMs) * bucketDurationMs;
+    if (!buckets.has(bucketKey)) {
+      buckets.set(bucketKey, {
+        timestamp: new Date(bucketKey).toISOString(),
+        targetId: item.targetId || targetId,
+        targetName: item.targetName || 'Target',
+        host: item.host || '',
+        latencies: [],
+        dropCount: 0,
+        isDrop: false,
+        isSpike: false
+      });
+    }
+    const b = buckets.get(bucketKey);
+    if (item.latency !== null && item.latency !== undefined) {
+      b.latencies.push(item.latency);
+    }
+    if (item.isDrop || item.status === 'offline') {
+      b.isDrop = true;
+      b.dropCount += (item.dropCount || 1);
+    }
+    if (item.isSpike || (item.latency !== null && item.latency > 100)) {
+      b.isSpike = true;
+    }
+  });
 
-    const result = Array.from(buckets.values()).map(b => ({
+  const result = Array.from(buckets.values()).map(b => {
+    const maxLat = b.latencies.length > 0 ? Math.max(...b.latencies) : null;
+    const minLat = b.latencies.length > 0 ? Math.min(...b.latencies) : null;
+    const avgLat = b.latencies.length > 0 ? Math.round(b.latencies.reduce((s, v) => s + v, 0) / b.latencies.length) : null;
+    return {
       timestamp: b.timestamp,
-      targetId: 'all',
-      targetName: 'Tất cả Target',
-      latency: b.latencies.length > 0 ? Math.round(b.latencies.reduce((s, v) => s + v, 0) / b.latencies.length) : null,
-      status: b.isDrop ? 'degraded' : 'online',
+      targetId: b.targetId,
+      targetName: targetId === 'all' ? 'Tất cả Target' : b.targetName,
+      host: b.host,
+      latency: b.isSpike && maxLat !== null ? maxLat : (avgLat !== null ? avgLat : (b.isDrop ? null : 0)),
+      maxLatency: maxLat,
+      minLatency: minLat,
+      avgLatency: avgLat,
+      dropCount: b.dropCount,
+      status: b.isDrop ? (b.latencies.length > 0 ? 'degraded' : 'offline') : 'online',
       isDrop: b.isDrop,
       isSpike: b.isSpike
-    }));
+    };
+  });
 
-    return res.json(result);
-  }
-
-  if (rawItems.length <= maxPoints) {
-    return res.json(rawItems);
-  }
-
-  const step = rawItems.length / maxPoints;
-  const downsampled = [];
-  for (let i = 0; i < maxPoints; i++) {
-    const idx = Math.min(Math.floor(i * step), rawItems.length - 1);
-    downsampled.push(rawItems[idx]);
-  }
-  if (rawItems.length > 0 && downsampled[downsampled.length - 1] !== rawItems[rawItems.length - 1]) {
-    downsampled[downsampled.length - 1] = rawItems[rawItems.length - 1];
-  }
-
-  res.json(downsampled);
+  res.json(result);
 });
 
 // GET Export Network Data
@@ -1571,6 +1659,18 @@ router.post('/mikrotik/config', requireSuperAdmin, (req, res) => {
   };
   saveJson(MIKROTIK_CONFIG_FILE, savedMikroTikConfig);
   mikrotikInstance = new MikroTikManager(savedMikroTikConfig);
+
+  const dev = managedDevices.find(d => d.type === 'mikrotik');
+  if (dev) {
+    dev.host = savedMikroTikConfig.host;
+    dev.port = savedMikroTikConfig.port;
+    dev.username = savedMikroTikConfig.username;
+    if (newPassword) dev.password = newPassword;
+    dev.useHttps = savedMikroTikConfig.useHttps;
+    dev.pppoeInterface = savedMikroTikConfig.pppoeInterface;
+    saveJson(DEVICES_CONFIG_FILE, managedDevices);
+  }
+
   res.json({ message: 'MikroTik config updated successfully', config: { ...savedMikroTikConfig, password: newPassword ? '******' : '' } });
 });
 
@@ -1634,6 +1734,124 @@ router.get('/mikrotik/nat', requireSuperAdmin, async (req, res) => {
   }
 });
 
+// GET NAT Templates (Super admin only)
+router.get('/mikrotik/nat/templates', requireSuperAdmin, (req, res) => {
+  res.json([
+    {
+      id: 'tpl_http',
+      title: 'Web HTTP Server (Port 80)',
+      description: 'Mở cổng 80 chuyển hướng đến máy chủ Web / Nginx nội bộ',
+      chain: 'dstnat',
+      protocol: 'tcp',
+      dstPort: '80',
+      action: 'dst-nat',
+      toPorts: '80',
+      needsTargetIp: true,
+      comment: 'Forward Web HTTP Port 80'
+    },
+    {
+      id: 'tpl_https',
+      title: 'Web HTTPS SSL Server (Port 443)',
+      description: 'Mở cổng 443 chuyển hướng SSL đến máy chủ Web nội bộ',
+      chain: 'dstnat',
+      protocol: 'tcp',
+      dstPort: '443',
+      action: 'dst-nat',
+      toPorts: '443',
+      needsTargetIp: true,
+      comment: 'Forward Web HTTPS Port 443'
+    },
+    {
+      id: 'tpl_rdp',
+      title: 'Windows Remote Desktop (RDP 3389)',
+      description: 'Truy cập điều khiển máy tính Windows từ xa ngoài Internet qua RDP',
+      chain: 'dstnat',
+      protocol: 'tcp',
+      dstPort: '3389',
+      action: 'dst-nat',
+      toPorts: '3389',
+      needsTargetIp: true,
+      comment: 'Forward Windows RDP 3389'
+    },
+    {
+      id: 'tpl_ssh',
+      title: 'Linux / Synology SSH (Port 22)',
+      description: 'Truy cập dòng lệnh SSH vào máy chủ Linux / Synology NAS nội bộ',
+      chain: 'dstnat',
+      protocol: 'tcp',
+      dstPort: '22',
+      action: 'dst-nat',
+      toPorts: '22',
+      needsTargetIp: true,
+      comment: 'Forward SSH Port 22'
+    },
+    {
+      id: 'tpl_wireguard',
+      title: 'WireGuard VPN Server (Port 51820 UDP)',
+      description: 'Kết nối mạng riêng ảo WireGuard VPN Tunnel tốc độ cao',
+      chain: 'dstnat',
+      protocol: 'udp',
+      dstPort: '51820',
+      action: 'dst-nat',
+      toPorts: '51820',
+      needsTargetIp: true,
+      comment: 'Forward WireGuard VPN 51820'
+    },
+    {
+      id: 'tpl_plex',
+      title: 'Plex / Jellyfin Media (Port 32400)',
+      description: 'Truy cập thư viện phim & media Plex / Jellyfin từ bên ngoài',
+      chain: 'dstnat',
+      protocol: 'tcp',
+      dstPort: '32400',
+      action: 'dst-nat',
+      toPorts: '32400',
+      needsTargetIp: true,
+      comment: 'Forward Plex Media Server 32400'
+    },
+    {
+      id: 'tpl_hairpin',
+      title: 'Hairpin NAT (LAN Loopback 192.168.1.0/24)',
+      description: 'Cho phép thiết bị trong LAN truy cập domain nội bộ qua IP WAN',
+      chain: 'srcnat',
+      action: 'masquerade',
+      needsTargetIp: false,
+      comment: 'Hairpin NAT LAN Loopback'
+    },
+    {
+      id: 'tpl_masquerade_wan',
+      title: 'Masquerade WAN (Internet Sharing pppoe-out1)',
+      description: 'Chia sẻ kết nối Internet từ cổng WAN PPPoE cho toàn bộ mạng nội bộ',
+      chain: 'srcnat',
+      action: 'masquerade',
+      outInterface: 'pppoe-out1',
+      needsTargetIp: false,
+      comment: 'Masquerade WAN Internet'
+    }
+  ]);
+});
+
+// POST Create NAT Rule (Super admin only)
+router.post('/mikrotik/nat', requireSuperAdmin, async (req, res) => {
+  const { chain, action, protocol, dstPort, toAddresses, toPorts, inInterface, outInterface, comment } = req.body || {};
+  try {
+    const result = await mikrotikInstance.addNatRule({ chain, action, protocol, dstPort, toAddresses, toPorts, inInterface, outInterface, comment });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE NAT Rule (Super admin only)
+router.delete('/mikrotik/nat/:id', requireSuperAdmin, async (req, res) => {
+  try {
+    const result = await mikrotikInstance.removeNatRule(req.params.id);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST Toggle NAT Rule (Super admin only)
 router.post('/mikrotik/nat/toggle', requireSuperAdmin, async (req, res) => {
   const { id, disabled } = req.body || {};
@@ -1688,11 +1906,24 @@ router.post('/xiaomi/config', requireSuperAdmin, (req, res) => {
   const { host, password } = req.body;
   if (host && host.includes('.43')) {
     gecoosInstance = new GecoosManager({ host: host || '192.168.1.43', password: password !== undefined ? password : '@nmhung1993' });
+    const dev = managedDevices.find(d => d.type === 'gecoos');
+    if (dev) {
+      dev.host = host.trim();
+      if (password) dev.password = password;
+      saveJson(DEVICES_CONFIG_FILE, managedDevices);
+    }
     return res.json({ message: 'Gecoos config updated' });
   }
   savedRouterConfig = { host: host || '192.168.1.2', password: password !== undefined ? password : '@nmhung1993' };
   saveJson(ROUTER_CONFIG_FILE, savedRouterConfig);
   routerInstance = new RouterManager(savedRouterConfig);
+
+  const dev = managedDevices.find(d => d.type === 'xiaomi');
+  if (dev) {
+    dev.host = savedRouterConfig.host;
+    if (password) dev.password = password;
+    saveJson(DEVICES_CONFIG_FILE, managedDevices);
+  }
   res.json({ message: 'Router config updated' });
 });
 
@@ -1733,6 +1964,236 @@ router.get('/summary', (req, res) => {
     offline,
     paused
   });
+});
+
+// ==========================================
+// Dynamic Managed Network Devices (CRUD)
+// ==========================================
+
+function getDeviceManager(dev) {
+  if (!dev) return null;
+  const type = (dev.type || '').toLowerCase();
+  if (type === 'mikrotik') {
+    return new MikroTikManager({
+      host: dev.host || '192.168.1.1',
+      port: dev.port || (dev.useHttps ? 8729 : 8728),
+      username: dev.username || 'admin',
+      password: dev.password !== undefined ? dev.password : '',
+      useHttps: dev.useHttps,
+      pppoeInterface: dev.pppoeInterface || 'pppoe-out1'
+    });
+  }
+  if (type === 'openwrt' || type === 'immortalwrt') {
+    return new OpenWrtManager({
+      host: dev.host || '192.168.1.1',
+      port: dev.port || (dev.useHttps ? 443 : 80),
+      username: dev.username || 'root',
+      password: dev.password !== undefined ? dev.password : '',
+      useHttps: dev.useHttps
+    });
+  }
+  if (type === 'tplink_deco' || type === 'deco') {
+    return new TPLinkDecoManager({
+      host: dev.host || '192.168.68.1',
+      port: dev.port || 80,
+      password: dev.password !== undefined ? dev.password : '',
+      useHttps: dev.useHttps
+    });
+  }
+  if (type === 'zte' || type === 'zte_mesh' || type === 'zte_ont') {
+    return new ZTEManager({
+      host: dev.host || '192.168.1.1',
+      port: dev.port || 80,
+      username: dev.username || 'admin',
+      password: dev.password !== undefined ? dev.password : '',
+      useHttps: dev.useHttps
+    });
+  }
+  if (type === 'gecoos' || dev.host?.includes('.43')) {
+    return new GecoosManager({
+      host: dev.host || '192.168.1.43',
+      password: dev.password !== undefined ? dev.password : '@nmhung1993'
+    });
+  }
+  return new RouterManager({
+    host: dev.host || '192.168.1.2',
+    password: dev.password !== undefined ? dev.password : '@nmhung1993'
+  });
+}
+
+// GET all devices (Super admin only receives full info, others masked)
+router.get('/devices', (req, res) => {
+  const role = req.query.role;
+  let list = managedDevices;
+  if (role) {
+    list = list.filter(d => d.role === role);
+  }
+  const isSuperAdmin = req.user?.role === 'super_admin';
+  const sanitized = list.map(d => ({
+    ...d,
+    password: d.password ? (isSuperAdmin ? d.password : '••••••••') : ''
+  }));
+  res.json(sanitized);
+});
+
+// POST Add new network device (Super admin only)
+router.post('/devices', requireSuperAdmin, (req, res) => {
+  const { name, role, type, host, port, username, password, useHttps, pppoeInterface } = req.body || {};
+  if (!name || !host) {
+    return res.status(400).json({ error: 'Tên thiết bị và địa chỉ IP là bắt buộc.' });
+  }
+
+  const newDevice = {
+    id: `dev_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    name: name.trim(),
+    role: role === 'gateway' ? 'gateway' : 'router_mesh',
+    type: type || 'generic',
+    host: host.trim(),
+    port: port ? Number(port) : (type === 'mikrotik' ? 8728 : (type === 'openwrt' ? 80 : 80)),
+    username: username || (type === 'openwrt' ? 'root' : 'admin'),
+    password: password !== undefined ? password : '',
+    useHttps: Boolean(useHttps),
+    pppoeInterface: pppoeInterface || 'pppoe-out1',
+    createdAt: new Date().toISOString()
+  };
+
+  managedDevices.push(newDevice);
+  saveJson(DEVICES_CONFIG_FILE, managedDevices);
+
+  if (newDevice.type === 'mikrotik') {
+    savedMikroTikConfig = {
+      host: newDevice.host,
+      port: newDevice.port || 8728,
+      username: newDevice.username || 'admin',
+      password: newDevice.password || '',
+      useHttps: Boolean(newDevice.useHttps),
+      pppoeInterface: newDevice.pppoeInterface || 'pppoe-out1'
+    };
+    saveJson(MIKROTIK_CONFIG_FILE, savedMikroTikConfig);
+    mikrotikInstance = new MikroTikManager(savedMikroTikConfig);
+  } else if (newDevice.type === 'xiaomi') {
+    savedRouterConfig = { host: newDevice.host, password: newDevice.password || '@nmhung1993' };
+    saveJson(ROUTER_CONFIG_FILE, savedRouterConfig);
+    routerInstance = new RouterManager(savedRouterConfig);
+  } else if (newDevice.type === 'gecoos') {
+    gecoosInstance = new GecoosManager({ host: newDevice.host, password: newDevice.password || '@nmhung1993' });
+  }
+
+  res.status(201).json(newDevice);
+});
+
+// PUT Update network device (Super admin only)
+router.put('/devices/:id', requireSuperAdmin, (req, res) => {
+  const dev = managedDevices.find(d => d.id === req.params.id);
+  if (!dev) return res.status(404).json({ error: 'Không tìm thấy thiết bị' });
+
+  const { name, role, type, host, port, username, password, useHttps, pppoeInterface, isDefault } = req.body || {};
+  if (name !== undefined) dev.name = name.trim();
+  if (role !== undefined) dev.role = role;
+  if (type !== undefined) dev.type = type;
+  if (host !== undefined) dev.host = host.trim();
+  if (port !== undefined) dev.port = Number(port);
+  if (username !== undefined) dev.username = username;
+  if (password !== undefined && password !== '••••••••') dev.password = password;
+  if (useHttps !== undefined) dev.useHttps = Boolean(useHttps);
+  if (pppoeInterface !== undefined) dev.pppoeInterface = pppoeInterface;
+  if (isDefault !== undefined) {
+    if (isDefault) {
+      managedDevices.forEach(d => { if (d.role === dev.role) d.isDefault = (d.id === dev.id); });
+    } else {
+      dev.isDefault = false;
+    }
+  }
+
+  saveJson(DEVICES_CONFIG_FILE, managedDevices);
+
+  if (dev.type === 'mikrotik') {
+    savedMikroTikConfig = {
+      host: dev.host,
+      port: dev.port || 8728,
+      username: dev.username || 'admin',
+      password: dev.password !== undefined ? dev.password : '',
+      useHttps: Boolean(dev.useHttps),
+      pppoeInterface: dev.pppoeInterface || 'pppoe-out1'
+    };
+    saveJson(MIKROTIK_CONFIG_FILE, savedMikroTikConfig);
+    mikrotikInstance = new MikroTikManager(savedMikroTikConfig);
+  } else if (dev.type === 'xiaomi') {
+    savedRouterConfig = { host: dev.host, password: dev.password || '@nmhung1993' };
+    saveJson(ROUTER_CONFIG_FILE, savedRouterConfig);
+    routerInstance = new RouterManager(savedRouterConfig);
+  } else if (dev.type === 'gecoos') {
+    gecoosInstance = new GecoosManager({ host: dev.host, password: dev.password || '@nmhung1993' });
+  }
+
+  res.json(dev);
+});
+
+// DELETE Network device (Super admin only)
+router.delete('/devices/:id', requireSuperAdmin, (req, res) => {
+  const idx = managedDevices.findIndex(d => d.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Không tìm thấy thiết bị' });
+
+  const removed = managedDevices.splice(idx, 1)[0];
+  saveJson(DEVICES_CONFIG_FILE, managedDevices);
+  res.json({ success: true, removed });
+});
+
+// GET Device live status (Super admin only)
+router.get('/devices/:id/status', requireSuperAdmin, async (req, res) => {
+  const dev = managedDevices.find(d => d.id === req.params.id);
+  if (!dev) return res.status(404).json({ error: 'Không tìm thấy thiết bị' });
+
+  try {
+    const mgr = getDeviceManager(dev);
+    const status = await mgr.fetchStatus();
+    res.json(status);
+  } catch (err) {
+    res.json({
+      host: dev.host,
+      online: false,
+      routerName: dev.name,
+      hardware: dev.type,
+      version: 'N/A',
+      uptime: 0,
+      uptimeFormatted: 'Lỗi kết nối',
+      wan: { ip: '--', gateway: '--', dns: '--' },
+      cpu: 0,
+      memory: 0,
+      error: err.message
+    });
+  }
+});
+
+// POST Reboot specific device (Super admin only)
+router.post('/devices/:id/reboot', requireSuperAdmin, async (req, res) => {
+  const dev = managedDevices.find(d => d.id === req.params.id);
+  if (!dev) return res.status(404).json({ error: 'Không tìm thấy thiết bị' });
+
+  try {
+    const mgr = getDeviceManager(dev);
+    const result = await mgr.reboot(req.body?.nodeIp);
+    res.json(result || { success: true, message: `Đã gửi lệnh khởi động lại ${dev.name}!` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST Restart WiFi on specific device (Super admin only)
+router.post('/devices/:id/restart-wifi', requireSuperAdmin, async (req, res) => {
+  const dev = managedDevices.find(d => d.id === req.params.id);
+  if (!dev) return res.status(404).json({ error: 'Không tìm thấy thiết bị' });
+
+  try {
+    const mgr = getDeviceManager(dev);
+    if (typeof mgr.restartWifi === 'function') {
+      const result = await mgr.restartWifi(req.body?.nodeIp);
+      return res.json(result || { success: true, message: `Đã gửi lệnh khởi động lại Wi-Fi trên ${dev.name}!` });
+    }
+    res.status(400).json({ error: 'Thiết bị này không hỗ trợ lệnh làm mới Wi-Fi riêng biệt.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = {

@@ -21,6 +21,7 @@ import {
   Checkbox,
   FormGroup,
   FormControlLabel,
+  Switch,
   Alert,
   Tooltip,
   Divider,
@@ -100,6 +101,7 @@ export default function AdminView() {
   const [editingAgent, setEditingAgent] = useState(null);
   const [agentDisplayName, setAgentDisplayName] = useState('');
   const [agentNotes, setAgentNotes] = useState('');
+  const [agentIncludeHealth, setAgentIncludeHealth] = useState(true);
   const [agentDialogOpen, setAgentDialogOpen] = useState(false);
 
   // Agent Approve Dialog
@@ -111,12 +113,33 @@ export default function AdminView() {
   const [revokingAgent, setRevokingAgent] = useState(null);
 
   // User Add/Edit Dialog
+  const DEFAULT_PAGE_PERMISSIONS = {
+    network: true,
+    docker: true,
+    fleet: true,
+    dashboard: true,
+    processes: true,
+    watchdog: true,
+    scripts: true,
+    activity: true
+  };
+
+  const DEFAULT_METRIC_PERMISSIONS = {
+    power: true,
+    temperature: true,
+    health: true,
+    gpu: true,
+    smart: true
+  };
+
   const [userDialogOpen, setUserDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [formUsername, setFormUsername] = useState('');
   const [formPassword, setFormPassword] = useState('');
   const [formRole, setFormRole] = useState('viewer');
   const [formHostIds, setFormHostIds] = useState([]);
+  const [formPagePermissions, setFormPagePermissions] = useState(DEFAULT_PAGE_PERMISSIONS);
+  const [formMetricPermissions, setFormMetricPermissions] = useState(DEFAULT_METRIC_PERMISSIONS);
   const [userDialogError, setUserDialogError] = useState('');
   const [savingUser, setSavingUser] = useState(false);
 
@@ -206,6 +229,7 @@ export default function AdminView() {
     setEditingAgent(agent);
     setAgentDisplayName(agent.displayName || agent.hostname);
     setAgentNotes(agent.notes || '');
+    setAgentIncludeHealth(agent.includeHealth !== undefined ? Boolean(agent.includeHealth) : true);
     setAgentDialogOpen(true);
   };
 
@@ -217,7 +241,8 @@ export default function AdminView() {
         method: 'PUT',
         body: JSON.stringify({
           displayName: agentDisplayName.trim(),
-          notes: agentNotes.trim()
+          notes: agentNotes.trim(),
+          includeHealth: agentIncludeHealth
         })
       });
       setToastMessage(t('admin.agentUpdated'));
@@ -273,6 +298,8 @@ export default function AdminView() {
     setFormPassword('');
     setFormRole('viewer');
     setFormHostIds([]);
+    setFormPagePermissions({ ...DEFAULT_PAGE_PERMISSIONS });
+    setFormMetricPermissions({ ...DEFAULT_METRIC_PERMISSIONS });
     setUserDialogError('');
     setUserDialogOpen(true);
   };
@@ -283,6 +310,14 @@ export default function AdminView() {
     setFormPassword('');
     setFormRole(u.role);
     setFormHostIds(u.hostIds || []);
+    setFormPagePermissions({
+      ...DEFAULT_PAGE_PERMISSIONS,
+      ...(u.permissions?.pages || {})
+    });
+    setFormMetricPermissions({
+      ...DEFAULT_METRIC_PERMISSIONS,
+      ...(u.permissions?.metrics || {})
+    });
     setUserDialogError('');
     setUserDialogOpen(true);
   };
@@ -292,6 +327,13 @@ export default function AdminView() {
     setUserDialogError('');
     setSavingUser(true);
 
+    const permissionsPayload = formRole === 'super_admin'
+      ? null
+      : {
+          pages: formPagePermissions,
+          metrics: formMetricPermissions
+        };
+
     try {
       if (editingUser) {
         await apiRequest(`/api/v1/users/${editingUser.username}`, {
@@ -299,6 +341,7 @@ export default function AdminView() {
           body: JSON.stringify({
             role: formRole,
             hostIds: formRole === 'super_admin' ? [] : formHostIds,
+            permissions: permissionsPayload,
             password: formPassword || undefined
           })
         });
@@ -313,6 +356,7 @@ export default function AdminView() {
             username: formUsername.trim(),
             password: formPassword,
             role: formRole,
+            permissions: permissionsPayload,
             hostIds: formRole === 'super_admin' ? [] : formHostIds
           })
         });
@@ -930,6 +974,21 @@ export default function AdminView() {
                 rows={3}
                 fullWidth
               />
+              <Box>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={agentIncludeHealth}
+                      onChange={(e) => setAgentIncludeHealth(e.target.checked)}
+                      color="primary"
+                    />
+                  }
+                  label="Bao gồm trong Điểm Sức Khỏe Hạ Tầng (Health Score)"
+                />
+                <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
+                  Tắt tùy chọn này nếu đây là máy tính cá nhân bật/tắt liên tục để không bị trừ điểm hạ tầng khi máy ngoại tuyến.
+                </Typography>
+              </Box>
             </Stack>
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2.5 }}>
@@ -1026,37 +1085,124 @@ export default function AdminView() {
               </FormControl>
 
               {formRole !== 'super_admin' && (
-                <Box>
-                  <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>
-                    {t('user.hostAccess')}
-                  </Typography>
-                  <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1.5 }}>
-                    {t('user.hostAccessHelp')}
-                  </Typography>
+                <Stack spacing={2.5}>
+                  {/* Host Access */}
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+                      1. {t('user.hostAccess')}
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1.5 }}>
+                      {t('user.hostAccessHelp')}
+                    </Typography>
 
-                  <Card sx={{ p: 1.5, maxHeight: 200, overflowY: 'auto' }}>
-                    <FormGroup>
-                      {approvedHosts.map((h) => (
-                        <FormControlLabel
-                          key={h.id}
-                          control={
-                            <Checkbox
-                              checked={formHostIds.includes(h.id)}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setFormHostIds([...formHostIds, h.id]);
-                                } else {
-                                  setFormHostIds(formHostIds.filter((id) => id !== h.id));
-                                }
-                              }}
+                    <Card variant="outlined" sx={{ p: 1.5, maxHeight: 180, overflowY: 'auto' }}>
+                      <FormGroup>
+                        {approvedHosts.map((h) => (
+                          <FormControlLabel
+                            key={h.id}
+                            control={
+                              <Checkbox
+                                size="small"
+                                checked={formHostIds.includes(h.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setFormHostIds([...formHostIds, h.id]);
+                                  } else {
+                                    setFormHostIds(formHostIds.filter((id) => id !== h.id));
+                                  }
+                                }}
+                              />
+                            }
+                            label={<Typography variant="body2">{h.displayName || h.hostname} ({h.hostname})</Typography>}
+                          />
+                        ))}
+                      </FormGroup>
+                    </Card>
+                  </Box>
+
+                  {/* Page Navigation Permissions */}
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+                      2. Phân quyền Xem / Ẩn Menu & Trang
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1.5 }}>
+                      Cho phép tài khoản này truy cập các trang nào trên thanh Menu:
+                    </Typography>
+
+                    <Card variant="outlined" sx={{ p: 1.5 }}>
+                      <Grid container spacing={1}>
+                        {[
+                          { id: 'network', label: '🌐 Mạng & Gateway (Network)' },
+                          { id: 'docker', label: '📦 Container Docker (Docker)' },
+                          { id: 'fleet', label: '🖥️ Quản lý Máy trạm (Fleet)' },
+                          { id: 'dashboard', label: '📊 Bảng Tổng quan (Dashboard)' },
+                          { id: 'processes', label: '📈 Giám sát Tiến trình (Processes)' },
+                          { id: 'watchdog', label: '🛡️ Giám sát Watchdog (Watchdog)' },
+                          { id: 'scripts', label: '💻 Kho Kịch bản (Script Hub)' },
+                          { id: 'activity', label: '📜 Nhật ký hoạt động (Activity)' }
+                        ].map((item) => (
+                          <Grid item xs={12} sm={6} key={item.id}>
+                            <FormControlLabel
+                              control={
+                                <Checkbox
+                                  size="small"
+                                  checked={formPagePermissions[item.id] !== false}
+                                  onChange={(e) =>
+                                    setFormPagePermissions((prev) => ({
+                                      ...prev,
+                                      [item.id]: e.target.checked
+                                    }))
+                                  }
+                                />
+                              }
+                              label={<Typography variant="body2" sx={{ fontWeight: 600 }}>{item.label}</Typography>}
                             />
-                          }
-                          label={`${h.displayName || h.hostname} (${h.hostname})`}
-                        />
-                      ))}
-                    </FormGroup>
-                  </Card>
-                </Box>
+                          </Grid>
+                        ))}
+                      </Grid>
+                    </Card>
+                  </Box>
+
+                  {/* Metrics Visibility in Fleet & Dashboard */}
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
+                      3. Phân quyền Chỉ số Giám sát (Fleet & Dashboard)
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1.5 }}>
+                      Tích chọn các chỉ số cho phép tài khoản này xem trong trang Máy trạm và Dashboard:
+                    </Typography>
+
+                    <Card variant="outlined" sx={{ p: 1.5 }}>
+                      <Grid container spacing={1}>
+                        {[
+                          { id: 'power', label: '⚡ Công suất tiêu thụ (Power / W)' },
+                          { id: 'temperature', label: '🌡️ Nhiệt độ linh kiện (Temp °C)' },
+                          { id: 'health', label: '🛡️ Điểm sức khỏe (Health Score)' },
+                          { id: 'gpu', label: '🎮 GPU & Đồ họa (GPU Usage)' },
+                          { id: 'smart', label: '💾 S.M.A.R.T & Chi tiết Ổ đĩa' }
+                        ].map((item) => (
+                          <Grid item xs={12} sm={6} key={item.id}>
+                            <FormControlLabel
+                              control={
+                                <Checkbox
+                                  size="small"
+                                  checked={formMetricPermissions[item.id] !== false}
+                                  onChange={(e) =>
+                                    setFormMetricPermissions((prev) => ({
+                                      ...prev,
+                                      [item.id]: e.target.checked
+                                    }))
+                                  }
+                                />
+                              }
+                              label={<Typography variant="body2" sx={{ fontWeight: 600 }}>{item.label}</Typography>}
+                            />
+                          </Grid>
+                        ))}
+                      </Grid>
+                    </Card>
+                  </Box>
+                </Stack>
               )}
             </Stack>
           </DialogContent>

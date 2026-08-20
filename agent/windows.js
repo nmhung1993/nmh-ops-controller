@@ -76,8 +76,30 @@ async function getDisks() {
     const output = await runPowerShell(`
       $logical = @(Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" -ErrorAction SilentlyContinue |
         Select-Object DeviceID,Size,FreeSpace,VolumeName)
-      $physical = @(Get-PhysicalDisk -ErrorAction SilentlyContinue |
-        Select-Object DeviceId,FriendlyName,MediaType,BusType,OperationalStatus,HealthStatus,Size)
+      $physical = @(Get-PhysicalDisk -ErrorAction SilentlyContinue | ForEach-Object {
+        $disk = $_
+        $rel = $disk | Get-StorageReliabilityCounter -ErrorAction SilentlyContinue
+        $wear = if ($rel -and $rel.Wear -ne $null) { [int]$rel.Wear } else { $null }
+        $temp = if ($rel -and $rel.Temperature -ne $null) { [int]$rel.Temperature } else { $null }
+        $hours = if ($rel -and $rel.PowerOnHours -ne $null) { [int]$rel.PowerOnHours } else { $null }
+        $readErr = if ($rel -and $rel.ReadErrorsTotal -ne $null) { [int]$rel.ReadErrorsTotal } else { 0 }
+        $writeErr = if ($rel -and $rel.WriteErrorsTotal -ne $null) { [int]$rel.WriteErrorsTotal } else { 0 }
+        $healthPercent = if ($wear -ne $null) { [Math]::Max(0, 100 - $wear) } else { if ($disk.HealthStatus -eq 'Healthy') { 100 } elseif ($disk.HealthStatus -eq 'Warning') { 60 } else { 0 } }
+        [PSCustomObject]@{
+          DeviceId = $disk.DeviceId
+          FriendlyName = $disk.FriendlyName
+          MediaType = $disk.MediaType
+          BusType = $disk.BusType
+          OperationalStatus = $disk.OperationalStatus
+          HealthStatus = $disk.HealthStatus
+          HealthPercent = $healthPercent
+          Temperature = $temp
+          PowerOnHours = $hours
+          ReadErrorsTotal = $readErr
+          WriteErrorsTotal = $writeErr
+          Size = $disk.Size
+        }
+      })
       [PSCustomObject]@{
         Logical = $logical
         Physical = $physical
@@ -106,6 +128,11 @@ async function getDisks() {
       mediaType: disk.MediaType || 'SSD',
       busType: disk.BusType || 'NVMe',
       healthStatus: disk.HealthStatus || 'Healthy',
+      healthPercent: typeof disk.HealthPercent === 'number' ? Math.max(0, Math.min(100, disk.HealthPercent)) : 100,
+      temperature: typeof disk.Temperature === 'number' ? disk.Temperature : null,
+      powerOnHours: typeof disk.PowerOnHours === 'number' ? disk.PowerOnHours : null,
+      readErrorsTotal: Number(disk.ReadErrorsTotal || 0),
+      writeErrorsTotal: Number(disk.WriteErrorsTotal || 0),
       operationalStatus: disk.OperationalStatus || 'OK',
       size: Number(disk.Size || 0)
     }));
@@ -200,6 +227,18 @@ async function getAcpiThermalZones() {
   }
 }
 
+function normalizePowerWatts(rawWatts) {
+  const num = optionalNumber(rawWatts);
+  if (num === null || !Number.isFinite(num) || num <= 0) return null;
+  // Auto-detect milliwatts (e.g. 30000 mW = 30 W, 71200 mW = 71.2 W)
+  if (num > 1000 && num <= 2_000_000) {
+    return rounded(num / 1000, 2);
+  }
+  // Clamp unrealistic sensor anomalies (> 2500 W for a standard PC/server)
+  if (num > 2500) return null;
+  return rounded(num, 2);
+}
+
 async function getWindowsPowerMeters() {
   try {
     const output = await runPowerShell(`
@@ -225,7 +264,7 @@ async function getWindowsPowerMeters() {
       id: `power-meter-${index}`,
       type: 'system',
       name: meter.Name || `Windows power meter ${index + 1}`,
-      powerW: optionalNumber(meter.Watts),
+      powerW: normalizePowerWatts(meter.Watts),
       limitW: null,
       source: meter.Counter === '\\Energy Meter(*)\\Power' ? 'windows-energy-meter' : 'windows-power-meter'
     }));
@@ -411,13 +450,19 @@ async function getHardwareSensors() {
     .filter(component => component.temperatureC !== null)
     .map(({ id, type, name, temperatureC, source }) => ({ id, type, name, celsius: temperatureC, source }));
   const powerParts = components
-    .filter(component => component.powerW !== null)
-    .map(({ id, type, name, powerW, limitW, source }) => ({ id, type, name, watts: powerW, limitWatts: limitW, source }));
+    .filter(component => component.powerW !== null && normalizePowerWatts(component.powerW) !== null)
+    .map(({ id, type, name, powerW, limitW, source }) => ({ id, type, name, watts: normalizePowerWatts(powerW), limitWatts: normalizePowerWatts(limitW), source }));
   const systemMeter = powerParts.find(component =>
     component.source === 'windows-energy-meter' || component.source === 'windows-power-meter'
   );
-  const totalW = systemMeter?.watts ?? (powerParts.length
-    ? rounded(powerParts.reduce((sum, component) => sum + component.watts, 0), 2)
+  // Avoid double-counting CPU package vs individual cores: if package power exists, filter out core power
+  const hasPackagePower = powerParts.some(p => /package/i.test(p.name));
+  const filteredPowerParts = hasPackagePower
+    ? powerParts.filter(p => !(/core|dram|vrm|uncore/i.test(p.name) && /cpu/i.test(p.name)))
+    : powerParts;
+
+  const totalW = systemMeter?.watts ?? (filteredPowerParts.length
+    ? rounded(filteredPowerParts.reduce((sum, component) => sum + (component.watts || 0), 0), 2)
     : null);
   const value = {
     sampledAt: new Date().toISOString(),

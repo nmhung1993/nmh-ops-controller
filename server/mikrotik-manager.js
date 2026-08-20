@@ -187,16 +187,14 @@ class RouterOSSocketClient {
               });
               currentReList.push(item);
             } else if (type === '!trap') {
-              // Record error, but wait for !done before advancing command!
-              const msg = sentence.find(w => w.startsWith('=message='))?.slice(9) || 'Command failed';
+              // Record error, will finish upon receiving !done
+              const msg = sentence.find(w => w.startsWith('=message='))?.slice(9) || sentence.slice(1).join(' ') || 'Command failed';
               currentCmdError = msg;
             } else if (type === '!done') {
               if (currentCmdError) {
-                cmdResults.push([]);
-                currentCmdError = null;
-              } else {
-                cmdResults.push(currentReList);
+                return finish(new Error(`MikroTik API error: ${currentCmdError}`));
               }
+              cmdResults.push(currentReList);
               currentReList = [];
               currentCmdIdx++;
               if (currentCmdIdx < commands.length) {
@@ -740,11 +738,11 @@ class MikroTikManager {
       const targetId = target ? (target['.id'] || target.id) : interfaceName;
 
       await client.connectAndQuery([
-        ['/interface/pppoe-client/disable', `*numbers=${targetId}`]
+        ['/interface/pppoe-client/disable', `=.id=${targetId}`]
       ]);
       await new Promise(r => setTimeout(r, 1500));
       await client.connectAndQuery([
-        ['/interface/pppoe-client/enable', `*numbers=${targetId}`]
+        ['/interface/pppoe-client/enable', `=.id=${targetId}`]
       ]);
 
       return { success: true, message: `Đã kích hoạt làm mới phiên PPPoE (${interfaceName}) thành công qua API Socket!` };
@@ -858,7 +856,7 @@ class MikroTikManager {
         await client.connectAndQuery([
           [
             '/queue/simple/set',
-            `*numbers=${existing.id}`,
+            `=.id=${existing.id}`,
             `=max-limit=${maxLimit}`,
             `=comment=${comment || ''}`
           ]
@@ -898,7 +896,7 @@ class MikroTikManager {
         useSsl: this.useHttps
       });
       await client.connectAndQuery([
-        ['/queue/simple/remove', `*numbers=${id}`]
+        ['/queue/simple/remove', `=.id=${id}`]
       ]);
       return { success: true, message: 'Đã xóa giới hạn băng thông' };
     } else {
@@ -999,7 +997,7 @@ class MikroTikManager {
         useSsl: this.useHttps
       });
       await client.connectAndQuery([
-        ['/ip/firewall/nat/set', `*numbers=${id}`, `=disabled=${disableVal}`]
+        ['/ip/firewall/nat/set', `=.id=${id}`, `=disabled=${disableVal}`]
       ]);
       return { success: true, message: `Đã ${disabled ? 'vô hiệu hóa' : 'kích hoạt'} quy tắc NAT` };
     } else {
@@ -1007,6 +1005,68 @@ class MikroTikManager {
         disabled: disabled ? 'true' : 'false'
       });
       return { success: true, message: `Đã ${disabled ? 'vô hiệu hóa' : 'kích hoạt'} quy tắc NAT` };
+    }
+  }
+
+  async addNatRule({ chain = 'dstnat', action = 'dst-nat', protocol = 'tcp', dstPort = '', toAddresses = '', toPorts = '', inInterface = '', outInterface = '', comment = '' }) {
+    if (this.isSocketPort()) {
+      const client = new RouterOSSocketClient({
+        host: this.host,
+        port: this.port,
+        username: this.username,
+        password: this.password,
+        useSsl: this.useHttps
+      });
+      const words = [
+        '/ip/firewall/nat/add',
+        `=chain=${chain}`,
+        `=action=${action}`
+      ];
+      if (protocol && protocol !== 'all') words.push(`=protocol=${protocol}`);
+      if (dstPort) words.push(`=dst-port=${dstPort}`);
+      if (toAddresses) words.push(`=to-addresses=${toAddresses}`);
+      if (toPorts) words.push(`=to-ports=${toPorts}`);
+      if (inInterface) words.push(`=in-interface=${inInterface}`);
+      if (outInterface) words.push(`=out-interface=${outInterface}`);
+      if (comment) words.push(`=comment=${comment}`);
+
+      await client.connectAndQuery([words]);
+      return { success: true, message: `Đã thêm quy tắc NAT (${comment || action}) thành công!` };
+    } else {
+      const payload = {
+        chain,
+        action,
+        comment: comment || ''
+      };
+      if (protocol && protocol !== 'all') payload.protocol = protocol;
+      if (dstPort) payload['dst-port'] = dstPort;
+      if (toAddresses) payload['to-addresses'] = toAddresses;
+      if (toPorts) payload['to-ports'] = toPorts;
+      if (inInterface) payload['in-interface'] = inInterface;
+      if (outInterface) payload['out-interface'] = outInterface;
+
+      await this.httpRestRequest('/ip/firewall/nat', 'PUT', payload);
+      return { success: true, message: `Đã thêm quy tắc NAT (${comment || action}) thành công!` };
+    }
+  }
+
+  async removeNatRule(id) {
+    if (!id) throw new Error('NAT Rule ID is required');
+    if (this.isSocketPort()) {
+      const client = new RouterOSSocketClient({
+        host: this.host,
+        port: this.port,
+        username: this.username,
+        password: this.password,
+        useSsl: this.useHttps
+      });
+      await client.connectAndQuery([
+        ['/ip/firewall/nat/remove', `=.id=${id}`]
+      ]);
+      return { success: true, message: 'Đã xóa quy tắc NAT thành công!' };
+    } else {
+      await this.httpRestRequest(`/ip/firewall/nat/${id}`, 'DELETE');
+      return { success: true, message: 'Đã xóa quy tắc NAT thành công!' };
     }
   }
 }

@@ -26,7 +26,7 @@ const { logAuditEvent, queryAuditLogs, exportAuditLogsToCsv } = require('./audit
 
 const PORT = Number(process.env.PORT || 3003);
 const HOST = process.env.HOST || '0.0.0.0';
-const TELEMETRY_RETENTION_MS = 365 * 24 * 60 * 60 * 1000; // 1 year retention
+const TELEMETRY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days retention for dashboard
 const EVENT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const SCREENSHOT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const AGENT_OFFLINE_MS = 20_000;
@@ -38,20 +38,20 @@ const ALLOWED_COMMANDS = new Set([
   'docker.container.action', 'docker.container.logs', 'docker.images', 'docker.volumes', 'docker.prune'
 ]);
 const COMMAND_CAPABILITIES = {
-  'process.kill': ['process.kill', 'processes'],
-  'watchdog.launch': ['watchdog.launch', 'watchdog'],
+  'process.kill': ['process.kill', 'processes', 'system.execute', 'linux', 'windows', 'synology'],
+  'watchdog.launch': ['watchdog.launch', 'watchdog', 'service-launch', 'windows', 'linux', 'synology'],
   'window.capture': ['window.capture', 'desktop-helper'],
-  'system.execute': ['system.execute', 'powershell', 'windows', 'processes', 'telemetry'],
-  'agent.upgrade': ['agent.upgrade', 'windows', 'telemetry', 'processes'],
-  'docker.info': ['docker'],
-  'docker.containers': ['docker'],
-  'docker.container.details': ['docker'],
-  'docker.container.stats': ['docker'],
-  'docker.container.action': ['docker'],
-  'docker.container.logs': ['docker'],
-  'docker.images': ['docker'],
-  'docker.volumes': ['docker'],
-  'docker.prune': ['docker']
+  'system.execute': ['system.execute', 'powershell', 'windows', 'linux', 'synology', 'homeassistant', 'scripts', 'processes', 'telemetry', 'bash', 'shell'],
+  'agent.upgrade': ['agent.upgrade', 'windows', 'linux', 'synology', 'telemetry', 'processes'],
+  'docker.info': ['docker', 'system.execute', 'linux', 'synology', 'windows'],
+  'docker.containers': ['docker', 'system.execute', 'linux', 'synology', 'windows'],
+  'docker.container.details': ['docker', 'system.execute', 'linux', 'synology', 'windows'],
+  'docker.container.stats': ['docker', 'system.execute', 'linux', 'synology', 'windows'],
+  'docker.container.action': ['docker', 'system.execute', 'linux', 'synology', 'windows'],
+  'docker.container.logs': ['docker', 'system.execute', 'linux', 'synology', 'windows'],
+  'docker.images': ['docker', 'system.execute', 'linux', 'synology', 'windows'],
+  'docker.volumes': ['docker', 'system.execute', 'linux', 'synology', 'windows'],
+  'docker.prune': ['docker', 'system.execute', 'linux', 'synology', 'windows']
 };
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -277,9 +277,20 @@ function recordLoginFailure(ip) {
   loginAttempts.set(ip, attempts);
 }
 
-function serializeHost(row) {
-  const telemetry = parseJson(row.telemetry_json, null);
+function serializeHost(row, user = null) {
+  let telemetry = parseJson(row.telemetry_json, null);
   const online = row.status === 'approved' && row.last_seen && Date.now() - Date.parse(row.last_seen) <= AGENT_OFFLINE_MS;
+  const includeHealth = row.include_health === undefined ? true : Boolean(row.include_health);
+
+  // If power metrics are restricted from non-super admins
+  if (systemSettings.restrictPowerMetrics && user && user.role !== 'super_admin' && telemetry) {
+    if (telemetry.hardware?.power) {
+      telemetry.hardware = { ...telemetry.hardware };
+      delete telemetry.hardware.power;
+    }
+    if (telemetry.powerWatts !== undefined) delete telemetry.powerWatts;
+  }
+
   return {
     id: row.id,
     hostname: row.hostname,
@@ -288,6 +299,7 @@ function serializeHost(row) {
     platform: row.platform,
     version: row.version,
     notes: row.notes || '',
+    includeHealth,
     status: row.status,
     online,
     lastSeen: row.last_seen,
@@ -309,7 +321,10 @@ function getHost(agentId) {
 }
 
 function hostSupports(row, ...capabilities) {
+  if (!row) return false;
+  if (capabilities.length === 0) return true;
   const available = new Set(parseJson(row?.capabilities_json, []));
+  if (available.size === 0) return true;
   return capabilities.some(capability => available.has(capability));
 }
 
@@ -327,12 +342,33 @@ function pushWatchdogConfig(agentId) {
 }
 
 function broadcastUi(type, payload, agentId = null, options = {}) {
-  const message = envelope(type, payload, agentId ? { agentId } : {});
   for (const client of uiClients) {
     const user = db.prepare('SELECT username, role FROM users WHERE username = ?').get(client.user?.username);
     if (!user || (options.superOnly && user.role !== 'super_admin')) continue;
     if (agentId && !hasHostAccess(user, agentId)) continue;
-    if (!agentId || !client.subscribedAgentId || client.subscribedAgentId === agentId) sendJson(client, message);
+    if (!agentId || !client.subscribedAgentId || client.subscribedAgentId === agentId) {
+      let sendingPayload = payload;
+      if (systemSettings.restrictPowerMetrics && user.role !== 'super_admin' && payload) {
+        if (type === 'ui.host.telemetry' && payload.telemetry) {
+          const cleanTelemetry = { ...payload.telemetry };
+          if (cleanTelemetry.hardware?.power) {
+            cleanTelemetry.hardware = { ...cleanTelemetry.hardware };
+            delete cleanTelemetry.hardware.power;
+          }
+          if (cleanTelemetry.powerWatts !== undefined) delete cleanTelemetry.powerWatts;
+          sendingPayload = { ...payload, telemetry: cleanTelemetry };
+        } else if (type === 'ui.host.status' && payload.telemetry) {
+          const cleanTelemetry = { ...payload.telemetry };
+          if (cleanTelemetry.hardware?.power) {
+            cleanTelemetry.hardware = { ...cleanTelemetry.hardware };
+            delete cleanTelemetry.hardware.power;
+          }
+          if (cleanTelemetry.powerWatts !== undefined) delete cleanTelemetry.powerWatts;
+          sendingPayload = { ...payload, telemetry: cleanTelemetry };
+        }
+      }
+      sendJson(client, envelope(type, sendingPayload, agentId ? { agentId } : {}));
+    }
   }
 }
 
@@ -786,8 +822,16 @@ app.post('/api/login', async (req, res) => {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
   loginAttempts.delete(ip);
-  const token = jwt.sign({ username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
-  res.json({ token, username: user.username, role: user.role, mustChangePassword: Boolean(user.must_change_password) });
+  const permissions = parseJson(user.permissions_json, null);
+  const token = jwt.sign({ username: user.username, role: user.role, permissions }, JWT_SECRET, { expiresIn: '24h' });
+  res.json({ token, username: user.username, role: user.role, permissions, mustChangePassword: Boolean(user.must_change_password) });
+});
+
+app.get('/api/v1/auth/me', authenticate, (req, res) => {
+  const user = db.prepare('SELECT username, role, permissions_json FROM users WHERE username = ?').get(req.user.username);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  const permissions = parseJson(user.permissions_json, null);
+  res.json({ username: user.username, role: user.role, permissions });
 });
 
 // Network Monitoring (Ping, Subnet Scanner, Xiaomi Router/Mesh)
@@ -817,16 +861,69 @@ function handleTelemetryHistoryQuery(req, res) {
     return res.json(mapped);
   }
 
-  // Downsample evenly across the time window
-  const step = mapped.length / limit;
+  // Downsample into buckets while strictly prioritizing Min and Max values
+  const bucketCount = Math.min(limit, mapped.length);
+  const bucketSize = mapped.length / bucketCount;
   const downsampled = [];
-  for (let i = 0; i < limit; i++) {
-    const idx = Math.min(Math.floor(i * step), mapped.length - 1);
-    downsampled.push(mapped[idx]);
-  }
-  // Ensure the latest telemetry sample is included
-  if (mapped.length > 0 && downsampled[downsampled.length - 1] !== mapped[mapped.length - 1]) {
-    downsampled[downsampled.length - 1] = mapped[mapped.length - 1];
+
+  for (let i = 0; i < bucketCount; i++) {
+    const start = Math.floor(i * bucketSize);
+    const end = Math.min(Math.floor((i + 1) * bucketSize), mapped.length);
+    const slice = mapped.slice(start, end);
+    if (slice.length === 0) continue;
+
+    const cpus = slice.map(s => Number(s.cpu?.usage ?? s.cpuUsage ?? 0)).filter(Number.isFinite);
+    const mems = slice.map(s => Number(s.memory?.percent ?? s.memoryPercent ?? 0)).filter(Number.isFinite);
+    const powers = slice.map(s => {
+      const hw = s.hardware || s.hardwareSensors || {};
+      const parts = Array.isArray(hw.power?.parts) ? hw.power.parts : [];
+      let val = Number(hw.power?.totalWatts ?? (parts.length > 0 ? parts.reduce((sum, p) => sum + Number(p.watts || 0), 0) : s.powerWatts || 0));
+      if (!Number.isFinite(val) || val <= 0) return null;
+      if (val > 1000 && val <= 2000000) val = Number((val / 1000).toFixed(2));
+      if (val > 2500) return null;
+      return val;
+    }).filter(v => v !== null && Number.isFinite(v));
+
+    const minCpu = cpus.length > 0 ? Math.min(...cpus) : 0;
+    const maxCpu = cpus.length > 0 ? Math.max(...cpus) : 0;
+    const minMem = mems.length > 0 ? Math.min(...mems) : 0;
+    const maxMem = mems.length > 0 ? Math.max(...mems) : 0;
+    const minPower = powers.length > 0 ? Math.min(...powers) : 0;
+    const maxPower = powers.length > 0 ? Math.max(...powers) : 0;
+
+    const repr = { ...slice[slice.length - 1] };
+    repr.cpu = { ...(repr.cpu || {}), usage: maxCpu, min: minCpu, max: maxCpu };
+    repr.memory = { ...(repr.memory || {}), percent: maxMem, min: minMem, max: maxMem };
+    repr.hardware = repr.hardware || repr.hardwareSensors || {};
+    repr.hardware.power = { ...(repr.hardware?.power || {}), min: minPower, max: maxPower, totalWatts: maxPower };
+
+    const tempSensorsMap = new Map();
+    slice.forEach(s => {
+      const temps = Array.isArray(s.hardware?.temperatures)
+        ? s.hardware.temperatures
+        : Array.isArray(s.hardware?.sensors)
+        ? s.hardware.sensors.filter(x => Number.isFinite(x.celsius))
+        : [];
+      temps.forEach(t => {
+        const name = t.name || 'CPU';
+        if (!tempSensorsMap.has(name)) tempSensorsMap.set(name, []);
+        if (Number.isFinite(t.celsius)) tempSensorsMap.get(name).push(t.celsius);
+      });
+    });
+
+    if (tempSensorsMap.size > 0 && Array.isArray(repr.hardware?.temperatures)) {
+      repr.hardware.temperatures = repr.hardware.temperatures.map(t => {
+        const vals = tempSensorsMap.get(t.name || 'CPU') || [t.celsius || 0];
+        return {
+          ...t,
+          celsius: Math.max(...vals),
+          min: Math.min(...vals),
+          max: Math.max(...vals)
+        };
+      });
+    }
+
+    downsampled.push(repr);
   }
 
   res.json(downsampled);
@@ -939,7 +1036,7 @@ app.get('/api/v1/agents/pending', authenticate, requireSuperAdmin, (req, res) =>
     SELECT a.*, l.telemetry_json, l.telemetry_at FROM agents a
     LEFT JOIN latest_state l ON l.agent_id = a.id WHERE a.status = 'pending' ORDER BY a.created_at
   `).all();
-  res.json(rows.map(serializeHost));
+  res.json(rows.map(r => serializeHost(r, req.user)));
 });
 
 app.get('/api/v1/agents', authenticate, requireSuperAdmin, (req, res) => {
@@ -949,7 +1046,7 @@ app.get('/api/v1/agents', authenticate, requireSuperAdmin, (req, res) => {
     ORDER BY CASE a.status WHEN 'approved' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END,
       a.display_name COLLATE NOCASE, a.created_at
   `).all();
-  res.json(rows.map(serializeHost));
+  res.json(rows.map(r => serializeHost(r, req.user)));
 });
 
 app.put('/api/v1/agents/:id', authenticate, requireSuperAdmin, (req, res) => {
@@ -957,14 +1054,15 @@ app.put('/api/v1/agents/:id', authenticate, requireSuperAdmin, (req, res) => {
   if (!agent) return res.status(404).json({ error: 'Agent not found' });
   const displayName = String(req.body?.displayName || '').trim();
   const notes = String(req.body?.notes || '').trim();
+  const includeHealth = req.body?.includeHealth !== undefined ? (req.body.includeHealth ? 1 : 0) : (agent.include_health !== undefined ? agent.include_health : 1);
   if (!displayName || displayName.length > 80) {
     return res.status(400).json({ error: 'Display name must contain 1 to 80 characters' });
   }
   if (notes.length > 500) return res.status(400).json({ error: 'Notes must not exceed 500 characters' });
-  db.prepare('UPDATE agents SET display_name = ?, notes = ? WHERE id = ?').run(displayName, notes, agent.id);
+  db.prepare('UPDATE agents SET display_name = ?, notes = ?, include_health = ? WHERE id = ?').run(displayName, notes, includeHealth, agent.id);
   const updated = getHost(agent.id);
   broadcastUi('ui.host.status', serializeHost(updated));
-  res.json(serializeHost(updated));
+  res.json(serializeHost(updated, req.user));
 });
 
 app.post('/api/v1/agents/:id/approve', authenticate, requireSuperAdmin, (req, res) => {
@@ -1001,14 +1099,19 @@ app.post('/api/v1/agents/:id/revoke', authenticate, requireSuperAdmin, (req, res
 
 app.get('/api/v1/users', authenticate, requireSuperAdmin, (req, res) => {
   const users = db.prepare(`
-    SELECT username, role, must_change_password AS mustChangePassword, created_at AS createdAt
+    SELECT username, role, must_change_password AS mustChangePassword, created_at AS createdAt, permissions_json AS permissionsJson
     FROM users ORDER BY username
-  `).all().map(user => ({ ...user, hostIds: getUserHostIds(user.username) }));
+  `).all().map(user => ({
+    ...user,
+    permissions: parseJson(user.permissionsJson, null),
+    permissionsJson: undefined,
+    hostIds: getUserHostIds(user.username)
+  }));
   res.json(users);
 });
 
 app.post('/api/v1/users', authenticate, requireSuperAdmin, async (req, res) => {
-  const { username, password, role, hostIds = [] } = req.body || {};
+  const { username, password, role, hostIds = [], permissions } = req.body || {};
   if (!username?.trim() || !password || password.length < 10 || !['super_admin', 'admin', 'viewer'].includes(role)) {
     return res.status(400).json({ error: 'Valid username, role and password of at least 10 characters required' });
   }
@@ -1020,11 +1123,12 @@ app.post('/api/v1/users', authenticate, requireSuperAdmin, async (req, res) => {
   }
   let created = false;
   try {
-    db.prepare('INSERT INTO users(username, password_hash, role, created_at) VALUES (?, ?, ?, ?)')
-      .run(username.trim(), await bcrypt.hash(password, 12), role, new Date().toISOString());
+    const permissionsJson = JSON.stringify(permissions || {});
+    db.prepare('INSERT INTO users(username, password_hash, role, permissions_json, created_at) VALUES (?, ?, ?, ?, ?)')
+      .run(username.trim(), await bcrypt.hash(password, 12), role, permissionsJson, new Date().toISOString());
     created = true;
     if (role !== 'super_admin') replaceUserHostAccess(username.trim(), assignedHostIds);
-    res.status(201).json({ username: username.trim(), role, hostIds: assignedHostIds });
+    res.status(201).json({ username: username.trim(), role, permissions: permissions || null, hostIds: assignedHostIds });
   } catch (error) {
     if (created) db.prepare('DELETE FROM users WHERE username = ?').run(username.trim());
     res.status(409).json({ error: created ? error.message : 'User already exists' });
@@ -1034,7 +1138,7 @@ app.post('/api/v1/users', authenticate, requireSuperAdmin, async (req, res) => {
 app.put('/api/v1/users/:username', authenticate, requireSuperAdmin, async (req, res) => {
   const current = db.prepare('SELECT username, role FROM users WHERE username = ?').get(req.params.username);
   if (!current) return res.status(404).json({ error: 'User not found' });
-  const { role, hostIds = [], password } = req.body || {};
+  const { role, hostIds = [], password, permissions } = req.body || {};
   if (!['super_admin', 'admin', 'viewer'].includes(role)) return res.status(400).json({ error: 'Valid role required' });
   if (password && password.length < 10) return res.status(400).json({ error: 'Password must be at least 10 characters' });
   if (current.role === 'super_admin' && role !== 'super_admin') {
@@ -1049,11 +1153,19 @@ app.put('/api/v1/users/:username', authenticate, requireSuperAdmin, async (req, 
     return res.status(400).json({ error: error.message });
   }
   const passwordHash = password ? await bcrypt.hash(password, 12) : null;
+  const permissionsJson = permissions !== undefined ? JSON.stringify(permissions) : undefined;
+
   db.exec('BEGIN IMMEDIATE');
   try {
-    if (passwordHash) {
+    if (passwordHash && permissionsJson !== undefined) {
+      db.prepare('UPDATE users SET role = ?, password_hash = ?, permissions_json = ?, must_change_password = 0 WHERE username = ?')
+        .run(role, passwordHash, permissionsJson, current.username);
+    } else if (passwordHash) {
       db.prepare('UPDATE users SET role = ?, password_hash = ?, must_change_password = 0 WHERE username = ?')
         .run(role, passwordHash, current.username);
+    } else if (permissionsJson !== undefined) {
+      db.prepare('UPDATE users SET role = ?, permissions_json = ? WHERE username = ?')
+        .run(role, permissionsJson, current.username);
     } else {
       db.prepare('UPDATE users SET role = ? WHERE username = ?').run(role, current.username);
     }
@@ -1069,7 +1181,7 @@ app.put('/api/v1/users/:username', authenticate, requireSuperAdmin, async (req, 
     return res.status(400).json({ error: error.message });
   }
   notifyUserAccessChanged(current.username, role);
-  res.json({ username: current.username, role, hostIds: assignedHostIds });
+  res.json({ username: current.username, role, permissions: permissions || null, hostIds: assignedHostIds });
 });
 
 app.delete('/api/v1/users/:username', authenticate, requireSuperAdmin, (req, res) => {
@@ -1111,7 +1223,7 @@ app.get('/api/v1/system/settings', (req, res) => {
 
 // PUT System & Brand Settings (Super Admin only)
 app.put('/api/v1/system/settings', authenticate, requireSuperAdmin, (req, res) => {
-  const { appName, appSubtitle, tagline, logoText, logoUrl, ownerSignature, timezone, environmentLabel } = req.body || {};
+  const { appName, appSubtitle, tagline, logoText, logoUrl, ownerSignature, timezone, environmentLabel, restrictPowerMetrics } = req.body || {};
 
   if (appName !== undefined) systemSettings.appName = String(appName).trim() || 'NMH Ops Controller';
   if (appSubtitle !== undefined) systemSettings.appSubtitle = String(appSubtitle).trim();
@@ -1121,6 +1233,7 @@ app.put('/api/v1/system/settings', authenticate, requireSuperAdmin, (req, res) =
   if (ownerSignature !== undefined) systemSettings.ownerSignature = String(ownerSignature).trim() || '@nmhung1993';
   if (timezone !== undefined) systemSettings.timezone = String(timezone).trim() || 'Asia/Ho_Chi_Minh';
   if (environmentLabel !== undefined) systemSettings.environmentLabel = String(environmentLabel).trim() || 'LAN tin cậy';
+  if (restrictPowerMetrics !== undefined) systemSettings.restrictPowerMetrics = Boolean(restrictPowerMetrics);
 
   saveJsonFile(SYSTEM_SETTINGS_FILE, systemSettings);
   broadcastUi('ui.system.settings', systemSettings);

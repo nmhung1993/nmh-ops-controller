@@ -55,9 +55,29 @@ import Label from '../components/common/Label';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import { useWebSocket } from '../context/WebSocketContext';
 
+// Helper to detect host OS
+const detectHostOs = (host) => {
+  if (!host) return 'all';
+  const plat = (host.platform || host.os || host.system || '').toLowerCase();
+  const name = (host.displayName || host.hostname || host.id || '').toLowerCase();
+  if (plat.includes('synology') || plat.includes('dsm') || name.includes('synology') || name.includes('dsm')) {
+    return 'synology';
+  }
+  if (plat.includes('home assistant') || plat.includes('homeassistant') || plat.includes('hass') || name.includes('home assistant') || name.includes('hass')) {
+    return 'homeassistant';
+  }
+  if (plat.includes('linux') || plat.includes('ubuntu') || plat.includes('debian') || plat.includes('alpine') || plat.includes('centos')) {
+    return 'linux';
+  }
+  if (plat.includes('win')) {
+    return 'windows';
+  }
+  return 'windows';
+};
+
 export default function ScriptHubView() {
   const theme = useTheme();
-  const { hosts } = useWebSocket();
+  const { hosts, refreshHosts } = useWebSocket();
 
   const [scripts, setScripts] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -67,6 +87,9 @@ export default function ScriptHubView() {
 
   // Selected agent for execution
   const [selectedAgentId, setSelectedAgentId] = useState('');
+
+  const selectedHost = hosts?.find(h => h.id === selectedAgentId);
+  const selectedHostOs = detectHostOs(selectedHost);
 
   // Script dialog (Add / Edit)
   const [scriptDialogOpen, setScriptDialogOpen] = useState(false);
@@ -104,23 +127,30 @@ export default function ScriptHubView() {
 
   useEffect(() => {
     loadScripts();
-  }, [loadScripts]);
+    if (refreshHosts) refreshHosts();
+  }, [loadScripts, refreshHosts]);
 
   // Set default selected agent
   useEffect(() => {
     if (!selectedAgentId && hosts && hosts.length > 0) {
-      const onlineHost = hosts.find(h => h.connected);
+      const onlineHost = hosts.find(h => h.online || h.status === 'online' || h.connected);
       setSelectedAgentId(onlineHost ? onlineHost.id : hosts[0].id);
     }
   }, [hosts, selectedAgentId]);
 
-  // Filtered scripts
+  // Filtered scripts - Only show scripts matching selected host OS and filters
   const filteredScripts = scripts.filter(s => {
     const q = searchQuery.trim().toLowerCase();
     const matchQuery = !q || s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q) || s.scriptContent.toLowerCase().includes(q);
     const matchCat = categoryFilter === 'all' || s.category === categoryFilter;
+
+    // Strict OS Match with selected machine
+    const isMatchingSelectedOs = !selectedHost || selectedHostOs === 'all' || s.platform === 'all' || s.platform === selectedHostOs;
+
+    // Platform Filter match
     const matchPlat = platformFilter === 'all' || s.platform === platformFilter || s.platform === 'all';
-    return matchQuery && matchCat && matchPlat;
+
+    return matchQuery && matchCat && isMatchingSelectedOs && matchPlat;
   });
 
   // Handle run script
@@ -297,6 +327,9 @@ export default function ScriptHubView() {
                 onChange={(e) => setSelectedAgentId(e.target.value)}
                 renderValue={(val) => {
                   const h = hosts?.find(item => item.id === val);
+                  const isHostOnline = Boolean(h?.online || h?.status === 'online' || h?.connected);
+                  const name = h?.displayName || h?.hostname || val;
+                  const ip = h?.ip || h?.ip_address || '';
                   return (
                     <Stack direction="row" spacing={1} alignItems="center">
                       <Box
@@ -304,38 +337,50 @@ export default function ScriptHubView() {
                           width: 8,
                           height: 8,
                           borderRadius: '50%',
-                          bgcolor: h?.connected ? 'success.main' : 'text.disabled'
+                          bgcolor: isHostOnline ? 'success.main' : 'text.disabled'
                         }}
                       />
                       <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                        {h?.hostname || val} ({h?.ip_address || 'N/A'})
+                        {name} {ip ? `(${ip})` : ''}
                       </Typography>
                     </Stack>
                   );
                 }}
               >
-                {(hosts || []).map((h) => (
-                  <MenuItem key={h.id} value={h.id}>
-                    <Stack direction="row" spacing={1.5} alignItems="center" justifyContent="space-between" sx={{ width: '100%' }}>
-                      <Stack direction="row" spacing={1} alignItems="center">
-                        <Box
-                          sx={{
-                            width: 8,
-                            height: 8,
-                            borderRadius: '50%',
-                            bgcolor: h.connected ? 'success.main' : 'text.disabled'
-                          }}
-                        />
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                          {h.hostname || h.id}
+                {(hosts || []).map((h) => {
+                  const isHostOnline = Boolean(h.online || h.status === 'online' || h.connected);
+                  const name = h.displayName || h.hostname || h.id;
+                  const ip = h.ip || h.ip_address || '';
+                  return (
+                    <MenuItem key={h.id} value={h.id}>
+                      <Stack direction="row" spacing={1.5} alignItems="center" justifyContent="space-between" sx={{ width: '100%' }}>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Box
+                            sx={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: '50%',
+                              bgcolor: isHostOnline ? 'success.main' : 'text.disabled'
+                            }}
+                          />
+                          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                            {name}
+                          </Typography>
+                          <Label
+                            variant="soft"
+                            color={isHostOnline ? 'success' : 'default'}
+                            sx={{ fontSize: '0.65rem', height: 18, px: 0.5 }}
+                          >
+                            {isHostOnline ? 'Online' : 'Offline'}
+                          </Label>
+                        </Stack>
+                        <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
+                          {ip ? `IP: ${ip} • ` : ''}{h.platform?.split(' ')[0] || 'OS'}
                         </Typography>
                       </Stack>
-                      <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
-                        {h.ip_address} • {h.platform?.split(' ')[0] || 'OS'}
-                      </Typography>
-                    </Stack>
-                  </MenuItem>
-                ))}
+                    </MenuItem>
+                  );
+                })}
               </Select>
             </FormControl>
           </Grid>
@@ -365,7 +410,9 @@ export default function ScriptHubView() {
               >
                 <MenuItem value="all">Tất cả hệ điều hành</MenuItem>
                 <MenuItem value="windows">Windows (PowerShell)</MenuItem>
-                <MenuItem value="linux">Linux / NAS (Bash)</MenuItem>
+                <MenuItem value="linux">Linux (Bash)</MenuItem>
+                <MenuItem value="synology">Synology DSM (Bash)</MenuItem>
+                <MenuItem value="homeassistant">Home Assistant (Core CLI)</MenuItem>
               </Select>
             </FormControl>
           </Grid>
@@ -389,6 +436,23 @@ export default function ScriptHubView() {
             </FormControl>
           </Grid>
         </Grid>
+
+        {/* Selected Host OS Match Indicator */}
+        {selectedHost && (
+          <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 2, pt: 1.5, borderTop: `1px dashed ${theme.palette.divider}`, flexWrap: 'wrap', gap: 1 }}>
+            <Chip
+              size="small"
+              icon={<Filter size={13} />}
+              label={`Kịch bản tương thích cho: ${selectedHost.displayName || selectedHost.hostname || selectedHost.id} (${selectedHostOs === 'windows' ? 'Windows' : selectedHostOs === 'linux' ? 'Linux' : selectedHostOs === 'synology' ? 'Synology DSM' : selectedHostOs === 'homeassistant' ? 'Home Assistant OS' : selectedHostOs.toUpperCase()})`}
+              color="primary"
+              variant="outlined"
+              sx={{ fontWeight: 700 }}
+            />
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              • Hệ thống tự động ẩn các script không hỗ trợ trên hệ điều hành này.
+            </Typography>
+          </Stack>
+        )}
       </Card>
 
       {/* Script Cards Grid */}
@@ -430,8 +494,21 @@ export default function ScriptHubView() {
                 <Box>
                   <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 1.5 }}>
                     <Stack direction="row" spacing={1} alignItems="center">
-                      <Label variant="soft" color={script.platform === 'windows' ? 'info' : script.platform === 'linux' ? 'warning' : 'primary'}>
-                        {script.platform === 'windows' ? 'Windows' : script.platform === 'linux' ? 'Linux' : 'All OS'}
+                      <Label
+                        variant="soft"
+                        color={
+                          script.platform === 'windows' ? 'info' :
+                          script.platform === 'linux' ? 'warning' :
+                          script.platform === 'synology' ? 'primary' :
+                          script.platform === 'homeassistant' ? 'success' : 'default'
+                        }
+                      >
+                        {
+                          script.platform === 'windows' ? 'Windows' :
+                          script.platform === 'linux' ? 'Linux' :
+                          script.platform === 'synology' ? 'Synology DSM' :
+                          script.platform === 'homeassistant' ? 'Home Assistant' : 'All OS'
+                        }
                       </Label>
                       {script.isPreset && (
                         <Label variant="soft" color="success">Hệ thống</Label>
@@ -634,8 +711,10 @@ export default function ScriptHubView() {
                       onChange={(e) => setScriptForm(prev => ({ ...prev, platform: e.target.value }))}
                     >
                       <MenuItem value="windows">Windows (PowerShell)</MenuItem>
-                      <MenuItem value="linux">Linux / NAS (Bash)</MenuItem>
-                      <MenuItem value="all">Tất cả (Cross-platform)</MenuItem>
+                      <MenuItem value="linux">Linux (Bash)</MenuItem>
+                      <MenuItem value="synology">Synology DSM (Bash)</MenuItem>
+                      <MenuItem value="homeassistant">Home Assistant (Core CLI)</MenuItem>
+                      <MenuItem value="all">Tất cả (Cross-platform / Docker)</MenuItem>
                     </Select>
                   </FormControl>
                 </Grid>

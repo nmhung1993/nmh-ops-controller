@@ -83,6 +83,7 @@ import {
   Sliders,
   SlidersHorizontal,
   ArrowUpDown,
+  Users,
   Router as RouterIcon
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
@@ -91,6 +92,10 @@ import { apiRequest } from '../utils/api';
 import Label from '../components/common/Label';
 import ConfirmDialog from '../components/common/ConfirmDialog';
 import Chart from '../components/chart/Chart';
+import NetworkDeviceDialog from '../components/network/NetworkDeviceDialog';
+import OpenWrtSection from '../components/network/OpenWrtSection';
+import TPLinkDecoSection from '../components/network/TPLinkDecoSection';
+import ZTESection from '../components/network/ZTESection';
 
 const PING_TIME_RANGES = [
   { value: '1h', labelVi: '1 giờ', labelEn: '1 hour' },
@@ -128,8 +133,29 @@ export default function NetworkMonitorView() {
   const [customNames, setCustomNames] = useState({});
   const [editNameDialog, setEditNameDialog] = useState({ open: false, ip: '', currentName: '', newName: '' });
 
-  // Router Type Selector ('mikrotik' | 'xiaomi' | 'gecoos')
+  // Managed Network Devices (CRUD)
+  const [managedDevices, setManagedDevices] = useState([]);
+  const [selectedGatewayId, setSelectedGatewayId] = useState('dev_mikrotik_1');
+  const [selectedRouterDeviceId, setSelectedRouterDeviceId] = useState('dev_xiaomi_1');
+  const [deviceDialogOpen, setDeviceDialogOpen] = useState(false);
+  const [editingDevice, setEditingDevice] = useState(null);
+  const [deviceDefaultRole, setDeviceDefaultRole] = useState('gateway');
+  const [confirmDeleteDeviceId, setConfirmDeleteDeviceId] = useState(null);
+
+  // Router Type Selector ('mikrotik' | 'openwrt' | 'xiaomi' | 'tplink_deco' | 'gecoos')
   const [selectedRouterType, setSelectedRouterType] = useState('mikrotik');
+
+  // OpenWrt state
+  const [openwrtStatus, setOpenwrtStatus] = useState(null);
+  const [loadingOpenwrt, setLoadingOpenwrt] = useState(false);
+
+  // Deco state
+  const [decoStatus, setDecoStatus] = useState(null);
+  const [loadingDeco, setLoadingDeco] = useState(false);
+
+  // ZTE state
+  const [zteStatus, setZteStatus] = useState(null);
+  const [loadingZte, setLoadingZte] = useState(false);
 
   // MikroTik state
   const [mikrotikStatus, setMikrotikStatus] = useState(null);
@@ -146,7 +172,17 @@ export default function NetworkMonitorView() {
   const [showPppoeUser, setShowPppoeUser] = useState(false);
   const [leaseSearch, setLeaseSearch] = useState('');
 
-  // MikroTik Sub-tabs & Features
+  const filteredLeases = useMemo(() => {
+    const list = mikrotikStatus?.dhcpLeases || [];
+    if (!leaseSearch.trim()) return list;
+    const q = leaseSearch.trim().toLowerCase();
+    return list.filter(l =>
+      (l.ip && l.ip.toLowerCase().includes(q)) ||
+      (l.hostname && l.hostname.toLowerCase().includes(q)) ||
+      (l.mac && l.mac.toLowerCase().includes(q)) ||
+      (l.comment && l.comment.toLowerCase().includes(q))
+    );
+  }, [mikrotikStatus?.dhcpLeases, leaseSearch]);
   const [mikrotikSubTab, setMikrotikSubTab] = useState('leases'); // 'leases' | 'queues' | 'nat'
   const [mikrotikQueues, setMikrotikQueues] = useState([]);
   const [loadingQueues, setLoadingQueues] = useState(false);
@@ -156,6 +192,23 @@ export default function NetworkMonitorView() {
   const [loadingNat, setLoadingNat] = useState(false);
   const [wolLoadingMac, setWolLoadingMac] = useState(null);
   const [confirmDeleteQueueId, setConfirmDeleteQueueId] = useState(null);
+
+  // NAT Templates & Custom Rule Dialogs
+  const [natTemplates, setNatTemplates] = useState([]);
+  const [natTemplateDialogOpen, setNatTemplateDialogOpen] = useState(false);
+  const [natFormDialogOpen, setNatFormDialogOpen] = useState(false);
+  const [natForm, setNatForm] = useState({
+    chain: 'dstnat',
+    action: 'dst-nat',
+    protocol: 'tcp',
+    dstPort: '',
+    toAddresses: '',
+    toPorts: '',
+    inInterface: '',
+    outInterface: '',
+    comment: ''
+  });
+  const [confirmDeleteNatId, setConfirmDeleteNatId] = useState(null);
 
   // Router state (Xiaomi / Gecoos AP)
   const [selectedRouterHost, setSelectedRouterHost] = useState('192.168.1.2');
@@ -178,6 +231,14 @@ export default function NetworkMonitorView() {
   const [confirmRebootTarget, setConfirmRebootTarget] = useState(null);
   const [confirmWifiRestartTarget, setConfirmWifiRestartTarget] = useState(null);
   const [actionMessage, setActionMessage] = useState(null);
+
+  // Auto-dismiss action message
+  useEffect(() => {
+    if (actionMessage) {
+      const timer = setTimeout(() => setActionMessage(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [actionMessage]);
 
   useEffect(() => {
     if (!isSuperAdmin && currentTab !== 0) {
@@ -304,28 +365,38 @@ export default function NetworkMonitorView() {
   }, []);
 
   // Fetch MikroTik Simple Queues
-  const loadMikrotikQueues = useCallback(async () => {
-    setLoadingQueues(true);
+  const loadMikrotikQueues = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoadingQueues(true);
     try {
       const res = await apiRequest('/api/v1/network/mikrotik/queues');
       setMikrotikQueues(Array.isArray(res?.queues) ? res.queues : []);
     } catch (err) {
       console.error('Failed to load MikroTik queues:', err);
     } finally {
-      setLoadingQueues(false);
+      if (!isSilent) setLoadingQueues(false);
     }
   }, []);
 
   // Fetch MikroTik NAT Rules
-  const loadMikrotikNat = useCallback(async () => {
-    setLoadingNat(true);
+  const loadMikrotikNat = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoadingNat(true);
     try {
       const res = await apiRequest('/api/v1/network/mikrotik/nat');
       setMikrotikNatRules(Array.isArray(res?.rules) ? res.rules : []);
     } catch (err) {
       console.error('Failed to load MikroTik NAT rules:', err);
     } finally {
-      setLoadingNat(false);
+      if (!isSilent) setLoadingNat(false);
+    }
+  }, []);
+
+  // Fetch NAT Templates
+  const loadNatTemplates = useCallback(async () => {
+    try {
+      const data = await apiRequest('/api/v1/network/mikrotik/nat/templates');
+      setNatTemplates(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to load NAT templates:', err);
     }
   }, []);
 
@@ -394,9 +465,56 @@ export default function NetworkMonitorView() {
         body: JSON.stringify({ id, disabled: !currentDisabled })
       });
       setActionMessage({ type: 'success', text: res.message || 'Đã cập nhật quy tắc NAT!' });
-      loadMikrotikNat();
+      loadMikrotikNat(true);
     } catch (err) {
       setActionMessage({ type: 'error', text: err.message || 'Lỗi khi cập nhật NAT' });
+    }
+  };
+
+  const handleOpenNatTemplates = () => {
+    loadNatTemplates();
+    setNatTemplateDialogOpen(true);
+  };
+
+  const handleApplyNatTemplate = (tpl, targetIp = '192.168.1.100') => {
+    setNatForm({
+      chain: tpl.chain || 'dstnat',
+      action: tpl.action || 'dst-nat',
+      protocol: tpl.protocol || 'tcp',
+      dstPort: tpl.dstPort || '',
+      toAddresses: tpl.needsTargetIp ? targetIp : '',
+      toPorts: tpl.toPorts || '',
+      inInterface: tpl.inInterface || '',
+      outInterface: tpl.outInterface || '',
+      comment: tpl.comment || tpl.title
+    });
+    setNatTemplateDialogOpen(false);
+    setNatFormDialogOpen(true);
+  };
+
+  const handleSaveNatRule = async (e) => {
+    if (e) e.preventDefault();
+    try {
+      const res = await apiRequest('/api/v1/network/mikrotik/nat', {
+        method: 'POST',
+        body: JSON.stringify(natForm)
+      });
+      setActionMessage({ type: 'success', text: res.message || 'Đã thêm quy tắc NAT thành công!' });
+      setNatFormDialogOpen(false);
+      loadMikrotikNat(false);
+    } catch (err) {
+      setActionMessage({ type: 'error', text: err.message || 'Lỗi khi lưu quy tắc NAT' });
+    }
+  };
+
+  const handleDeleteNatRule = async (id) => {
+    try {
+      const res = await apiRequest(`/api/v1/network/mikrotik/nat/${id}`, { method: 'DELETE' });
+      setActionMessage({ type: 'success', text: res.message || 'Đã xóa quy tắc NAT!' });
+      setConfirmDeleteNatId(null);
+      loadMikrotikNat(false);
+    } catch (err) {
+      setActionMessage({ type: 'error', text: err.message || 'Lỗi khi xóa NAT rule' });
     }
   };
 
@@ -428,11 +546,252 @@ export default function NetworkMonitorView() {
     }
   }, [selectedRouterHost]);
 
+  // Load Managed Devices
+  const loadManagedDevices = useCallback(async () => {
+    try {
+      const data = await apiRequest('/api/v1/network/devices');
+      if (Array.isArray(data)) {
+        setManagedDevices(data);
+      }
+    } catch (e) {
+      console.error('Failed to load devices:', e);
+    }
+  }, []);
+
+  const managedGateways = useMemo(() => {
+    return managedDevices.filter(d => d.role === 'gateway');
+  }, [managedDevices]);
+
+  const managedRouterMeshes = useMemo(() => {
+    return managedDevices.filter(d => d.role === 'router_mesh');
+  }, [managedDevices]);
+
+  const currentGatewayDevice = useMemo(() => {
+    return managedGateways.find(g => g.id === selectedGatewayId) || managedGateways[0] || null;
+  }, [managedGateways, selectedGatewayId]);
+
+  const currentRouterMeshDevice = useMemo(() => {
+    return managedRouterMeshes.find(r => r.id === selectedRouterDeviceId) || managedRouterMeshes[0] || null;
+  }, [managedRouterMeshes, selectedRouterDeviceId]);
+
+  const activeGatewayType = currentGatewayDevice?.type || (managedGateways[0]?.type || 'mikrotik');
+  const activeRouterMeshType = currentRouterMeshDevice?.type || (managedRouterMeshes[0]?.type || 'xiaomi');
+
+  useEffect(() => {
+    if (managedGateways.length > 0) {
+      if (!selectedGatewayId || !managedGateways.some(g => g.id === selectedGatewayId)) {
+        setSelectedGatewayId(managedGateways[0].id);
+      }
+    } else {
+      setSelectedGatewayId('');
+    }
+  }, [managedGateways, selectedGatewayId]);
+
+  useEffect(() => {
+    if (managedRouterMeshes.length > 0) {
+      if (!selectedRouterDeviceId || !managedRouterMeshes.some(r => r.id === selectedRouterDeviceId)) {
+        setSelectedRouterDeviceId(managedRouterMeshes[0].id);
+        setSelectedRouterHost(managedRouterMeshes[0].host);
+      }
+    } else {
+      setSelectedRouterDeviceId('');
+    }
+  }, [managedRouterMeshes, selectedRouterDeviceId]);
+
+  useEffect(() => {
+    if (currentGatewayDevice?.host) {
+      setMikrotikHost(currentGatewayDevice.host);
+    }
+  }, [currentGatewayDevice?.host]);
+
+  useEffect(() => {
+    if (currentRouterMeshDevice?.host) {
+      setSelectedRouterHost(currentRouterMeshDevice.host);
+    }
+  }, [currentRouterMeshDevice?.host]);
+
+  // Load OpenWrt status
+  const loadOpenwrtStatus = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoadingOpenwrt(true);
+    try {
+      const targetId = currentGatewayDevice?.id || 'dev_openwrt_1';
+      const data = await apiRequest(`/api/v1/network/devices/${targetId}/status`);
+      setOpenwrtStatus(data);
+    } catch (err) {
+      console.error('Failed to load OpenWrt status:', err);
+    } finally {
+      if (!isSilent) setLoadingOpenwrt(false);
+    }
+  }, [currentGatewayDevice]);
+
+  // Load Deco status
+  const loadDecoStatus = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoadingDeco(true);
+    try {
+      const targetId = currentRouterMeshDevice?.id || 'dev_deco_1';
+      const data = await apiRequest(`/api/v1/network/devices/${targetId}/status`);
+      setDecoStatus(data);
+    } catch (err) {
+      console.error('Failed to load Deco status:', err);
+    } finally {
+      if (!isSilent) setLoadingDeco(false);
+    }
+  }, [currentRouterMeshDevice]);
+
+  // OpenWrt Quick Ops
+  const handleOpenwrtRestartNetwork = async () => {
+    try {
+      const targetId = currentGatewayDevice?.id || 'dev_openwrt_1';
+      const res = await apiRequest(`/api/v1/network/devices/${targetId}/restart-wifi`, { method: 'POST' }).catch(() => null);
+      setActionMessage({ type: 'success', text: res?.message || 'Đã gửi lệnh làm mới mạng OpenWrt!' });
+    } catch (err) {
+      setActionMessage({ type: 'error', text: err.message || 'Lỗi khi làm mới mạng OpenWrt' });
+    }
+  };
+
+  const handleOpenwrtReboot = async () => {
+    try {
+      const targetId = currentGatewayDevice?.id || 'dev_openwrt_1';
+      const res = await apiRequest(`/api/v1/network/devices/${targetId}/reboot`, { method: 'POST' });
+      setActionMessage({ type: 'success', text: res?.message || 'Đã gửi lệnh khởi động lại OpenWrt!' });
+    } catch (err) {
+      setActionMessage({ type: 'error', text: err.message || 'Lỗi khi reboot OpenWrt' });
+    }
+  };
+
+  // Deco Quick Ops
+  const handleDecoRestartWifi = async () => {
+    try {
+      const targetId = currentRouterMeshDevice?.id || 'dev_deco_1';
+      const res = await apiRequest(`/api/v1/network/devices/${targetId}/restart-wifi`, { method: 'POST' });
+      setActionMessage({ type: 'success', text: res?.message || 'Đã gửi lệnh làm mới Wi-Fi Deco!' });
+    } catch (err) {
+      setActionMessage({ type: 'error', text: err.message || 'Lỗi khi restart Wi-Fi Deco' });
+    }
+  };
+
+  const handleDecoReboot = async () => {
+    try {
+      const targetId = currentRouterMeshDevice?.id || 'dev_deco_1';
+      const res = await apiRequest(`/api/v1/network/devices/${targetId}/reboot`, { method: 'POST' });
+      setActionMessage({ type: 'success', text: res?.message || 'Đã gửi lệnh khởi động lại Deco!' });
+    } catch (err) {
+      setActionMessage({ type: 'error', text: err.message || 'Lỗi khi reboot Deco' });
+    }
+  };
+
+  // Load ZTE status
+  const loadZteStatus = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoadingZte(true);
+    try {
+      const targetId = currentRouterMeshDevice?.id || 'dev_zte_1';
+      const data = await apiRequest(`/api/v1/network/devices/${targetId}/status`);
+      setZteStatus(data);
+    } catch (err) {
+      console.error('Failed to load ZTE status:', err);
+    } finally {
+      if (!isSilent) setLoadingZte(false);
+    }
+  }, [currentRouterMeshDevice]);
+
+  // ZTE Quick Ops
+  const handleZteRestartWifi = async () => {
+    try {
+      const targetId = currentRouterMeshDevice?.id || 'dev_zte_1';
+      const res = await apiRequest(`/api/v1/network/devices/${targetId}/restart-wifi`, { method: 'POST' });
+      setActionMessage({ type: 'success', text: res?.message || 'Đã gửi lệnh làm mới Wi-Fi EasyMesh ZTE!' });
+    } catch (err) {
+      setActionMessage({ type: 'error', text: err.message || 'Lỗi khi restart Wi-Fi ZTE' });
+    }
+  };
+
+  const handleZteReboot = async () => {
+    try {
+      const targetId = currentRouterMeshDevice?.id || 'dev_zte_1';
+      const res = await apiRequest(`/api/v1/network/devices/${targetId}/reboot`, { method: 'POST' });
+      setActionMessage({ type: 'success', text: res?.message || 'Đã gửi lệnh khởi động lại ZTE!' });
+    } catch (err) {
+      setActionMessage({ type: 'error', text: err.message || 'Lỗi khi reboot ZTE' });
+    }
+  };
+
+  // Device CRUD
+  const handleOpenAddDevice = (role = 'gateway') => {
+    setEditingDevice(null);
+    setDeviceDefaultRole(role);
+    setDeviceDialogOpen(true);
+  };
+
+  const handleOpenEditDevice = (device) => {
+    setEditingDevice(device);
+    setDeviceDefaultRole(device?.role || 'gateway');
+    setDeviceDialogOpen(true);
+  };
+
+  const handleSaveDevice = async (deviceData) => {
+    try {
+      if (editingDevice) {
+        await apiRequest(`/api/v1/network/devices/${editingDevice.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(deviceData)
+        });
+        setActionMessage({ type: 'success', text: `Đã cập nhật cấu hình thiết bị ${deviceData.name}!` });
+      } else {
+        const created = await apiRequest('/api/v1/network/devices', {
+          method: 'POST',
+          body: JSON.stringify(deviceData)
+        });
+        if (created?.id) {
+          if (created.role === 'gateway') setSelectedGatewayId(created.id);
+          else setSelectedRouterDeviceId(created.id);
+        }
+        setActionMessage({ type: 'success', text: `Đã thêm thiết bị mới: ${deviceData.name}!` });
+      }
+      setDeviceDialogOpen(false);
+      await loadManagedDevices();
+      if (deviceData.role === 'gateway') {
+        setMikrotikHost(deviceData.host);
+        if (deviceData.type === 'mikrotik') {
+          loadMikrotikStatus(false);
+        } else {
+          loadOpenwrtStatus(false);
+        }
+      } else {
+        setSelectedRouterHost(deviceData.host);
+        if (deviceData.type === 'tplink_deco') loadDecoStatus(false);
+        else if (deviceData.type === 'zte') loadZteStatus(false);
+        else loadRouterStatus(false);
+      }
+    } catch (err) {
+      setActionMessage({ type: 'error', text: err.message || 'Lỗi khi lưu thiết bị' });
+    }
+  };
+
+  const handleDeleteDevice = async (id) => {
+    try {
+      await apiRequest(`/api/v1/network/devices/${id}`, { method: 'DELETE' });
+      setActionMessage({ type: 'success', text: 'Đã xóa thiết bị khỏi danh sách quản lý!' });
+      setConfirmDeleteDeviceId(null);
+      if (selectedGatewayId === id) {
+        const remaining = managedGateways.filter(g => g.id !== id);
+        setSelectedGatewayId(remaining[0]?.id || '');
+      }
+      if (selectedRouterDeviceId === id) {
+        const remaining = managedRouterMeshes.filter(r => r.id !== id);
+        setSelectedRouterDeviceId(remaining[0]?.id || '');
+      }
+      loadManagedDevices();
+    } catch (err) {
+      setActionMessage({ type: 'error', text: err.message || 'Lỗi khi xóa thiết bị' });
+    }
+  };
+
   useEffect(() => {
     loadTargets();
+    loadManagedDevices();
     const interval = setInterval(loadTargets, 3000);
     return () => clearInterval(interval);
-  }, [loadTargets]);
+  }, [loadTargets, loadManagedDevices]);
 
   useEffect(() => {
     if (currentTab === 0) {
@@ -458,16 +817,37 @@ export default function NetworkMonitorView() {
     }
   }, [currentTab, scanState.isScanning, loadScanState]);
 
+  // Tab 2 Gateway Polling
   useEffect(() => {
-    if (currentTab === 2) {
-      if (selectedRouterType === 'mikrotik') {
+    if (currentTab === 2 && currentGatewayDevice) {
+      if (activeGatewayType === 'mikrotik') {
         loadMikrotikStatus(false);
-        if (mikrotikSubTab === 'queues') loadMikrotikQueues();
-        if (mikrotikSubTab === 'nat') loadMikrotikNat();
+        loadMikrotikQueues(false);
+        loadMikrotikNat(false);
         const interval = setInterval(() => {
           loadMikrotikStatus(true);
-          if (mikrotikSubTab === 'queues') loadMikrotikQueues();
-        }, 3500);
+          if (mikrotikSubTab === 'queues') loadMikrotikQueues(true);
+          else if (mikrotikSubTab === 'nat') loadMikrotikNat(true);
+        }, 5000);
+        return () => clearInterval(interval);
+      } else if (activeGatewayType === 'openwrt' || activeGatewayType === 'immortalwrt') {
+        loadOpenwrtStatus(false);
+        const interval = setInterval(() => loadOpenwrtStatus(true), 5000);
+        return () => clearInterval(interval);
+      }
+    }
+  }, [currentTab, activeGatewayType, currentGatewayDevice, mikrotikSubTab, loadMikrotikStatus, loadOpenwrtStatus, loadMikrotikQueues, loadMikrotikNat]);
+
+  // Tab 3 Router Mesh Polling
+  useEffect(() => {
+    if (currentTab === 3 && currentRouterMeshDevice) {
+      if (activeRouterMeshType === 'tplink_deco') {
+        loadDecoStatus(false);
+        const interval = setInterval(() => loadDecoStatus(true), 5000);
+        return () => clearInterval(interval);
+      } else if (activeRouterMeshType === 'zte') {
+        loadZteStatus(false);
+        const interval = setInterval(() => loadZteStatus(true), 5000);
         return () => clearInterval(interval);
       } else {
         loadRouterStatus(false);
@@ -475,12 +855,14 @@ export default function NetworkMonitorView() {
         return () => clearInterval(interval);
       }
     }
-  }, [currentTab, selectedRouterType, selectedRouterHost, mikrotikSubTab, loadMikrotikStatus, loadRouterStatus]);
+  }, [currentTab, activeRouterMeshType, currentRouterMeshDevice, selectedRouterHost, loadRouterStatus, loadDecoStatus, loadZteStatus]);
 
-  // Preload MikroTik status once on mount
+  // Preload MikroTik status, queues & NAT once on mount
   useEffect(() => {
     loadMikrotikStatus(true);
-  }, [loadMikrotikStatus]);
+    loadMikrotikQueues(true);
+    loadMikrotikNat(true);
+  }, [loadMikrotikStatus, loadMikrotikQueues, loadMikrotikNat]);
 
   // Ping target immediately
   const handlePingNow = async (id, e) => {
@@ -632,10 +1014,10 @@ export default function NetworkMonitorView() {
         method: 'POST',
         body: JSON.stringify({ nodeIp: confirmRebootTarget.ip })
       });
-      setActionMessage(res.message || `Đã gửi lệnh khởi động lại ${confirmRebootTarget.name}`);
+      setActionMessage({ type: 'success', text: res.message || `Đã gửi lệnh khởi động lại ${confirmRebootTarget.name}` });
       setConfirmRebootTarget(null);
     } catch (err) {
-      alert(err.message);
+      setActionMessage({ type: 'error', text: err.message || 'Lỗi khi khởi động lại AP' });
     }
   };
 
@@ -647,10 +1029,10 @@ export default function NetworkMonitorView() {
         method: 'POST',
         body: JSON.stringify({ nodeIp: confirmWifiRestartTarget.ip })
       });
-      setActionMessage(res.message || `Đã gửi lệnh khởi động lại Wi-Fi ${confirmWifiRestartTarget.name}`);
+      setActionMessage({ type: 'success', text: res.message || `Đã gửi lệnh khởi động lại Wi-Fi ${confirmWifiRestartTarget.name}` });
       setConfirmWifiRestartTarget(null);
     } catch (err) {
-      alert(err.message);
+      setActionMessage({ type: 'error', text: err.message || 'Lỗi khi khởi động lại Wi-Fi' });
     }
   };
 
@@ -661,11 +1043,11 @@ export default function NetworkMonitorView() {
         method: 'POST',
         body: JSON.stringify({ interfaceName: mikrotikPppoeInterface })
       });
-      setActionMessage(res.message || 'Đã gửi lệnh làm mới phiên PPPoE thành công!');
+      setActionMessage({ type: 'success', text: res.message || 'Đã gửi lệnh làm mới phiên PPPoE thành công!' });
       setConfirmReconnectPppoeOpen(false);
       setTimeout(loadMikrotikStatus, 2000);
     } catch (err) {
-      alert(err.message);
+      setActionMessage({ type: 'error', text: err.message || 'Lỗi khi làm mới PPPoE' });
     }
   };
 
@@ -673,10 +1055,10 @@ export default function NetworkMonitorView() {
   const handleRebootMikrotik = async () => {
     try {
       const res = await apiRequest('/api/v1/network/mikrotik/reboot', { method: 'POST' });
-      setActionMessage(res.message || 'Đã gửi lệnh khởi động lại MikroTik RouterOS');
+      setActionMessage({ type: 'success', text: res.message || 'Đã gửi lệnh khởi động lại MikroTik RouterOS' });
       setConfirmMikrotikRebootOpen(false);
     } catch (err) {
-      alert(err.message);
+      setActionMessage({ type: 'error', text: err.message || 'Lỗi khi khởi động lại MikroTik' });
     }
   };
 
@@ -712,10 +1094,10 @@ export default function NetworkMonitorView() {
         })
       });
       setMikrotikConfigOpen(false);
-      setActionMessage('Đã cập nhật cấu hình kết nối MikroTik RouterOS!');
+      setActionMessage({ type: 'success', text: 'Đã cập nhật cấu hình kết nối MikroTik RouterOS!' });
       loadMikrotikStatus();
     } catch (err) {
-      alert(err.message);
+      setActionMessage({ type: 'error', text: err.message || 'Lỗi khi lưu cấu hình MikroTik' });
     }
   };
 
@@ -740,32 +1122,75 @@ export default function NetworkMonitorView() {
   }, [chartMetrics, chartRange]);
 
   const latencySeriesData = useMemo(() => {
-    return chartMetrics.map((m) => (m.latency !== null ? Number(m.latency) : 0));
+    return chartMetrics.map((m) => (m.maxLatency !== null && m.maxLatency !== undefined ? Number(m.maxLatency) : (m.latency !== null ? Number(m.latency) : 0)));
+  }, [chartMetrics]);
+
+  const minLatencySeriesData = useMemo(() => {
+    return chartMetrics.map((m) => (m.minLatency !== null && m.minLatency !== undefined ? Number(m.minLatency) : (m.latency !== null ? Number(m.latency) : 0)));
+  }, [chartMetrics]);
+
+  const spikeSeriesData = useMemo(() => {
+    return chartMetrics.map((m) => (m.isSpike || (m.maxLatency && m.maxLatency > 100) || (m.latency !== null && m.latency > 100) ? Number(m.maxLatency || m.latency) : null));
+  }, [chartMetrics]);
+
+  const dropSeriesData = useMemo(() => {
+    return chartMetrics.map((m) => (m.isDrop || (m.dropCount && m.dropCount > 0) || m.status === 'offline' || m.status === 'degraded' ? (m.dropCount > 0 ? m.dropCount : 1) : null));
   }, [chartMetrics]);
 
   const chartSeries = useMemo(() => {
-    return [{ name: 'Độ trễ (ms)', data: latencySeriesData }];
-  }, [latencySeriesData]);
+    return [
+      { name: 'Độ trễ Pike / Max (ms)', type: 'area', data: latencySeriesData },
+      { name: 'Độ trễ Min (ms)', type: 'line', data: minLatencySeriesData },
+      { name: 'Spike Packets (>100ms)', type: 'line', data: spikeSeriesData },
+      { name: 'Drop Packets (Gói rớt)', type: 'column', data: dropSeriesData }
+    ];
+  }, [latencySeriesData, minLatencySeriesData, spikeSeriesData, dropSeriesData]);
 
   const totalDrops = useMemo(() => {
-    return chartMetrics.filter((m) => m.isDrop || m.status === 'offline').length;
+    return chartMetrics.reduce((sum, m) => sum + (m.dropCount || (m.isDrop || m.status === 'offline' || m.status === 'degraded' ? 1 : 0)), 0);
+  }, [chartMetrics]);
+
+  const totalSpikes = useMemo(() => {
+    return chartMetrics.filter((m) => m.isSpike || (m.maxLatency && m.maxLatency > 100) || (m.latency !== null && m.latency > 100)).length;
   }, [chartMetrics]);
 
   const maxSpike = useMemo(() => {
-    const valid = chartMetrics.filter((m) => m.latency !== null).map((m) => m.latency);
+    const valid = chartMetrics.map((m) => m.maxLatency ?? m.latency).filter(v => v !== null && v !== undefined && v > 0);
     return valid.length > 0 ? Math.max(...valid) : 0;
+  }, [chartMetrics]);
+
+  const avgLatency = useMemo(() => {
+    const valid = chartMetrics.filter((m) => m.latency !== null && m.latency > 0).map((m) => m.latency);
+    return valid.length > 0 ? Math.round(valid.reduce((a, b) => a + b, 0) / valid.length) : 0;
+  }, [chartMetrics]);
+
+  const jitterVal = useMemo(() => {
+    const valid = chartMetrics.filter((m) => m.latency !== null).map((m) => m.latency);
+    if (valid.length < 2) return 0;
+    let diffSum = 0;
+    for (let i = 1; i < valid.length; i++) {
+      diffSum += Math.abs(valid[i] - valid[i - 1]);
+    }
+    return Math.round(diffSum / (valid.length - 1));
   }, [chartMetrics]);
 
   const pingChartOptions = useMemo(() => {
     return {
-      colors: [theme.palette.primary.main],
+      colors: [theme.palette.primary.main, theme.palette.info.main, theme.palette.warning.main, theme.palette.error.main],
       chart: {
         toolbar: { show: false },
         animations: { enabled: false }
       },
-      stroke: { curve: 'smooth', width: 2.5 },
+      stroke: { curve: ['smooth', 'smooth', 'straight', 'straight'], width: [2.5, 1.5, 3, 2] },
+      markers: {
+        size: [0, 0, 4, 5],
+        colors: [theme.palette.primary.main, theme.palette.info.main, theme.palette.warning.main, theme.palette.error.main],
+        strokeColors: '#fff',
+        strokeWidth: 2,
+        hover: { size: 7 }
+      },
       fill: {
-        type: 'gradient',
+        type: ['gradient', 'solid', 'solid', 'solid'],
         gradient: {
           shadeIntensity: 1,
           opacityFrom: 0.45,
@@ -782,12 +1207,13 @@ export default function NetworkMonitorView() {
         labels: { formatter: (v) => `${Math.round(v)} ms` }
       },
       tooltip: {
+        shared: true,
         y: {
-          formatter: (v) => `${v} ms`
+          formatter: (v) => (v !== null && v !== undefined ? `${v} ms` : '--')
         }
       }
     };
-  }, [theme.palette.primary.main, chartTimestamps]);
+  }, [theme.palette.primary.main, theme.palette.info.main, theme.palette.warning.main, theme.palette.error.main, chartTimestamps]);
 
   return (
     <Box>
@@ -952,19 +1378,24 @@ export default function NetworkMonitorView() {
         <Tabs value={currentTab} onChange={(_, v) => setCurrentTab(v)} variant="scrollable" scrollButtons="auto">
           <Tab icon={<Globe size={18} />} iconPosition="start" label="Giám sát kết nối (Ping Monitor)" sx={{ fontWeight: 700 }} />
           {isSuperAdmin && <Tab icon={<Search size={18} />} iconPosition="start" label="Quét mạng LAN (Subnet Scanner)" sx={{ fontWeight: 700 }} />}
-          {isSuperAdmin && <Tab icon={<Wifi size={18} />} iconPosition="start" label="Router & Mesh" sx={{ fontWeight: 700 }} />}
+          {isSuperAdmin && <Tab icon={<Shield size={18} />} iconPosition="start" label="Gateway (Core Router)" sx={{ fontWeight: 700 }} />}
+          {isSuperAdmin && <Tab icon={<Wifi size={18} />} iconPosition="start" label="Router & Wi-Fi Mesh" sx={{ fontWeight: 700 }} />}
         </Tabs>
       </Box>
 
       {/* Action Notification Message if any */}
       {actionMessage && (
-        <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setActionMessage(null)}>
-          {actionMessage}
+        <Alert
+          severity={typeof actionMessage === 'object' ? (actionMessage?.type || 'info') : 'success'}
+          sx={{ mb: 3, borderRadius: 2 }}
+          onClose={() => setActionMessage(null)}
+        >
+          {typeof actionMessage === 'object' ? (actionMessage?.text || '') : actionMessage}
         </Alert>
       )}
 
       {/* ==================================================== */}
-      {/* TAB 1: PING MONITOR & PING TRENDS CHART */}
+      {/* TAB 0: PING MONITOR & PING TRENDS CHART */}
       {/* ==================================================== */}
       <Box sx={{ display: currentTab === 0 ? 'block' : 'none' }}>
         <Stack spacing={3.5}>
@@ -982,7 +1413,7 @@ export default function NetworkMonitorView() {
                   <TrendingUp size={20} color={theme.palette.primary.main} /> Biến động độ trễ & Drop Packet
                 </Typography>
                 <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                  Theo dõi Spike độ trễ và sự cố rớt gói tin theo thời gian thực
+                  Ưu tiên cảnh báo gói tin bị Drop (Timeout) và Spike giật lag theo thời gian thực
                 </Typography>
               </Box>
 
@@ -1034,8 +1465,8 @@ export default function NetworkMonitorView() {
 
             {/* Spike & Drop Indicators Strip */}
             <Grid container spacing={2} sx={{ mb: 2 }}>
-              <Grid item xs={12} sm={4}>
-                <Card variant="outlined" sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.5, borderRadius: 2 }}>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined" sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.5, borderRadius: 2, borderColor: totalDrops > 0 ? 'error.main' : 'divider' }}>
                   <Box sx={{ color: totalDrops > 0 ? 'error.main' : 'success.main' }}>
                     <AlertOctagon size={24} />
                   </Box>
@@ -1044,39 +1475,55 @@ export default function NetworkMonitorView() {
                       GÓI TIN BỊ DROP (TIMEOUT)
                     </Typography>
                     <Typography variant="h6" sx={{ fontWeight: 800, color: totalDrops > 0 ? 'error.main' : 'success.main' }}>
-                      {totalDrops} gói tin rớt
+                      {totalDrops} gói rớt ({chartMetrics.length > 0 ? ((totalDrops / chartMetrics.length) * 100).toFixed(1) : 0}%)
                     </Typography>
                   </Box>
                 </Card>
               </Grid>
 
-              <Grid item xs={12} sm={4}>
-                <Card variant="outlined" sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.5, borderRadius: 2 }}>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined" sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.5, borderRadius: 2, borderColor: totalSpikes > 0 ? 'warning.main' : 'divider' }}>
                   <Box sx={{ color: maxSpike > 100 ? 'warning.main' : 'primary.main' }}>
                     <Activity size={24} />
                   </Box>
                   <Box>
                     <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
-                      ĐỘ TRỄ SPIKE CAO NHẤT
+                      ĐỈNH SPIKE CAO NHẤT
                     </Typography>
                     <Typography variant="h6" sx={{ fontWeight: 800, color: maxSpike > 100 ? 'warning.main' : 'text.primary' }}>
-                      {maxSpike} ms
+                      {maxSpike} ms {totalSpikes > 0 && <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>({totalSpikes} spikes)</span>}
                     </Typography>
                   </Box>
                 </Card>
               </Grid>
 
-              <Grid item xs={12} sm={4}>
+              <Grid item xs={12} sm={6} md={3}>
                 <Card variant="outlined" sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.5, borderRadius: 2 }}>
-                  <Box sx={{ color: 'info.main' }}>
+                  <Box sx={{ color: 'primary.main' }}>
                     <Clock size={24} />
                   </Box>
                   <Box>
                     <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
-                      ĐIỂM MẪU ĐO ĐẠC
+                      ĐỘ TRỄ TRUNG BÌNH
+                    </Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 800, color: 'primary.main' }}>
+                      {avgLatency} ms
+                    </Typography>
+                  </Box>
+                </Card>
+              </Grid>
+
+              <Grid item xs={12} sm={6} md={3}>
+                <Card variant="outlined" sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.5, borderRadius: 2 }}>
+                  <Box sx={{ color: 'info.main' }}>
+                    <TrendingUp size={24} />
+                  </Box>
+                  <Box>
+                    <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
+                      ĐỘ BIẾN ĐỘNG (JITTER)
                     </Typography>
                     <Typography variant="h6" sx={{ fontWeight: 800 }}>
-                      {chartMetrics.length} điểm dữ liệu
+                      ±{jitterVal} ms
                     </Typography>
                   </Box>
                 </Card>
@@ -1525,49 +1972,114 @@ export default function NetworkMonitorView() {
       </Box>
 
       {/* ==================================================== */}
-      {/* TAB 3: ROUTER & MESH MANAGEMENT (MIKROTIK / XIAOMI / GECOOS) */}
+      {/* TAB 2: GATEWAY / CORE ROUTER MANAGEMENT */}
       {/* ==================================================== */}
       <Box sx={{ display: currentTab === 2 ? 'block' : 'none' }}>
-        <Box>
-          {/* Router Selector Switcher */}
-          <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 3, flexWrap: 'wrap', gap: 1 }}>
-            <Button
-              variant={selectedRouterType === 'mikrotik' ? 'contained' : 'outlined'}
-              color="primary"
-              startIcon={<Shield size={16} />}
-              onClick={() => setSelectedRouterType('mikrotik')}
-              sx={{ fontWeight: 700, borderRadius: 2 }}
-            >
-              🛡️ MikroTik RouterOS (PPPoE Core Gateway)
-            </Button>
-            <Button
-              variant={selectedRouterType === 'xiaomi' ? 'contained' : 'outlined'}
-              color="primary"
-              startIcon={<Wifi size={16} />}
-              onClick={() => {
-                setSelectedRouterType('xiaomi');
-                setSelectedRouterHost('192.168.1.2');
-              }}
-              sx={{ fontWeight: 700, borderRadius: 2 }}
-            >
-              Xiaomi Mesh (Wi-Fi AP)
-            </Button>
-            <Button
-              variant={selectedRouterType === 'gecoos' ? 'contained' : 'outlined'}
-              color="primary"
-              startIcon={<RouterIcon size={16} />}
-              onClick={() => {
-                setSelectedRouterType('gecoos');
-                setSelectedRouterHost('192.168.1.43');
-              }}
-              sx={{ fontWeight: 700, borderRadius: 2 }}
-            >
-              Gecoos AP (Enterprise)
-            </Button>
+        <Stack spacing={3}>
+          {/* Gateway Device Selector Toolbar */}
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            alignItems={{ xs: 'flex-start', md: 'center' }}
+            justifyContent="space-between"
+            spacing={2}
+            sx={{ flexWrap: 'wrap', gap: 1.5 }}
+          >
+            {/* Dynamic Gateway Device Switchers */}
+            <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flexWrap: 'wrap', gap: 1 }}>
+              {managedGateways.map(gw => {
+                const active = currentGatewayDevice?.id === gw.id;
+                return (
+                  <Button
+                    key={gw.id}
+                    variant={active ? 'contained' : 'outlined'}
+                    color={gw.type === 'mikrotik' ? 'primary' : 'info'}
+                    startIcon={gw.type === 'mikrotik' ? <Shield size={16} /> : <Server size={16} />}
+                    onClick={() => {
+                      setSelectedGatewayId(gw.id);
+                    }}
+                    sx={{ fontWeight: 700, borderRadius: 2 }}
+                  >
+                    {gw.name} ({gw.host})
+                  </Button>
+                );
+              })}
+            </Stack>
+
+            {/* SuperAdmin CRUD */}
+            {isSuperAdmin && (
+              <Stack direction="row" spacing={1} alignItems="center">
+                {currentGatewayDevice && (
+                  <Tooltip title="Chỉnh sửa Gateway này">
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="inherit"
+                      startIcon={<Edit2 size={15} />}
+                      onClick={() => handleOpenEditDevice(currentGatewayDevice)}
+                      sx={{ fontWeight: 700 }}
+                    >
+                      Sửa
+                    </Button>
+                  </Tooltip>
+                )}
+
+                {currentGatewayDevice && (
+                  <Tooltip title="Xóa Gateway khỏi quản lý">
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="error"
+                      startIcon={<Trash2 size={15} />}
+                      onClick={() => setConfirmDeleteDeviceId(currentGatewayDevice.id)}
+                      sx={{ fontWeight: 700 }}
+                    >
+                      Xóa
+                    </Button>
+                  </Tooltip>
+                )}
+
+                <Button
+                  size="small"
+                  variant="contained"
+                  color="primary"
+                  startIcon={<Plus size={15} />}
+                  onClick={() => handleOpenAddDevice('gateway')}
+                  sx={{ fontWeight: 700 }}
+                >
+                  + Thêm Gateway
+                </Button>
+              </Stack>
+            )}
           </Stack>
 
+          {/* Empty State when no Gateways configured */}
+          {managedGateways.length === 0 && (
+            <Card sx={{ p: 5, textAlign: 'center', bgcolor: 'background.paper', borderRadius: 2 }}>
+              <Box sx={{ color: 'text.secondary', display: 'flex', justifyContent: 'center', mb: 2 }}>
+                <Shield size={56} />
+              </Box>
+              <Typography variant="h5" sx={{ fontWeight: 800, mb: 1 }}>
+                Chưa có thiết bị Gateway nào được quản lý
+              </Typography>
+              <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3, maxWidth: 500, mx: 'auto' }}>
+                Hệ thống chưa kết nối thiết bị Gateway nào. Bạn có thể thêm thiết bị MikroTik RouterOS hoặc OpenWrt/ImmortalWrt Gateway để bắt đầu quản lý băng thông và NAT.
+              </Typography>
+              {isSuperAdmin && (
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={<Plus size={16} />}
+                  onClick={() => handleOpenAddDevice('gateway')}
+                  sx={{ fontWeight: 700 }}
+                >
+                  Thêm Gateway Ngay
+                </Button>
+              )}
+            </Card>
+          )}
+
           {/* MIKROTIK VIEW */}
-          {selectedRouterType === 'mikrotik' && (
+          {managedGateways.length > 0 && activeGatewayType === 'mikrotik' && (
             loadingMikrotik && !mikrotikStatus ? (
               <LinearProgress sx={{ my: 4, borderRadius: 2 }} />
             ) : !mikrotikStatus ? (
@@ -1714,113 +2226,78 @@ export default function NetworkMonitorView() {
                     </Card>
                   </Grid>
 
-                  {/* CPU Load Card */}
+                  {/* CPU Load & Hardware */}
                   <Grid item xs={12} sm={6} md={3}>
                     <Card sx={{ p: 2.5, height: '100%' }}>
                       <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
-                        TẢI CPU MIKROTIK
+                        TẢI CPU ROUTEROS
                       </Typography>
-                      <Typography variant="h4" sx={{ fontWeight: 800, my: 0.5 }}>
+                      <Typography variant="h5" sx={{ fontWeight: 800, my: 0.5, color: mikrotikStatus.cpu > 80 ? 'error.main' : 'text.primary' }}>
                         {mikrotikStatus.cpu}%
                       </Typography>
-                      <LinearProgress
-                        variant="determinate"
-                        value={Math.min(100, mikrotikStatus.cpu || 0)}
-                        color={mikrotikStatus.cpu > 80 ? 'error' : mikrotikStatus.cpu > 50 ? 'warning' : 'primary'}
-                        sx={{ height: 6, borderRadius: 3, mt: 1 }}
-                      />
-                      <Typography variant="caption" sx={{ color: 'text.secondary', mt: 0.5, display: 'block' }}>
-                        {mikrotikStatus.cpuCount ? `${mikrotikStatus.cpuCount} Cores` : 'Core Processor'}
+                      <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
+                        {mikrotikStatus.cpuCount} Cores • {mikrotikStatus.cpuFrequency} MHz ({mikrotikStatus.architecture})
                       </Typography>
                     </Card>
                   </Grid>
 
-                  {/* Memory / RAM Card */}
+                  {/* Memory RAM */}
                   <Grid item xs={12} sm={6} md={3}>
                     <Card sx={{ p: 2.5, height: '100%' }}>
                       <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 700 }}>
-                        BỘ NHỚ RAM
+                        BỘ NHỚ RAM KHẢ DỤNG
                       </Typography>
-                      <Typography variant="h4" sx={{ fontWeight: 800, my: 0.5 }}>
+                      <Typography variant="h5" sx={{ fontWeight: 800, my: 0.5 }}>
                         {mikrotikStatus.memory}%
                       </Typography>
-                      <LinearProgress
-                        variant="determinate"
-                        value={Math.min(100, mikrotikStatus.memory || 0)}
-                        color={mikrotikStatus.memory > 80 ? 'error' : 'primary'}
-                        sx={{ height: 6, borderRadius: 3, mt: 1 }}
-                      />
-                      <Typography variant="caption" sx={{ color: 'text.secondary', mt: 0.5, display: 'block' }}>
-                        Trống: {mikrotikStatus.memoryFreeMb || '--'} MB / Tổng: {mikrotikStatus.memoryTotalMb || '--'} MB
+                      <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
+                        {mikrotikStatus.memoryFreeMb} MB còn trống / {mikrotikStatus.memoryTotalMb} MB
                       </Typography>
                     </Card>
                   </Grid>
                 </Grid>
 
-                {/* Sub-tab Navigation for MikroTik */}
-                <Stack direction="row" spacing={1} sx={{ borderBottom: `1px solid ${theme.palette.divider}`, pb: 1 }}>
-                  <Button
-                    variant={mikrotikSubTab === 'leases' ? 'contained' : 'outlined'}
-                    color={mikrotikSubTab === 'leases' ? 'primary' : 'inherit'}
-                    startIcon={<Server size={16} />}
-                    onClick={() => setMikrotikSubTab('leases')}
-                    sx={{ fontWeight: 700, borderRadius: 2 }}
-                  >
-                    DHCP Leases ({mikrotikStatus.dhcpLeases?.length || 0})
-                  </Button>
-                  <Button
-                    variant={mikrotikSubTab === 'queues' ? 'contained' : 'outlined'}
-                    color={mikrotikSubTab === 'queues' ? 'primary' : 'inherit'}
-                    startIcon={<Sliders size={16} />}
-                    onClick={() => {
-                      setMikrotikSubTab('queues');
-                      loadMikrotikQueues();
-                    }}
-                    sx={{ fontWeight: 700, borderRadius: 2 }}
-                  >
-                    Giới hạn Băng thông ({mikrotikQueues.length})
-                  </Button>
-                  <Button
-                    variant={mikrotikSubTab === 'nat' ? 'contained' : 'outlined'}
-                    color={mikrotikSubTab === 'nat' ? 'primary' : 'inherit'}
-                    startIcon={<Shield size={16} />}
-                    onClick={() => {
-                      setMikrotikSubTab('nat');
-                      loadMikrotikNat();
-                    }}
-                    sx={{ fontWeight: 700, borderRadius: 2 }}
-                  >
-                    Port Forwarding & NAT ({mikrotikNatRules.length})
-                  </Button>
-                </Stack>
+                {/* Sub-Tabs: Leases / Simple Queues / NAT Rules */}
+                <Box sx={{ borderBottom: 1, borderColor: 'divider', mt: 1 }}>
+                  <Tabs value={mikrotikSubTab} onChange={(_, val) => setMikrotikSubTab(val)}>
+                    <Tab
+                      value="leases"
+                      label={`DHCP Leases (${mikrotikStatus.dhcpLeases?.length || 0})`}
+                      icon={<Users size={16} />}
+                      iconPosition="start"
+                      sx={{ fontWeight: 700 }}
+                    />
+                    <Tab
+                      value="queues"
+                      label={`Giới hạn Băng thông (${mikrotikQueues.length})`}
+                      icon={<SlidersHorizontal size={16} />}
+                      iconPosition="start"
+                      sx={{ fontWeight: 700 }}
+                    />
+                    <Tab
+                      value="nat"
+                      label={`Port Forwarding & NAT (${mikrotikNatRules.length})`}
+                      icon={<ArrowUpDown size={16} />}
+                      iconPosition="start"
+                      sx={{ fontWeight: 700 }}
+                    />
+                  </Tabs>
+                </Box>
 
-                {/* 1. DHCP Leases Table */}
+                {/* Sub-Tab 1: DHCP Leases */}
                 {mikrotikSubTab === 'leases' && (
                   <Card sx={{ p: 3 }}>
-                    <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2} sx={{ mb: 2 }}>
-                      <Box>
-                        <Typography variant="h6" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Server size={20} color={theme.palette.primary.main} /> Danh sách cấp phát DHCP Leases ({mikrotikStatus.dhcpLeases?.length || 0})
-                        </Typography>
-                        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                          Các thiết bị đang nhận địa chỉ IP động hoặc tĩnh từ DHCP Server của MikroTik
-                        </Typography>
-                      </Box>
-                      <Stack direction="row" spacing={1.5} alignItems="center">
-                        <TextField
-                          size="small"
-                          placeholder="Tìm IP, MAC, Hostname..."
-                          value={leaseSearch}
-                          onChange={(e) => setLeaseSearch(e.target.value)}
-                          InputProps={{
-                            startAdornment: <Search size={16} style={{ marginRight: 6, opacity: 0.6 }} />
-                          }}
-                          sx={{ width: { xs: '100%', sm: 220 } }}
-                        />
-                        <Button size="small" variant="outlined" startIcon={<RefreshCw size={14} />} onClick={() => loadMikrotikStatus(false)}>
-                          Làm mới
-                        </Button>
-                      </Stack>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} alignItems="center" justifyContent="space-between" spacing={2} sx={{ mb: 2 }}>
+                      <Typography variant="h6" sx={{ fontWeight: 800 }}>
+                        Danh sách cấp phát IP DHCP Leases ({filteredLeases.length})
+                      </Typography>
+                      <TextField
+                        size="small"
+                        placeholder="Tìm kiếm IP, hostname, MAC..."
+                        value={leaseSearch}
+                        onChange={(e) => setLeaseSearch(e.target.value)}
+                        sx={{ minWidth: 260 }}
+                      />
                     </Stack>
 
                     <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
@@ -1828,106 +2305,91 @@ export default function NetworkMonitorView() {
                         <TableHead>
                           <TableRow>
                             <TableCell sx={{ fontWeight: 700 }}>Địa chỉ IP</TableCell>
-                            <TableCell sx={{ fontWeight: 700 }}>Tên máy / Hostname</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>Tên thiết bị (Host)</TableCell>
                             <TableCell sx={{ fontWeight: 700 }}>MAC Address</TableCell>
-                            <TableCell sx={{ fontWeight: 700 }}>Loại Lease</TableCell>
-                            <TableCell sx={{ fontWeight: 700 }}>Thời hạn Lease</TableCell>
+                            <TableCell sx={{ fontWeight: 700 }}>Trạng thái</TableCell>
                             <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>Thao tác</TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
-                          {(!mikrotikStatus.dhcpLeases || mikrotikStatus.dhcpLeases.length === 0) ? (
-                            <TableRow>
-                              <TableCell colSpan={6} sx={{ textAlign: 'center', py: 3, color: 'text.secondary' }}>
-                                {mikrotikStatus.isApiConnected ? 'Không có thiết bị DHCP lease nào' : 'Chưa kết nối REST API để đọc bảng DHCP Leases (Nhấn Cấu hình API để kết nối)'}
+                          {filteredLeases.map((lease, idx) => (
+                            <TableRow key={lease.id || idx}>
+                              <TableCell sx={{ fontWeight: 700, fontFamily: 'monospace' }}>
+                                {lease.ip}
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                  {lease.hostname || 'Chưa đặt tên'}
+                                </Typography>
+                                {lease.comment && (
+                                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                    {lease.comment}
+                                  </Typography>
+                                )}
+                              </TableCell>
+                              <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                                {lease.mac}
+                              </TableCell>
+                              <TableCell>
+                                <Label variant="soft" color={lease.status === 'bound' ? 'success' : 'default'}>
+                                  {lease.status}
+                                </Label>
+                              </TableCell>
+                              <TableCell sx={{ textAlign: 'right' }}>
+                                <Stack direction="row" spacing={1} justifyContent="flex-end">
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    color="primary"
+                                    startIcon={<Zap size={14} />}
+                                    disabled={wolLoadingMac === lease.mac}
+                                    onClick={() => handleSendWol(lease.mac)}
+                                  >
+                                    {wolLoadingMac === lease.mac ? 'Đang gửi...' : 'Bật máy (WoL)'}
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    color="inherit"
+                                    startIcon={<SlidersHorizontal size={14} />}
+                                    onClick={() => handleOpenAddQueue(lease.ip, lease.hostname)}
+                                  >
+                                    Bóp Bandwidth
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    color="info"
+                                    startIcon={<ArrowUpDown size={14} />}
+                                    onClick={() => handleOpenAddNat(lease.ip, lease.hostname)}
+                                  >
+                                    Mở Cổng
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    startIcon={<Plus size={14} />}
+                                    onClick={() => handleOpenAddTarget(lease.ip, lease.hostname)}
+                                  >
+                                    Theo dõi
+                                  </Button>
+                                </Stack>
                               </TableCell>
                             </TableRow>
-                          ) : (
-                            mikrotikStatus.dhcpLeases
-                              .filter(l => {
-                                const q = (leaseSearch || '').trim().toLowerCase();
-                                if (!q) return true;
-                                return (
-                                  (l.ip && l.ip.toLowerCase().includes(q)) ||
-                                  (l.hostname && l.hostname.toLowerCase().includes(q)) ||
-                                  (l.mac && l.mac.toLowerCase().includes(q)) ||
-                                  (l.comment && l.comment.toLowerCase().includes(q))
-                                );
-                              })
-                              .map((lease, idx) => (
-                              <TableRow key={lease.id || idx} hover>
-                                <TableCell sx={{ fontFamily: 'monospace', fontWeight: 700 }}>{lease.ip}</TableCell>
-                                <TableCell sx={{ fontWeight: 600 }}>
-                                  {lease.hostname || lease.comment || 'Thiết bị LAN'}
-                                  {lease.comment && lease.hostname !== lease.comment && (
-                                    <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
-                                      {lease.comment}
-                                    </Typography>
-                                  )}
-                                </TableCell>
-                                <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{lease.mac}</TableCell>
-                                <TableCell>
-                                  <Label variant="soft" color={lease.dynamic ? 'info' : 'success'}>
-                                    {lease.dynamic ? 'Dynamic' : 'Static'}
-                                  </Label>
-                                </TableCell>
-                                <TableCell sx={{ fontSize: '0.8rem', color: 'text.secondary' }}>{lease.expiresAfter || '--'}</TableCell>
-                                <TableCell sx={{ textAlign: 'right' }}>
-                                  <Stack direction="row" spacing={1} justifyContent="flex-end">
-                                    {lease.mac && lease.mac.length >= 11 && (
-                                      <Tooltip title="Đánh thức thiết bị qua Wake-on-LAN">
-                                        <Button
-                                          size="small"
-                                          variant="outlined"
-                                          color="warning"
-                                          disabled={wolLoadingMac === lease.mac}
-                                          startIcon={<Zap size={14} />}
-                                          onClick={() => handleWakeOnLan(lease.mac, lease.hostname || lease.ip)}
-                                          sx={{ minWidth: 0, px: 1 }}
-                                        >
-                                          {wolLoadingMac === lease.mac ? 'Đang gửi...' : 'WoL'}
-                                        </Button>
-                                      </Tooltip>
-                                    )}
-                                    <Tooltip title="Giới hạn tốc độ mạng (Rate Limit) cho IP này">
-                                      <Button
-                                        size="small"
-                                        variant="outlined"
-                                        color="info"
-                                        startIcon={<Sliders size={14} />}
-                                        onClick={() => handleOpenQueueLimit(lease.ip, lease.hostname || lease.ip)}
-                                        sx={{ minWidth: 0, px: 1 }}
-                                      >
-                                        Giới hạn
-                                      </Button>
-                                    </Tooltip>
-                                    <Button
-                                      size="small"
-                                      variant="outlined"
-                                      startIcon={<Plus size={14} />}
-                                      onClick={() => handleOpenAddTarget(lease.ip, lease.hostname || `LAN Device (${lease.ip})`)}
-                                      sx={{ minWidth: 0, px: 1 }}
-                                    >
-                                      Theo dõi
-                                    </Button>
-                                  </Stack>
-                                </TableCell>
-                              </TableRow>
-                            ))
-                          )}
+                          ))}
                         </TableBody>
                       </Table>
                     </TableContainer>
                   </Card>
                 )}
 
-                {/* 2. Simple Queues (Bandwidth & Rate Limit) View */}
+                {/* Sub-Tab 2: Simple Queues */}
                 {mikrotikSubTab === 'queues' && (
                   <Card sx={{ p: 3 }}>
                     <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2} sx={{ mb: 2 }}>
                       <Box>
                         <Typography variant="h6" sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Sliders size={20} color={theme.palette.primary.main} /> Quản lý Băng thông & Giới hạn Tốc độ (Simple Queues)
+                          <SlidersHorizontal size={20} color={theme.palette.primary.main} /> Quản lý Băng thông & Giới hạn Tốc độ (Simple Queues)
                         </Typography>
                         <Typography variant="body2" sx={{ color: 'text.secondary' }}>
                           Thiết lập mức trần Upload/Download theo từng IP thiết bị hoặc dải mạng để tránh nghẽn mạng
@@ -1952,7 +2414,7 @@ export default function NetworkMonitorView() {
                       </Stack>
                     </Stack>
 
-                    {loadingQueues ? (
+                    {loadingQueues && mikrotikQueues.length === 0 ? (
                       <LinearProgress sx={{ my: 3, borderRadius: 1.5 }} />
                     ) : (
                       <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
@@ -2033,7 +2495,7 @@ export default function NetworkMonitorView() {
                   </Card>
                 )}
 
-                {/* 3. Port Forwarding & NAT Rules View */}
+                {/* Sub-Tab 3: NAT & Firewall */}
                 {mikrotikSubTab === 'nat' && (
                   <Card sx={{ p: 3 }}>
                     <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'center' }} spacing={2} sx={{ mb: 2 }}>
@@ -2045,12 +2507,45 @@ export default function NetworkMonitorView() {
                           Các quy tắc NAT / Firewall trên RouterOS điều phối lưu lượng mạng ra vào
                         </Typography>
                       </Box>
-                      <Button size="small" variant="outlined" startIcon={<RefreshCw size={14} />} onClick={loadMikrotikNat}>
-                        Làm mới
-                      </Button>
+                      <Stack direction="row" spacing={1.5}>
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          startIcon={<Layers size={16} />}
+                          onClick={handleOpenNatTemplates}
+                          sx={{ fontWeight: 700 }}
+                        >
+                          Mẫu NAT có sẵn
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          color="primary"
+                          startIcon={<Plus size={16} />}
+                          onClick={() => {
+                            setNatForm({
+                              chain: 'dstnat',
+                              action: 'dst-nat',
+                              protocol: 'tcp',
+                              dstPort: '',
+                              toAddresses: '',
+                              toPorts: '',
+                              inInterface: '',
+                              outInterface: '',
+                              comment: ''
+                            });
+                            setNatFormDialogOpen(true);
+                          }}
+                          sx={{ fontWeight: 700 }}
+                        >
+                          Tạo NAT
+                        </Button>
+                        <Button size="small" variant="outlined" startIcon={<RefreshCw size={14} />} onClick={() => loadMikrotikNat(false)}>
+                          Làm mới
+                        </Button>
+                      </Stack>
                     </Stack>
 
-                    {loadingNat ? (
+                    {loadingNat && mikrotikNatRules.length === 0 ? (
                       <LinearProgress sx={{ my: 3, borderRadius: 1.5 }} />
                     ) : (
                       <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
@@ -2061,14 +2556,15 @@ export default function NetworkMonitorView() {
                               <TableCell sx={{ fontWeight: 700 }}>Giao thức & Cổng đến</TableCell>
                               <TableCell sx={{ fontWeight: 700 }}>Chuyển tiếp đến (To IP:Port)</TableCell>
                               <TableCell sx={{ fontWeight: 700 }}>Ghi chú / Comment</TableCell>
-                              <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>Trạng thái</TableCell>
+                              <TableCell sx={{ fontWeight: 700 }}>Trạng thái</TableCell>
+                              <TableCell sx={{ fontWeight: 700, textAlign: 'right' }}>Thao tác</TableCell>
                             </TableRow>
                           </TableHead>
                           <TableBody>
                             {mikrotikNatRules.length === 0 ? (
                               <TableRow>
-                                <TableCell colSpan={5} sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>
-                                  Không tìm thấy quy tắc NAT nào trên RouterOS.
+                                <TableCell colSpan={6} sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>
+                                  Không tìm thấy quy tắc NAT nào trên RouterOS. Nhấn "Mẫu NAT có sẵn" để tạo nhanh các cấu hình thông dụng.
                                 </TableCell>
                               </TableRow>
                             ) : (
@@ -2085,13 +2581,13 @@ export default function NetworkMonitorView() {
                                     </Stack>
                                   </TableCell>
                                   <TableCell sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
-                                    {rule.protocol !== 'all' ? `${rule.protocol.toUpperCase()} : ${rule.dstPort || 'Any'}` : 'All Traffic'}
+                                    {rule.protocol !== 'all' ? `${rule.protocol.toUpperCase()} : ${rule.dstPort || 'Any'}` : (rule.outInterface ? `Out: ${rule.outInterface}` : 'All Traffic')}
                                   </TableCell>
                                   <TableCell sx={{ fontFamily: 'monospace', fontWeight: 700, color: 'primary.main' }}>
                                     {rule.toAddresses ? `${rule.toAddresses}${rule.toPorts ? ':' + rule.toPorts : ''}` : '--'}
                                   </TableCell>
                                   <TableCell sx={{ color: 'text.secondary', fontSize: '0.8rem' }}>{rule.comment || '--'}</TableCell>
-                                  <TableCell sx={{ textAlign: 'right' }}>
+                                  <TableCell>
                                     <FormControlLabel
                                       control={
                                         <Switch
@@ -2104,6 +2600,15 @@ export default function NetworkMonitorView() {
                                       label={!rule.disabled ? 'Bật' : 'Tắt'}
                                       sx={{ m: 0 }}
                                     />
+                                  </TableCell>
+                                  <TableCell sx={{ textAlign: 'right' }}>
+                                    <IconButton
+                                      size="small"
+                                      color="error"
+                                      onClick={() => setConfirmDeleteNatId(rule.id)}
+                                    >
+                                      <Trash2 size={15} />
+                                    </IconButton>
                                   </TableCell>
                                 </TableRow>
                               ))
@@ -2118,8 +2623,160 @@ export default function NetworkMonitorView() {
             )
           )}
 
+          {/* OPENWRT / IMMORTALWRT GATEWAY VIEW */}
+          {managedGateways.length > 0 && (activeGatewayType === 'openwrt' || activeGatewayType === 'immortalwrt' || activeGatewayType === 'generic') && (
+            <OpenWrtSection
+              status={openwrtStatus}
+              loading={loadingOpenwrt}
+              onRestartNetwork={handleOpenwrtRestartNetwork}
+              onReboot={handleOpenwrtReboot}
+              onOpenConfig={() => handleOpenEditDevice(currentGatewayDevice || { role: 'gateway', type: 'openwrt', host: '192.168.1.1', port: 80 })}
+              onOpenAddTarget={handleOpenAddTarget}
+            />
+          )}
+        </Stack>
+      </Box>
+
+      {/* ==================================================== */}
+      {/* TAB 3: ROUTER & WI-FI MESH MANAGEMENT */}
+      {/* ==================================================== */}
+      <Box sx={{ display: currentTab === 3 ? 'block' : 'none' }}>
+        <Stack spacing={3}>
+          {/* Router / Mesh Device Selector Toolbar */}
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            alignItems={{ xs: 'flex-start', md: 'center' }}
+            justifyContent="space-between"
+            spacing={2}
+            sx={{ flexWrap: 'wrap', gap: 1.5 }}
+          >
+            {/* Dynamic Router & Mesh Switchers */}
+            <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flexWrap: 'wrap', gap: 1 }}>
+              {managedRouterMeshes.map(r => {
+                const active = currentRouterMeshDevice?.id === r.id;
+                const getIcon = (type) => {
+                  if (type === 'tplink_deco') return <Radio size={16} />;
+                  if (type === 'zte') return <Zap size={16} />;
+                  if (type === 'gecoos') return <RouterIcon size={16} />;
+                  return <Wifi size={16} />;
+                };
+                return (
+                  <Button
+                    key={r.id}
+                    variant={active ? 'contained' : 'outlined'}
+                    color="primary"
+                    startIcon={getIcon(r.type)}
+                    onClick={() => {
+                      setSelectedRouterDeviceId(r.id);
+                      setSelectedRouterHost(r.host);
+                    }}
+                    sx={{ fontWeight: 700, borderRadius: 2 }}
+                  >
+                    {r.name} ({r.host})
+                  </Button>
+                );
+              })}
+            </Stack>
+
+            {/* SuperAdmin CRUD */}
+            {isSuperAdmin && (
+              <Stack direction="row" spacing={1} alignItems="center">
+                {currentRouterMeshDevice && (
+                  <Tooltip title="Chỉnh sửa thiết bị này">
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="inherit"
+                      startIcon={<Edit2 size={15} />}
+                      onClick={() => handleOpenEditDevice(currentRouterMeshDevice)}
+                      sx={{ fontWeight: 700 }}
+                    >
+                      Sửa
+                    </Button>
+                  </Tooltip>
+                )}
+
+                {currentRouterMeshDevice && (
+                  <Tooltip title="Xóa thiết bị khỏi quản lý">
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="error"
+                      startIcon={<Trash2 size={15} />}
+                      onClick={() => setConfirmDeleteDeviceId(currentRouterMeshDevice.id)}
+                      sx={{ fontWeight: 700 }}
+                    >
+                      Xóa
+                    </Button>
+                  </Tooltip>
+                )}
+
+                <Button
+                  size="small"
+                  variant="contained"
+                  color="primary"
+                  startIcon={<Plus size={15} />}
+                  onClick={() => handleOpenAddDevice('router_mesh')}
+                  sx={{ fontWeight: 700 }}
+                >
+                  + Thêm Router/Mesh
+                </Button>
+              </Stack>
+            )}
+          </Stack>
+
+          {/* Empty State when no Router / Mesh configured */}
+          {managedRouterMeshes.length === 0 && (
+            <Card sx={{ p: 5, textAlign: 'center', bgcolor: 'background.paper', borderRadius: 2 }}>
+              <Box sx={{ color: 'text.secondary', display: 'flex', justifyContent: 'center', mb: 2 }}>
+                <Wifi size={56} />
+              </Box>
+              <Typography variant="h5" sx={{ fontWeight: 800, mb: 1 }}>
+                Chưa có thiết bị Router / Wi-Fi Mesh nào được quản lý
+              </Typography>
+              <Typography variant="body2" sx={{ color: 'text.secondary', mb: 3, maxWidth: 500, mx: 'auto' }}>
+                Hệ thống chưa kết nối thiết bị Router hoặc Wi-Fi Mesh nào. Bạn có thể thêm thiết bị Xiaomi Mesh, TP-Link Deco, ZTE EasyMesh hoặc Gecoos AP để theo dõi topology và thiết bị kết nối.
+              </Typography>
+              {isSuperAdmin && (
+                <Button
+                  variant="contained"
+                  color="primary"
+                  startIcon={<Plus size={16} />}
+                  onClick={() => handleOpenAddDevice('router_mesh')}
+                  sx={{ fontWeight: 700 }}
+                >
+                  Thêm Router/Mesh Ngay
+                </Button>
+              )}
+            </Card>
+          )}
+
+          {/* TP-LINK DECO MESH VIEW */}
+          {managedRouterMeshes.length > 0 && activeRouterMeshType === 'tplink_deco' && (
+            <TPLinkDecoSection
+              status={decoStatus}
+              loading={loadingDeco}
+              onRestartWifi={handleDecoRestartWifi}
+              onReboot={handleDecoReboot}
+              onOpenConfig={() => handleOpenEditDevice(currentRouterMeshDevice || { role: 'router_mesh', type: 'tplink_deco', host: '192.168.1.1', port: 80 })}
+              onOpenAddTarget={handleOpenAddTarget}
+            />
+          )}
+
+          {/* ZTE EASYMESH & ONT VIEW */}
+          {managedRouterMeshes.length > 0 && activeRouterMeshType === 'zte' && (
+            <ZTESection
+              status={zteStatus}
+              loading={loadingZte}
+              onRestartWifi={handleZteRestartWifi}
+              onReboot={handleZteReboot}
+              onOpenConfig={() => handleOpenEditDevice(currentRouterMeshDevice || { role: 'router_mesh', type: 'zte', host: '192.168.1.1', port: 80 })}
+              onOpenAddTarget={handleOpenAddTarget}
+            />
+          )}
+
           {/* XIAOMI & GECOOS AP VIEW */}
-          {selectedRouterType !== 'mikrotik' && (
+          {managedRouterMeshes.length > 0 && (activeRouterMeshType === 'xiaomi' || activeRouterMeshType === 'gecoos' || activeRouterMeshType === 'generic') && (
             loadingRouter ? (
               <LinearProgress sx={{ my: 4, borderRadius: 2 }} />
             ) : !routerStatus ? (
@@ -2368,7 +3025,7 @@ export default function NetworkMonitorView() {
               </Stack>
             )
           )}
-        </Box>
+        </Stack>
       </Box>
 
       {/* Target Modal Dialog (Add / Edit) */}
@@ -2750,6 +3407,209 @@ export default function NetworkMonitorView() {
           </DialogActions>
         </form>
       </Dialog>
+      {/* NAT Templates Dialog */}
+      <Dialog open={natTemplateDialogOpen} onClose={() => setNatTemplateDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Layers size={20} color={theme.palette.primary.main} /> Tập Lệnh Mẫu NAT / Port Forwarding Cơ Bản
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2.5 }}>
+            Chọn mẫu cấu hình NAT thường dùng bên dưới để tạo quy tắc chuyển tiếp cổng chỉ với 1 click.
+          </Typography>
+          <Grid container spacing={2}>
+            {natTemplates.map((tpl) => (
+              <Grid item xs={12} sm={6} key={tpl.id}>
+                <Card
+                  variant="outlined"
+                  sx={{
+                    p: 2,
+                    height: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    borderRadius: 2,
+                    cursor: 'pointer',
+                    '&:hover': { borderColor: 'primary.main', bgcolor: alpha(theme.palette.primary.main, 0.04) }
+                  }}
+                  onClick={() => handleApplyNatTemplate(tpl)}
+                >
+                  <Box>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.75 }}>
+                      <Label variant="soft" color={tpl.chain === 'dstnat' ? 'warning' : 'primary'}>
+                        {tpl.chain}
+                      </Label>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                        {tpl.title}
+                      </Typography>
+                    </Stack>
+                    <Typography variant="body2" sx={{ color: 'text.secondary', fontSize: '0.8rem', mb: 1.5 }}>
+                      {tpl.description}
+                    </Typography>
+                  </Box>
+                  <Button size="small" variant="contained" color="primary" sx={{ alignSelf: 'flex-start', fontWeight: 700 }}>
+                    Sử dụng mẫu này
+                  </Button>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+        </DialogContent>
+        <DialogActions sx={{ p: 2.5 }}>
+          <Button onClick={() => setNatTemplateDialogOpen(false)}>Đóng</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Custom NAT Rule Dialog */}
+      <Dialog open={natFormDialogOpen} onClose={() => setNatFormDialogOpen(false)} maxWidth="sm" fullWidth>
+        <form onSubmit={handleSaveNatRule}>
+          <DialogTitle sx={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Shield size={20} color={theme.palette.primary.main} /> Cấu Hình Quy Tắc NAT / Port Forwarding
+          </DialogTitle>
+          <DialogContent>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Chain</InputLabel>
+                    <Select
+                      value={natForm.chain}
+                      label="Chain"
+                      onChange={(e) => setNatForm(prev => ({ ...prev, chain: e.target.value }))}
+                    >
+                      <MenuItem value="dstnat">dstnat (Chuyển tiếp cổng)</MenuItem>
+                      <MenuItem value="srcnat">srcnat (Masquerade / Loopback)</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={6}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Action</InputLabel>
+                    <Select
+                      value={natForm.action}
+                      label="Action"
+                      onChange={(e) => setNatForm(prev => ({ ...prev, action: e.target.value }))}
+                    >
+                      <MenuItem value="dst-nat">dst-nat</MenuItem>
+                      <MenuItem value="masquerade">masquerade</MenuItem>
+                      <MenuItem value="src-nat">src-nat</MenuItem>
+                      <MenuItem value="redirect">redirect</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+              </Grid>
+
+              {natForm.chain === 'dstnat' && (
+                <>
+                  <Grid container spacing={2}>
+                    <Grid item xs={6}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Giao thức (Protocol)</InputLabel>
+                        <Select
+                          value={natForm.protocol}
+                          label="Giao thức (Protocol)"
+                          onChange={(e) => setNatForm(prev => ({ ...prev, protocol: e.target.value }))}
+                        >
+                          <MenuItem value="tcp">TCP</MenuItem>
+                          <MenuItem value="udp">UDP</MenuItem>
+                          <MenuItem value="all">Tất cả</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={6}>
+                      <TextField
+                        size="small"
+                        label="Cổng đến ngoài WAN (Dst. Port)"
+                        value={natForm.dstPort}
+                        onChange={(e) => setNatForm(prev => ({ ...prev, dstPort: e.target.value }))}
+                        placeholder="VD: 80, 443, 3389"
+                        fullWidth
+                      />
+                    </Grid>
+                  </Grid>
+
+                  <Grid container spacing={2}>
+                    <Grid item xs={7}>
+                      <TextField
+                        size="small"
+                        label="IP đích trong LAN (To Addresses)"
+                        value={natForm.toAddresses}
+                        onChange={(e) => setNatForm(prev => ({ ...prev, toAddresses: e.target.value }))}
+                        placeholder="VD: 192.168.1.50"
+                        required
+                        fullWidth
+                      />
+                    </Grid>
+                    <Grid item xs={5}>
+                      <TextField
+                        size="small"
+                        label="Cổng đích LAN (To Ports)"
+                        value={natForm.toPorts}
+                        onChange={(e) => setNatForm(prev => ({ ...prev, toPorts: e.target.value }))}
+                        placeholder="VD: 8080"
+                        fullWidth
+                      />
+                    </Grid>
+                  </Grid>
+                </>
+              )}
+
+              {natForm.chain === 'srcnat' && (
+                <TextField
+                  size="small"
+                  label="Cổng mạng xuất (Out Interface)"
+                  value={natForm.outInterface}
+                  onChange={(e) => setNatForm(prev => ({ ...prev, outInterface: e.target.value }))}
+                  placeholder="VD: pppoe-out1 hoặc ether1"
+                  helperText="Để trống nếu muốn áp dụng cho toàn bộ interfaces"
+                  fullWidth
+                />
+              )}
+
+              <TextField
+                size="small"
+                label="Ghi chú / Comment"
+                value={natForm.comment}
+                onChange={(e) => setNatForm(prev => ({ ...prev, comment: e.target.value }))}
+                placeholder="VD: Forward Web Server, RDP Desktop..."
+                fullWidth
+              />
+            </Stack>
+          </DialogContent>
+          <DialogActions sx={{ p: 2.5 }}>
+            <Button onClick={() => setNatFormDialogOpen(false)}>Hủy</Button>
+            <Button type="submit" variant="contained" color="primary" sx={{ fontWeight: 700 }}>
+              Áp dụng quy tắc
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
+
+      {/* Delete NAT Rule Confirm Dialog */}
+      <ConfirmDialog
+        open={Boolean(confirmDeleteNatId)}
+        title="Xóa quy tắc NAT / Firewall?"
+        message="Bạn có chắc muốn xóa quy tắc chuyển tiếp cổng NAT này khỏi MikroTik RouterOS?"
+        onConfirm={() => handleDeleteNatRule(confirmDeleteNatId)}
+        onClose={() => setConfirmDeleteNatId(null)}
+      />
+
+      {/* SuperAdmin Managed Device Add/Edit Dialog */}
+      <NetworkDeviceDialog
+        open={deviceDialogOpen}
+        onClose={() => setDeviceDialogOpen(false)}
+        onSave={handleSaveDevice}
+        editingDevice={editingDevice}
+        defaultRole={deviceDefaultRole}
+      />
+
+      {/* Delete Managed Device Confirm Dialog */}
+      <ConfirmDialog
+        open={Boolean(confirmDeleteDeviceId)}
+        title="Xóa thiết bị mạng khỏi hệ thống?"
+        message="Bạn có chắc muốn xóa thiết bị này khỏi danh sách quản lý và giám sát tập trung?"
+        onConfirm={() => handleDeleteDevice(confirmDeleteDeviceId)}
+        onClose={() => setConfirmDeleteDeviceId(null)}
+      />
     </Box>
   );
 }

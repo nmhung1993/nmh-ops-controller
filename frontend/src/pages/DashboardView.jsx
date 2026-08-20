@@ -27,6 +27,7 @@ import {
   Server
 } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 import { useWebSocket } from '../context/WebSocketContext';
 import { apiRequest } from '../utils/api';
 import {
@@ -44,15 +45,18 @@ const TIME_RANGES = [
   { value: '8h', labelVi: '8 tiếng', labelEn: '8h', ms: 8 * 60 * 60 * 1000, limit: 500, format: 'time' },
   { value: '24h', labelVi: '1 ngày', labelEn: '24h', ms: 24 * 60 * 60 * 1000, limit: 1000, format: 'dateTimeShort' },
   { value: '7d', labelVi: '1 tuần', labelEn: '7d', ms: 7 * 24 * 60 * 60 * 1000, limit: 2000, format: 'dateTimeShort' },
-  { value: '30d', labelVi: '1 tháng', labelEn: '30d', ms: 30 * 24 * 60 * 60 * 1000, limit: 3000, format: 'date' },
-  { value: '6M', labelVi: '6 tháng', labelEn: '6M', ms: 180 * 24 * 60 * 60 * 1000, limit: 4000, format: 'date' },
-  { value: '1y', labelVi: '1 năm', labelEn: '1y', ms: 365 * 24 * 60 * 60 * 1000, limit: 5000, format: 'date' }
+  { value: '30d', labelVi: '1 tháng', labelEn: '30d', ms: 30 * 24 * 60 * 60 * 1000, limit: 3000, format: 'date' }
 ];
 
 export default function DashboardView() {
   const theme = useTheme();
   const { lang, t } = useLanguage();
+  const { isSuperAdmin, user } = useAuth();
   const { selectedHost, selectedHostId, telemetryMap } = useWebSocket();
+
+  const canViewPower = isSuperAdmin || user?.permissions?.metrics?.power !== false;
+  const canViewTemp = isSuperAdmin || user?.permissions?.metrics?.temperature !== false;
+  const canViewSmart = isSuperAdmin || user?.permissions?.metrics?.smart !== false;
 
   const [timeRange, setTimeRange] = useState('60m');
   const [historyData, setHistoryData] = useState([]);
@@ -134,7 +138,17 @@ export default function DashboardView() {
   const tempVal = hottestSensor?.celsius ?? null;
   const tempSensorName = hottestSensor?.name || (tempVal !== null ? 'Cảm biến nhiệt độ' : t('dashboard.sensorUnavailable'));
 
-  const powerWatts = hardware.power?.totalWatts ?? (powerParts.length > 0 ? powerParts.reduce((sum, p) => sum + Number(p.watts || 0), 0) : null);
+  function cleanPower(val) {
+    if (val === null || val === undefined) return 0;
+    let num = Number(val);
+    if (!Number.isFinite(num) || num <= 0) return 0;
+    if (num > 1000 && num <= 2000000) num = num / 1000;
+    if (num > 2500) return 0;
+    return num;
+  }
+
+  const rawPowerWatts = hardware.power?.totalWatts ?? (powerParts.length > 0 ? powerParts.reduce((sum, p) => sum + Number(p.watts || 0), 0) : null);
+  const powerWatts = rawPowerWatts !== null ? cleanPower(rawPowerWatts) : null;
   const powerDetailStr = powerParts.length > 0
     ? t('dashboard.powerPartsMeasured', { count: powerParts.length })
     : (Number.isFinite(powerWatts) ? 'Công suất hệ thống' : t('dashboard.sensorUnavailable'));
@@ -187,71 +201,100 @@ export default function DashboardView() {
   const cpuTempCharts = useMemo(() => {
     return cpuSensors.map((sensor, sensorIdx) => {
       const sensorName = sensor.name || (cpuSensors.length > 1 ? `CPU #${sensorIdx + 1}` : 'CPU');
-      const seriesData = chartPoints.map((item) => {
+      const maxSeries = chartPoints.map((item) => {
         const itemTemps = Array.isArray(item.hardware?.temperatures)
           ? item.hardware.temperatures
           : Array.isArray(item.hardware?.sensors)
           ? item.hardware.sensors.filter((s) => Number.isFinite(s.celsius))
           : [];
         const match = itemTemps.find((s) => s.name === sensor.name) || itemTemps[sensorIdx] || itemTemps[0];
-        return match && Number.isFinite(match.celsius) ? Number(match.celsius).toFixed(1) : (sensor.celsius ? Number(sensor.celsius).toFixed(1) : '0');
+        const val = match?.max ?? match?.celsius ?? sensor.celsius;
+        return Number.isFinite(Number(val)) ? Number(val).toFixed(1) : '0';
+      });
+      const minSeries = chartPoints.map((item) => {
+        const itemTemps = Array.isArray(item.hardware?.temperatures)
+          ? item.hardware.temperatures
+          : Array.isArray(item.hardware?.sensors)
+          ? item.hardware.sensors.filter((s) => Number.isFinite(s.celsius))
+          : [];
+        const match = itemTemps.find((s) => s.name === sensor.name) || itemTemps[sensorIdx] || itemTemps[0];
+        const val = match?.min ?? match?.celsius ?? sensor.celsius;
+        return Number.isFinite(Number(val)) ? Number(val).toFixed(1) : '0';
       });
 
       return {
         id: `cpu_temp_${sensorIdx}`,
         name: sensorName,
         currentCelsius: sensor.celsius ?? null,
-        series: [{ name: `${sensorName} (°C)`, data: seriesData }]
+        series: [
+          { name: `${sensorName} Max (°C)`, data: maxSeries },
+          { name: `${sensorName} Min (°C)`, data: minSeries }
+        ]
       };
     });
   }, [cpuSensors, chartPoints]);
 
-  // Build Total Power series
+  // Build Total Power series (Max & Min)
   const powerChartSeries = useMemo(() => {
-    const seriesData = chartPoints.map((item) => {
+    const maxData = chartPoints.map((item) => {
       const hw = item.hardware || item.hardwareSensors || {};
       const parts = Array.isArray(hw.power?.parts) ? hw.power.parts : [];
-      const val = hw.power?.totalWatts ?? (parts.length > 0 ? parts.reduce((sum, p) => sum + Number(p.watts || 0), 0) : 0);
-      return Number(val || 0).toFixed(1);
+      const rawVal = hw.power?.max ?? hw.power?.totalWatts ?? (parts.length > 0 ? parts.reduce((sum, p) => sum + Number(p.watts || 0), 0) : 0);
+      return cleanPower(rawVal).toFixed(1);
     });
-    return [{ name: 'Công suất (W)', data: seriesData }];
+    const minData = chartPoints.map((item) => {
+      const hw = item.hardware || item.hardwareSensors || {};
+      const parts = Array.isArray(hw.power?.parts) ? hw.power.parts : [];
+      const rawVal = hw.power?.min ?? hw.power?.totalWatts ?? (parts.length > 0 ? parts.reduce((sum, p) => sum + Number(p.watts || 0), 0) : 0);
+      return cleanPower(rawVal).toFixed(1);
+    });
+    return [
+      { name: 'Công suất Max (W)', data: maxData },
+      { name: 'Công suất Min (W)', data: minData }
+    ];
   }, [chartPoints]);
 
   const chartCpuSeries = useMemo(() => [
-    { name: 'CPU %', data: chartPoints.map((item) => Number(item.cpu?.usage || 0).toFixed(1)) }
+    { name: 'CPU Max (Đỉnh %)', data: chartPoints.map((item) => Number(item.cpu?.max ?? item.cpu?.usage ?? 0).toFixed(1)) },
+    { name: 'CPU Min (Đáy %)', data: chartPoints.map((item) => Number(item.cpu?.min ?? item.cpu?.usage ?? 0).toFixed(1)) }
   ], [chartPoints]);
 
   const chartMemSeries = useMemo(() => [
-    { name: 'RAM %', data: chartPoints.map((item) => Number(item.memory?.percent || 0).toFixed(1)) }
+    { name: 'RAM Max (Đỉnh %)', data: chartPoints.map((item) => Number(item.memory?.max ?? item.memory?.percent ?? 0).toFixed(1)) },
+    { name: 'RAM Min (Đáy %)', data: chartPoints.map((item) => Number(item.memory?.min ?? item.memory?.percent ?? 0).toFixed(1)) }
   ], [chartPoints]);
 
   const cpuChartOptions = useMemo(() => ({
-    colors: [theme.palette.primary.main],
+    colors: [theme.palette.primary.main, theme.palette.info.main],
+    stroke: { curve: 'smooth', width: [2.5, 1.5] },
     xaxis: { categories: chartTimestamps, labels: { rotate: -30, rotateAlways: chartPoints.length > 20 } },
     yaxis: { min: 0, max: 100, labels: { formatter: (v) => `${v}%` } },
     tooltip: { y: { formatter: (v) => `${v}%` } }
-  }), [theme.palette.primary.main, chartTimestamps, chartPoints.length]);
+  }), [theme.palette.primary.main, theme.palette.info.main, chartTimestamps, chartPoints.length]);
 
   const memChartOptions = useMemo(() => ({
-    colors: [theme.palette.info.main],
+    colors: [theme.palette.info.main, theme.palette.primary.light],
+    stroke: { curve: 'smooth', width: [2.5, 1.5] },
     xaxis: { categories: chartTimestamps, labels: { rotate: -30, rotateAlways: chartPoints.length > 20 } },
     yaxis: { min: 0, max: 100, labels: { formatter: (v) => `${v}%` } },
     tooltip: { y: { formatter: (v) => `${v}%` } }
-  }), [theme.palette.info.main, chartTimestamps, chartPoints.length]);
+  }), [theme.palette.info.main, theme.palette.primary.light, chartTimestamps, chartPoints.length]);
 
   const tempChartOptions = useMemo(() => ({
-    colors: [theme.palette.warning.main],
+    colors: [theme.palette.warning.main, theme.palette.info.main],
+    stroke: { curve: 'smooth', width: [2.5, 1.5] },
     xaxis: { categories: chartTimestamps, labels: { rotate: -30, rotateAlways: chartPoints.length > 20 } },
     yaxis: { min: 0, max: 100, labels: { formatter: (v) => `${v}°C` } },
     tooltip: { y: { formatter: (v) => `${v}°C` } }
-  }), [theme.palette.warning.main, chartTimestamps, chartPoints.length]);
+  }), [theme.palette.warning.main, theme.palette.info.main, chartTimestamps, chartPoints.length]);
 
   const powerChartOptions = useMemo(() => ({
-    colors: [theme.palette.error.main],
+    colors: [theme.palette.error.main, theme.palette.warning.main],
+    stroke: { curve: 'smooth', width: [2.5, 1.5] },
     xaxis: { categories: chartTimestamps, labels: { rotate: -30, rotateAlways: chartPoints.length > 20 } },
     yaxis: { min: 0, labels: { formatter: (v) => `${v} W` } },
     tooltip: { y: { formatter: (v) => `${v} W` } }
-  }), [theme.palette.error.main, chartTimestamps, chartPoints.length]);
+  }), [theme.palette.error.main, theme.palette.warning.main, chartTimestamps, chartPoints.length]);
 
   if (!selectedHost) {
     return (
@@ -393,33 +436,37 @@ export default function DashboardView() {
           </Card>
         </Grid>
 
-        {/* Metric 5: Temperature */}
-        <Grid item xs={6} sm={6} md={4} lg={2}>
-          <Card sx={{ p: 2, height: 1, overflow: 'hidden' }}>
-            <Stack spacing={0.75}>
-              <Box sx={{ color: 'warning.main' }}><Thermometer size={20} /></Box>
-              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.7rem' }}>{t('dashboard.temperature')}</Typography>
-              <Typography variant="h5" sx={{ fontWeight: 800 }}>{formatTemperature(tempVal)}</Typography>
-              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
-                {tempSensorName}
-              </Typography>
-            </Stack>
-          </Card>
-        </Grid>
+        {/* Metric 5: Temperature (Only if sensor exists and user has permission) */}
+        {canViewTemp && Number.isFinite(tempVal) && tempVal > 0 && (
+          <Grid item xs={6} sm={6} md={4} lg={2}>
+            <Card sx={{ p: 2, height: 1, overflow: 'hidden' }}>
+              <Stack spacing={0.75}>
+                <Box sx={{ color: 'warning.main' }}><Thermometer size={20} /></Box>
+                <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.7rem' }}>{t('dashboard.temperature')}</Typography>
+                <Typography variant="h5" sx={{ fontWeight: 800 }}>{formatTemperature(tempVal)}</Typography>
+                <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
+                  {tempSensorName}
+                </Typography>
+              </Stack>
+            </Card>
+          </Grid>
+        )}
 
-        {/* Metric 6: Power */}
-        <Grid item xs={6} sm={6} md={4} lg={2}>
-          <Card sx={{ p: 2, height: 1, overflow: 'hidden' }}>
-            <Stack spacing={0.75}>
-              <Box sx={{ color: 'error.main' }}><Zap size={20} /></Box>
-              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.7rem' }}>{t('dashboard.power')}</Typography>
-              <Typography variant="h5" sx={{ fontWeight: 800 }}>{formatWatts(powerWatts)}</Typography>
-              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
-                {powerDetailStr}
-              </Typography>
-            </Stack>
-          </Card>
-        </Grid>
+        {/* Metric 6: Power (Only if sensor exists and user has permission) */}
+        {canViewPower && Number.isFinite(powerWatts) && powerWatts > 0 && (
+          <Grid item xs={6} sm={6} md={4} lg={2}>
+            <Card sx={{ p: 2, height: 1, overflow: 'hidden' }}>
+              <Stack spacing={0.75}>
+                <Box sx={{ color: 'error.main' }}><Zap size={20} /></Box>
+                <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.7rem' }}>{t('dashboard.power')}</Typography>
+                <Typography variant="h5" sx={{ fontWeight: 800 }}>{formatWatts(powerWatts)}</Typography>
+                <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontSize: '0.7rem' }}>
+                  {powerDetailStr}
+                </Typography>
+              </Stack>
+            </Card>
+          </Grid>
+        )}
       </Grid>
 
       {/* Trends Section Header with Time Range Selector */}
@@ -508,7 +555,7 @@ export default function DashboardView() {
         </Grid>
 
         {/* Dynamic CPU Temperature Charts (1 for single CPU, 2 for dual Xeon) */}
-        {cpuTempCharts.map((tempChart) => (
+        {canViewTemp && cpuTempCharts.length > 0 && cpuTempCharts.some(c => Number.isFinite(c.currentCelsius) && c.currentCelsius > 0) && cpuTempCharts.map((tempChart) => (
           <Grid item xs={12} md={6} key={tempChart.id}>
             <Card>
               <CardHeader
@@ -528,24 +575,26 @@ export default function DashboardView() {
           </Grid>
         ))}
 
-        {/* Total Power Consumption Chart */}
-        <Grid item xs={12} md={6}>
-          <Card>
-            <CardHeader
-              title={t('dashboard.powerTrend')}
-              subheader={lang === 'vi' ? `Khoảng thời gian: ${currentRangeObj.labelVi}` : `Range: ${currentRangeObj.labelEn}`}
-              titleTypographyProps={{ typography: 'h6', fontWeight: 700 }}
-              action={
-                <Label variant="soft" color="error">
-                  {powerWatts !== null ? `${Number(powerWatts).toFixed(1)} W Live` : '--'}
-                </Label>
-              }
-            />
-            <CardContent sx={{ pt: 1, pb: 2 }}>
-              <Chart type="area" series={powerChartSeries} options={powerChartOptions} height={250} />
-            </CardContent>
-          </Card>
-        </Grid>
+        {/* Total Power Consumption Chart (Only if power sensors exist and user has permission) */}
+        {canViewPower && Number.isFinite(powerWatts) && powerWatts > 0 && (
+          <Grid item xs={12} md={6}>
+            <Card>
+              <CardHeader
+                title={t('dashboard.powerTrend')}
+                subheader={lang === 'vi' ? `Khoảng thời gian: ${currentRangeObj.labelVi}` : `Range: ${currentRangeObj.labelEn}`}
+                titleTypographyProps={{ typography: 'h6', fontWeight: 700 }}
+                action={
+                  <Label variant="soft" color="error">
+                    {powerWatts !== null ? `${Number(powerWatts).toFixed(1)} W Live` : '--'}
+                  </Label>
+                }
+              />
+              <CardContent sx={{ pt: 1, pb: 2 }}>
+                <Chart type="area" series={powerChartSeries} options={powerChartOptions} height={250} />
+              </CardContent>
+            </Card>
+          </Grid>
+        )}
       </Grid>
 
       {/* Storage & Machine Identity & Sensors Grid */}
@@ -600,39 +649,62 @@ export default function DashboardView() {
                   })}
 
                   {/* S.M.A.R.T Physical Disks Health */}
-                  {physicalDisks.length > 0 && (
+                  {canViewSmart && physicalDisks.length > 0 && (
                     <Box sx={{ mt: 2, pt: 2, borderTop: `1px dashed ${theme.palette.divider}` }}>
                       <Typography variant="caption" sx={{ fontWeight: 800, color: 'text.secondary', display: 'block', mb: 1.5, letterSpacing: 0.5 }}>
                         SỨC KHỎE Ổ CỨNG VẬT LÝ (S.M.A.R.T)
                       </Typography>
                       <Stack spacing={1.5}>
                         {physicalDisks.map((pDisk, pIdx) => {
-                          const isHealthy = pDisk.healthStatus === 'Healthy' || pDisk.operationalStatus === 'OK';
+                          const healthPercent = typeof pDisk.healthPercent === 'number'
+                            ? Math.max(0, Math.min(100, Math.round(pDisk.healthPercent)))
+                            : (pDisk.healthStatus === 'Healthy' || pDisk.operationalStatus === 'OK' ? 100 : 50);
+
+                          let healthColor = 'success';
+                          if (healthPercent < 60 || pDisk.healthStatus === 'Unhealthy') healthColor = 'error';
+                          else if (healthPercent < 90 || pDisk.healthStatus === 'Warning') healthColor = 'warning';
+
                           return (
-                            <Stack
+                            <Box
                               key={pIdx}
-                              direction="row"
-                              alignItems="center"
-                              justifyContent="space-between"
                               sx={{
-                                p: 1.25,
+                                p: 1.5,
                                 borderRadius: 1.5,
                                 bgcolor: alpha(theme.palette.background.default, 0.6),
                                 border: `1px solid ${theme.palette.divider}`
                               }}
                             >
-                              <Box sx={{ minWidth: 0, mr: 1 }}>
-                                <Typography variant="subtitle2" noWrap sx={{ fontWeight: 700, fontSize: '0.8125rem' }}>
-                                  {pDisk.name}
-                                </Typography>
-                                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                                  {pDisk.mediaType || 'Disk'} • {pDisk.busType || 'NVMe/SATA'} • {formatBytes(pDisk.size)}
+                              <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                                <Box sx={{ minWidth: 0, mr: 1 }}>
+                                  <Typography variant="subtitle2" noWrap sx={{ fontWeight: 800, fontSize: '0.8125rem' }}>
+                                    {pDisk.name}
+                                  </Typography>
+                                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                    {pDisk.mediaType || 'Disk'} • {pDisk.busType || 'NVMe/SATA'} • {formatBytes(pDisk.size)}
+                                    {pDisk.temperature ? ` • 🌡️ ${pDisk.temperature}°C` : ''}
+                                    {pDisk.powerOnHours ? ` • ⏱️ ${pDisk.powerOnHours.toLocaleString()}h chạy` : ''}
+                                  </Typography>
+                                </Box>
+                                <Label color={healthColor} sx={{ fontWeight: 800 }}>
+                                  {healthPercent}% Sức khỏe
+                                </Label>
+                              </Stack>
+
+                              {/* Visual Health Progress Bar */}
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Box sx={{ flexGrow: 1 }}>
+                                  <LinearProgress
+                                    variant="determinate"
+                                    value={healthPercent}
+                                    color={healthColor}
+                                    sx={{ height: 6, borderRadius: 1, bgcolor: alpha(theme.palette.divider, 0.5) }}
+                                  />
+                                </Box>
+                                <Typography variant="caption" sx={{ fontWeight: 700, minWidth: 32, textAlign: 'right', color: `${healthColor}.main` }}>
+                                  {healthPercent}%
                                 </Typography>
                               </Box>
-                              <Label color={isHealthy ? 'success' : 'error'}>
-                                {pDisk.healthStatus || 'OK'}
-                              </Label>
-                            </Stack>
+                            </Box>
                           );
                         })}
                       </Stack>
@@ -684,8 +756,8 @@ export default function DashboardView() {
           </Card>
         </Grid>
 
-        {/* Hardware Sensors Grid if present */}
-        {allSensors.length > 0 && (
+        {/* Hardware Sensors Grid if present and user has permission */}
+        {allSensors.length > 0 && (canViewPower || canViewTemp) && (
           <Grid item xs={12}>
             <Card>
               <CardHeader
@@ -695,37 +767,43 @@ export default function DashboardView() {
               />
               <CardContent>
                 <Grid container spacing={2}>
-                  {allSensors.map((sensor, idx) => (
-                    <Grid item xs={12} sm={6} md={4} lg={3} key={idx}>
-                      <Box
-                        sx={{
-                          p: 2,
-                          borderRadius: 2,
-                          bgcolor: alpha(theme.palette.grey[500], 0.08),
-                          border: `1px solid ${theme.palette.divider}`
-                        }}
-                      >
-                        <Typography variant="subtitle2" noWrap sx={{ fontWeight: 700 }}>
-                          {sensor.name || `Sensor #${idx + 1}`}
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1 }}>
-                          {sensor.type} • {sensor.source}
-                        </Typography>
-                        <Stack direction="row" spacing={1}>
-                          {Number.isFinite(sensor.celsius) && (
-                            <Label variant="soft" color="warning" startIcon={<Thermometer size={12} />}>
-                              {formatTemperature(sensor.celsius)}
-                            </Label>
-                          )}
-                          {Number.isFinite(sensor.watts) && (
-                            <Label variant="soft" color="error" startIcon={<Zap size={12} />}>
-                              {formatWatts(sensor.watts)}
-                            </Label>
-                          )}
-                        </Stack>
-                      </Box>
-                    </Grid>
-                  ))}
+                  {allSensors
+                    .filter((sensor) => {
+                      if (Number.isFinite(sensor.watts) && !canViewPower) return false;
+                      if (Number.isFinite(sensor.celsius) && !canViewTemp) return false;
+                      return true;
+                    })
+                    .map((sensor, idx) => (
+                      <Grid item xs={12} sm={6} md={4} lg={3} key={idx}>
+                        <Box
+                          sx={{
+                            p: 2,
+                            borderRadius: 2,
+                            bgcolor: alpha(theme.palette.grey[500], 0.08),
+                            border: `1px solid ${theme.palette.divider}`
+                          }}
+                        >
+                          <Typography variant="subtitle2" noWrap sx={{ fontWeight: 700 }}>
+                            {sensor.name || `Sensor #${idx + 1}`}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mb: 1 }}>
+                            {sensor.type} • {sensor.source}
+                          </Typography>
+                          <Stack direction="row" spacing={1}>
+                            {canViewTemp && Number.isFinite(sensor.celsius) && (
+                              <Label variant="soft" color="warning" startIcon={<Thermometer size={12} />}>
+                                {formatTemperature(sensor.celsius)}
+                              </Label>
+                            )}
+                            {canViewPower && Number.isFinite(sensor.watts) && (
+                              <Label variant="soft" color="error" startIcon={<Zap size={12} />}>
+                                {formatWatts(sensor.watts)}
+                              </Label>
+                            )}
+                          </Stack>
+                        </Box>
+                      </Grid>
+                    ))}
                 </Grid>
               </CardContent>
             </Card>

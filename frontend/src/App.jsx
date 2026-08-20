@@ -23,12 +23,19 @@ import PasswordChangeDialog from './pages/PasswordChangeDialog';
 import ErrorBoundary from './components/common/ErrorBoundary';
 
 function MainApp() {
-  const { user, token, isSetupRequired, isLoading } = useAuth();
+  const { user, token, isSetupRequired, isLoading, isSuperAdmin } = useAuth();
+  const ALL_PAGES = ['network', 'docker', 'fleet', 'dashboard', 'processes', 'watchdog', 'scripts', 'activity', 'admin'];
+
+  const isPageAllowed = (page) => {
+    if (page === 'admin') return isSuperAdmin;
+    if (isSuperAdmin) return true;
+    if (user?.permissions?.pages && user.permissions.pages[page] === false) return false;
+    return true;
+  };
+
   const [currentPage, setCurrentPage] = useState(() => {
     const hash = window.location.hash.replace('#', '');
-    return ['fleet', 'dashboard', 'network', 'docker', 'processes', 'watchdog', 'scripts', 'activity', 'admin'].includes(hash)
-      ? hash
-      : 'fleet';
+    return ALL_PAGES.includes(hash) ? hash : 'fleet';
   });
 
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
@@ -37,17 +44,28 @@ function MainApp() {
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.replace('#', '');
-      if (['fleet', 'dashboard', 'network', 'docker', 'processes', 'watchdog', 'scripts', 'activity', 'admin'].includes(hash)) {
+      if (ALL_PAGES.includes(hash) && isPageAllowed(hash)) {
         setCurrentPage(hash);
       }
     };
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
+  }, [user, isSuperAdmin]);
+
+  // Ensure current page is allowed
+  useEffect(() => {
+    if (user && !isPageAllowed(currentPage)) {
+      const firstAllowed = ALL_PAGES.find(p => isPageAllowed(p)) || 'fleet';
+      setCurrentPage(firstAllowed);
+      window.location.hash = `#${firstAllowed}`;
+    }
+  }, [currentPage, user, isSuperAdmin]);
 
   const handleNavigate = (page) => {
-    setCurrentPage(page);
-    window.location.hash = `#${page}`;
+    if (isPageAllowed(page)) {
+      setCurrentPage(page);
+      window.location.hash = `#${page}`;
+    }
   };
 
   if (isLoading) {
@@ -73,7 +91,7 @@ function MainApp() {
         onNavigate={handleNavigate}
         onOpenPasswordDialog={() => setPasswordDialogOpen(true)}
       >
-        <ErrorBoundary>
+        <ErrorBoundary key={currentPage} resetKey={currentPage} onNavigate={handleNavigate}>
           {currentPage === 'fleet' && <FleetView onNavigate={handleNavigate} />}
           {currentPage === 'dashboard' && <DashboardView />}
           {currentPage === 'network' && <NetworkMonitorView />}

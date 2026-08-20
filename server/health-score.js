@@ -31,6 +31,9 @@ function calculateHealthScore(db, mikrotikStatus = null, networkTargets = []) {
     fleetScore = 100;
   } else {
     for (const agent of agents) {
+      // Exclude personal / transient devices if configured
+      if (agent.include_health === 0) continue;
+
       const hostName = getCleanHostName(agent);
       const isOnline = agent.connected && (Date.now() - new Date(agent.last_seen_at).getTime() < 30000);
       if (isOnline) {

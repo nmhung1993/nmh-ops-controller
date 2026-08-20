@@ -53,7 +53,7 @@ export const NAV_COLLAPSED_WIDTH = 88;
 export default function NavSidebar({ openNav, onCloseNav, currentPage, onNavigate, isCollapsed, onToggleCollapse }) {
   const theme = useTheme();
   const { t } = useLanguage();
-  const { isSuperAdmin } = useAuth();
+  const { isSuperAdmin, user } = useAuth();
   const { hosts } = useWebSocket();
   const { settings } = useSystemSettings();
 
@@ -236,6 +236,7 @@ export default function NavSidebar({ openNav, onCloseNav, currentPage, onNavigat
       <List component="nav" sx={{ px: 0, flexGrow: 1 }}>
         {NAV_ITEMS.map((item) => {
           if (item.superAdminOnly && !isSuperAdmin) return null;
+          if (!isSuperAdmin && user?.permissions?.pages && user.permissions.pages[item.id] === false) return null;
 
           const IconComponent = item.icon;
           const active = currentPage === item.id;

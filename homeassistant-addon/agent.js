@@ -4,13 +4,14 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const { exec } = require('child_process');
 const WebSocket = require('ws');
 
 const VERSION = '2.1.5';
 const CONFIG_FILE = argument('--config') || '/data/options.json';
 const STATE_FILE = process.env.WC_STATE_FILE || path.join(path.dirname(CONFIG_FILE), 'windows-controller-state.json');
 const CONNECTION_ATTEMPT_TIMEOUT_MS = Number(process.env.WC_CONNECTION_ATTEMPT_TIMEOUT_MS || 10_000);
-const capabilities = ['telemetry', 'hardware-sensors', 'homeassistant', 'homeassistant.entities'];
+const capabilities = ['telemetry', 'hardware-sensors', 'homeassistant', 'homeassistant.entities', 'system.execute', 'scripts'];
 let config;
 let state;
 let socket = null;
@@ -79,7 +80,23 @@ function connect() {
     if (message.type === 'server.pending') { if (connectionAttemptTimer) clearTimeout(connectionAttemptTimer); connectionAttemptTimer = null; reconnectDelay = 1000; approved = false; state.agentId = message.payload?.agentId || state.agentId; saveState(); console.log(`Home Assistant connector pending approval: ${state.agentId}`); }
     else if (message.type === 'server.approved') { if (connectionAttemptTimer) clearTimeout(connectionAttemptTimer); connectionAttemptTimer = null; reconnectDelay = 1000; approved = true; state.agentId = message.payload?.agentId || state.agentId; saveState(); flush(); console.log(`Home Assistant connector approved: ${state.agentId}`); }
     else if (message.type === 'server.config') send(envelope('agent.config.ack', { version: Number(message.payload?.version || 0) }));
-    else if (message.type === 'server.command') send(envelope('agent.command.result', { commandId: message.payload?.commandId, status: 'failed', error: 'capability_not_supported' }));
+    else if (message.type === 'server.command') {
+      const { commandId, commandType, data = {} } = message.payload || {};
+      if (commandType === 'system.execute') {
+        const script = String(data.command || '').trim();
+        if (!script) {
+          return send(envelope('agent.command.result', { commandId, status: 'failed', error: 'command_empty' }));
+        }
+        exec(script, { timeout: 30000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+          if (err) {
+            return send(envelope('agent.command.result', { commandId, status: 'failed', error: stderr || err.message }));
+          }
+          send(envelope('agent.command.result', { commandId, status: 'succeeded', result: { stdout: stdout || stderr || 'Executed successfully' } }));
+        });
+      } else {
+        send(envelope('agent.command.result', { commandId, status: 'failed', error: 'capability_not_supported' }));
+      }
+    }
   });
   current.on('error', error => {
     console.error('Home Assistant connector error:', error.message);

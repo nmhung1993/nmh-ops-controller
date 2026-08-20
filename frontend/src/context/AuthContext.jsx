@@ -56,6 +56,7 @@ export function AuthProvider({ children }) {
     const sessionUser = {
       username: data.username,
       role: data.role,
+      permissions: data.permissions || null,
       mustChangePassword: Boolean(data.mustChangePassword)
     };
 

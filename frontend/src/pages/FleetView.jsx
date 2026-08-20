@@ -30,6 +30,7 @@ import {
   Cpu,
   HardDrive,
   Zap,
+  Thermometer,
   ArrowRight,
   ShieldAlert,
   Clock,
@@ -50,8 +51,12 @@ import HealthScoreWidget from '../components/dashboard/HealthScoreWidget';
 export default function FleetView({ onNavigate }) {
   const theme = useTheme();
   const { lang, t } = useLanguage();
-  const { isSuperAdmin } = useAuth();
+  const { isSuperAdmin, user } = useAuth();
   const { hosts, setSelectedHostId, telemetryMap } = useWebSocket();
+
+  const canViewPower = isSuperAdmin || user?.permissions?.metrics?.power !== false;
+  const canViewTemp = isSuperAdmin || user?.permissions?.metrics?.temperature !== false;
+  const canViewHealth = isSuperAdmin || user?.permissions?.metrics?.health !== false;
 
   const getFriendlyHostName = (host) => {
     if (!host) return 'Máy trạm';
@@ -351,12 +356,12 @@ export default function FleetView({ onNavigate }) {
       </Card>
 
       {/* Infrastructure Health Score Widget */}
-      <HealthScoreWidget />
+      {canViewHealth && <HealthScoreWidget />}
 
       {/* Fleet Summary Scorecards */}
       <Grid container spacing={2.5} sx={{ mb: 3.5 }}>
         {/* Total Machines */}
-        <Grid item xs={12} sm={4}>
+        <Grid item xs={12} sm={canViewHealth ? 4 : 6}>
           <Card
             sx={{
               p: 2.5,
@@ -399,50 +404,52 @@ export default function FleetView({ onNavigate }) {
         </Grid>
 
         {/* System Health */}
-        <Grid item xs={12} sm={4}>
-          <Card
-            sx={{
-              p: 2.5,
-              height: 1,
-              minHeight: 110,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              bgcolor: 'background.paper',
-              overflow: 'hidden'
-            }}
-          >
-            <Box sx={{ minWidth: 0, mr: 1.5 }}>
-              <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700, display: 'block' }}>
-                {t('fleet.summary.health')}
-              </Typography>
-              <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5, color: healthPercent >= 80 ? 'success.main' : 'warning.main' }}>
-                {totalCount > 0 ? `${healthPercent}%` : '--'}
-              </Typography>
-              <Typography variant="body2" noWrap sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
-                {t('fleet.summary.healthHint')} ({onlineCount}/{totalCount})
-              </Typography>
-            </Box>
-            <Box
+        {canViewHealth && (
+          <Grid item xs={12} sm={4}>
+            <Card
               sx={{
-                width: 52,
-                height: 52,
-                borderRadius: 2,
-                bgcolor: alpha(theme.palette.success.main, 0.12),
-                color: 'success.main',
+                p: 2.5,
+                height: 1,
+                minHeight: 110,
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0
+                justifyContent: 'space-between',
+                bgcolor: 'background.paper',
+                overflow: 'hidden'
               }}
             >
-              <Activity size={26} />
-            </Box>
-          </Card>
-        </Grid>
+              <Box sx={{ minWidth: 0, mr: 1.5 }}>
+                <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700, display: 'block' }}>
+                  {t('fleet.summary.health')}
+                </Typography>
+                <Typography variant="h3" sx={{ fontWeight: 800, my: 0.5, color: healthPercent >= 80 ? 'success.main' : 'warning.main' }}>
+                  {totalCount > 0 ? `${healthPercent}%` : '--'}
+                </Typography>
+                <Typography variant="body2" noWrap sx={{ color: 'text.secondary', fontSize: '0.75rem' }}>
+                  {t('fleet.summary.healthHint')} ({onlineCount}/{totalCount})
+                </Typography>
+              </Box>
+              <Box
+                sx={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: 2,
+                  bgcolor: alpha(theme.palette.success.main, 0.12),
+                  color: 'success.main',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}
+              >
+                <Activity size={26} />
+              </Box>
+            </Card>
+          </Grid>
+        )}
 
         {/* Attention Needed */}
-        <Grid item xs={12} sm={4}>
+        <Grid item xs={12} sm={canViewHealth ? 4 : 6}>
           <Card
             sx={{
               p: 2.5,
@@ -606,6 +613,15 @@ export default function FleetView({ onNavigate }) {
                           >
                             v{host.version || '2.1.4'}
                           </Label>
+                          {host.includeHealth === false && (
+                            <Label
+                              variant="soft"
+                              color="default"
+                              sx={{ fontSize: '0.65rem', height: 18, px: 0.5 }}
+                            >
+                              Máy cá nhân
+                            </Label>
+                          )}
                         </Stack>
                       </Box>
 
@@ -688,12 +704,19 @@ export default function FleetView({ onNavigate }) {
                           />
                         </Box>
 
-                        {/* Power & Temp Pill if available */}
-                        {Number.isFinite(powerWatts) && (
+                        {/* Power & Temp Pill only if valid sensors exist and user has permission */}
+                        {(((canViewPower && Number.isFinite(powerWatts) && powerWatts > 0)) || ((canViewTemp && Number.isFinite(hardware.temperatures?.maxCelsius) && hardware.temperatures.maxCelsius > 0))) && (
                           <Stack direction="row" spacing={1} sx={{ pt: 0.5 }}>
-                            <Label variant="soft" color="warning" startIcon={<Zap size={12} />}>
-                              {formatWatts(powerWatts)}
-                            </Label>
+                            {canViewPower && Number.isFinite(powerWatts) && powerWatts > 0 && (
+                              <Label variant="soft" color="warning" startIcon={<Zap size={12} />}>
+                                {formatWatts(powerWatts)}
+                              </Label>
+                            )}
+                            {canViewTemp && Number.isFinite(hardware.temperatures?.maxCelsius) && hardware.temperatures.maxCelsius > 0 && (
+                              <Label variant="soft" color={hardware.temperatures.maxCelsius > 75 ? 'error' : 'success'} startIcon={<Thermometer size={12} />}>
+                                {hardware.temperatures.maxCelsius.toFixed(0)}°C
+                              </Label>
+                            )}
                           </Stack>
                         )}
                       </Stack>
