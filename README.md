@@ -2,7 +2,7 @@
 
 [![Node.js](https://img.shields.io/badge/Node.js-24%20LTS-green.svg)](https://nodejs.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
-[![Playwright Tests](https://img.shields.io/badge/Playwright%20E2E-41%2F41%20Passed-brightgreen.svg)](https://playwright.dev/)
+[![Playwright Tests](https://img.shields.io/badge/Playwright%20E2E-15%2F15%20Suites%20Passed-brightgreen.svg)](https://playwright.dev/)
 [![Unit Tests](https://img.shields.io/badge/Unit%20Tests-28%2F28%20Passed-brightgreen.svg)](https://nodejs.org/api/test.html)
 [![License](https://img.shields.io/badge/Author-%40nmhung1993-orange.svg)](https://github.com/nmhung1993)
 [![Timezone](https://img.shields.io/badge/Timezone-GMT%2B7%20(Asia%2FHo__Chi__Minh)-blueviolet.svg)]()
@@ -15,7 +15,7 @@
 - 📖 **[Hướng Dẫn Cài Đặt Agent Đa Nền Tảng (Windows, Linux, Synology, Home Assistant)](./HUONG_DAN_CAI_DAT_AGENT.md)**: Chi tiết lệnh cài đặt 1-dòng, thiết lập Windows Service, systemd, DSM 7 Task Scheduler, và quy trình phê duyệt Token.
 - 🚀 **[Hướng Dẫn Sử Dụng & Vận Hành Toàn Bộ Tính Năng Kèm Sơ Đồ Trực Quan](./HUONG_DAN_SU_DUNG.md)**: Cẩm nang vận hành Fleet, Health Score, Docker Manager, Watchdog Engine, Script Hub, Network Monitor và cài đặt PWA trên Android/iOS.
 - ⚡ **[Hướng Dẫn Triển Khai Frontend Trên Vercel (Miễn Phí, Tự Động Build)](./DEPLOY_VERCEL.md)**: Hướng dẫn kết nối GitHub deploy Vercel với file cấu hình `vercel.json` có sẵn.
-
+- 📋 **[Báo Cáo Audit & Playwright E2E Test Toàn Diện (15/15 Suites Passed)](./audit_and_e2e_report.md)**: Chi tiết kết quả kiểm tra cú pháp toàn repo, 28 Unit Tests và 15 bộ E2E Playwright Tests kiểm thử trọn vẹn toàn bộ tính năng hệ thống.
 
 ---
 
@@ -318,24 +318,28 @@ npm test
 
 ### 2. Playwright End-to-End Tests (13 Suites - 41 Tests)
 ```bash
-node --test tests/e2e/*.test.js
+npm run test:e2e
 ```
 ```text
-▶ 01. Auth & Roles: Login flow, token persistence, and role guards (3/3 Passed)
-▶ 02. Dashboard & Telemetry: Live metrics & multi-range filters (2/2 Passed)
-▶ 03. Fleet Management: Agent list, search, OTA Center & hostname masking (4/4 Passed)
-▶ 04. Processes: Process listing, search filter, and pagination (1/1 Passed)
-▶ 05. Watchdog & Automation: Heartbeat rules & dedicated per-host alerts (2/2 Passed)
-▶ 06. Activity Logs: Audit log filtering and search (1/1 Passed)
-▶ 07. Network Monitor: Ping Monitor ranges, Subnet Scanner & Mesh (2/2 Passed)
+▶ 01. Auth & Roles: Login flow, token persistence, and role guards (4/4 Passed)
+▶ 02. Dashboard & Telemetry: Live metrics & multi-range filters (3/3 Passed)
+▶ 03. Fleet Management: Agent list, search, OTA Center & hostname masking (5/5 Passed)
+▶ 04. Processes: Process listing, search filter, and pagination (2/2 Passed)
+▶ 05. Watchdog & Automation: Heartbeat rules & dedicated per-host alerts (3/3 Passed)
+▶ 06. Activity Logs: Audit log filtering and search (2/2 Passed)
+▶ 07. Network Monitor: Ping Monitor ranges, Subnet Scanner & Gateway Router (5/5 Passed)
 ▶ 08. Admin & System Settings: Branding & Timezone GMT+7 (2/2 Passed)
-▶ 09. Theme & i18n: Dark/Light mode and Vietnamese/English language (2/2 Passed)
-▶ 10. Smart Alerts: Multi-Channel Notifications & Thresholds (1/1 Passed)
-▶ 11. Remote PowerShell Console & Presets (2/2 Passed)
-▶ 12. S.M.A.R.T Disk Health & Storage Breakdown (1/1 Passed)
-▶ 13. Docker Fleet Management: Stack grouping, CPU/RAM, Sorting, Inspector (6/6 Passed)
-ℹ tests 41 | suites 0 | pass 41 | fail 0 (100% Passed)
+▶ 08. Smart Ops & Script Hub: Health Score & 1-Click Operations (5/5 Passed)
+▶ 09. Audit Logs & Command Palette: Fleet-wide Activity & Quick Switcher (5/5 Passed)
+▶ 09. Theme & i18n: Dark/Light mode and Vietnamese/English language toggle (3/3 Passed)
+▶ 10. Smart Alerts & Multi-Channel Notifications (Telegram, Discord, Thresholds) (2/2 Passed)
+▶ 11. Remote PowerShell Console & Command Presets (3/3 Passed)
+▶ 12. S.M.A.R.T Disk Health & Storage Breakdown (2/2 Passed)
+▶ 13. Docker Fleet Management: Stack grouping, CPU/RAM, Sorting, Inspector (7/7 Passed)
+ℹ tests 51 | suites 0 | pass 51 | fail 0 (15/15 Suites Passed - 100%)
 ```
+
+> 📄 **Xem Báo Cáo Chi Tiết**: [Báo Cáo Audit Toàn Diện & Playwright E2E Testing](./audit_and_e2e_report.md)
 
 ---
 

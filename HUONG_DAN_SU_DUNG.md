@@ -1,6 +1,6 @@
 # Sổ Tay Hướng Dẫn Sử Dụng Hệ Thống MinhHungOps (Windows Controller Fleet)
 
-Hệ thống **MinhHungOps (Windows Controller Fleet)** là nền tảng quản trị, giám sát và vận hành cụm máy trạm đa nền tảng (Windows, Linux, Synology NAS, Home Assistant, MikroTik Gateway, Docker) theo thời gian thực với chuẩn an toàn, trực quan và tối ưu cho môi trường mạng nội bộ (LAN) cũng như quản trị từ xa.
+Hệ thống **MinhHungOps (Windows Controller Fleet)** là nền tảng quản trị, giám sát và vận hành cụm máy trạm đa nền tảng (Windows, Linux, Synology NAS, Home Assistant, MikroTik Gateway, Docker) theo thời gian thực với chuẩn an toàn, trực quan và tối ưu cho môi trường mạng nội bộ (LAN) cũng như quản trị từ xa. Toàn bộ các tính năng đã được kiểm chứng qua [Báo Cáo Audit & Playwright E2E Testing](./audit_and_e2e_report.md) (15/15 Suites Passed).
 
 ---
 
@@ -16,6 +16,7 @@ Hệ thống **MinhHungOps (Windows Controller Fleet)** là nền tảng quản 
 9. [Trung Tâm Kịch Bản Tự Động (Script Hub)](#9-trung-tâm-kịch-bản-tự-động-script-hub)
 10. [Giám Sát Mạng & Hạ Tầng Router (Network Monitor)](#10-giám-sát-mạng--hạ-tầng-router-network-monitor)
 11. [Quản Trị Người Dùng & Phân Quyền (RBAC)](#11-quản-trị-người-dùng--phân-quyền-rbac)
+12. [Báo Cáo Kiểm Thử Toàn Diện (Audit & E2E Testing)](./audit_and_e2e_report.md)
 
 ---
 

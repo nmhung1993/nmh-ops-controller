@@ -43,6 +43,7 @@ A Central Server connects authenticated endpoint agents with a role-scoped web U
 ## Evidence on Hand
 
 - `README.md` documents architecture, deployment, security boundaries, and supported workflows.
+- `audit_and_e2e_report.md` documents the comprehensive 15-suite Playwright E2E and 28-unit-test verification matrix across all fleet operations.
 - `public/index.html`, `public/css/style.css`, and `public/js/app.js` provide incumbent web UI and product copy.
 - No external customer claims, benchmarks, testimonials, or visual assets are confirmed; future work must not fabricate them.
 
