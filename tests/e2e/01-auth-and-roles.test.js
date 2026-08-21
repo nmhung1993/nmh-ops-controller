@@ -27,7 +27,7 @@ test('01. Auth & Roles: Login flow, token persistence, and role guards', async (
     const adminHeading = await page.getByText(/Quản trị hệ thống|Cấu hình quản trị/i).first().isVisible();
     assert.ok(adminHeading, 'Super admin should see Admin page heading');
 
-    const brandSettings = await page.getByText(/Cấu hình Hệ thống, Nhận diện/i).first().isVisible();
+    const brandSettings = await page.getByText(/Cấu hình Hệ thống/i).first().isVisible();
     assert.ok(brandSettings, 'Super admin should see Brand & Timezone settings card');
 
     await browser.close();

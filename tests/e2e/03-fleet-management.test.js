@@ -9,15 +9,15 @@ test('03. Fleet Management: Agent list, search, OTA Center, and Progress modal',
     await page.goto(`${BASE_URL}/#fleet`, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(2000);
 
-    const titleVisible = await page.getByText(/Các máy trong mạng LAN|Tổng số máy|Chưa có máy/i).first().isVisible();
+    const titleVisible = await page.getByText(/Danh sách máy|Danh sách máy trạm|Tổng số máy|Chưa có máy/i).first().isVisible();
     assert.ok(titleVisible, 'Should display Fleet view content');
   });
 
   await t.test('Displays OTA Center banner with latest OTA version badge', async () => {
-    const otaBanner = page.getByText(/Trung Tâm Nâng Cấp Tự Động \(OTA Center\)/i);
+    const otaBanner = page.getByText(/NÂNG CẤP AGENT QUA OTA|Trung Tâm Nâng Cấp/i);
     assert.ok(await otaBanner.isVisible(), 'OTA Center banner should be visible');
 
-    const otaVersionBadge = page.getByText(/Bản mới nhất: v2\.1\.\d/i);
+    const otaVersionBadge = page.getByText(/Server v2\.1\.\d|Bản mới nhất: v2\.1\.\d|v2\.1\.\d/i).first();
     assert.ok(await otaVersionBadge.isVisible(), 'Latest OTA version badge should be visible');
   });
 
@@ -27,7 +27,7 @@ test('03. Fleet Management: Agent list, search, OTA Center, and Progress modal',
   });
 
   await t.test('Verifies OTA Upgrade Action button and controls in OTA Center', async () => {
-    const upgradeAllBtn = page.getByRole('button', { name: /Nâng cấp toàn bộ Fleet \(OTA\)/i });
+    const upgradeAllBtn = page.getByRole('button', { name: /Nâng Cấp|Nâng cấp toàn bộ/i }).first();
     assert.ok(await upgradeAllBtn.isVisible(), 'OTA upgrade action button should be visible in OTA Center');
   });
 

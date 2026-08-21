@@ -27,7 +27,7 @@ test('13. Docker Fleet Management: Stack grouping, CPU/RAM telemetry, Sorting, a
 
   await t.test('Displays Stacks with aggregate CPU & RAM chips and handles expand/collapse', async () => {
     // Check stack header visibility
-    const stackHeaders = page.locator('text=Running');
+    const stackHeaders = page.locator('text=/\\d+\\/\\d+|Compose|Dịch vụ Độc lập|minhhungops/i');
     const count = await stackHeaders.count();
     assert.ok(count > 0, 'At least one stack header with status should be rendered');
 

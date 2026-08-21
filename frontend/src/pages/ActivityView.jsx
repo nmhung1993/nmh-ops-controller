@@ -240,10 +240,10 @@ export default function ActivityView() {
                 SECURITY & AUDIT TRAIL
               </Typography>
               <Typography variant="h4" sx={{ fontWeight: 800 }}>
-                {t('activity.pageTitle')}
+                {t('activity.headerTitle') || t('activity.title')}
               </Typography>
               <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                {t('activity.pageSubtitle')}
+                {t('activity.headerSubtitle') || t('activity.description')}
               </Typography>
             </Box>
           </Stack>
@@ -280,10 +280,10 @@ export default function ActivityView() {
           {/* Target Host Filter */}
           <Grid item xs={12} sm={6} md={3.5}>
             <FormControl fullWidth size="small">
-              <InputLabel>{t('activity.scope')}</InputLabel>
+              <InputLabel>{t('activity.scopeFilter') || t('activity.scope')}</InputLabel>
               <Select
                 value={targetAgentId}
-                label={t('activity.scope')}
+                label={t('activity.scopeFilter') || t('activity.scope')}
                 onChange={(e) => setTargetAgentId(e.target.value)}
               >
                 <MenuItem value="all">{t('activity.scopeAll')}</MenuItem>
@@ -315,10 +315,10 @@ export default function ActivityView() {
           {/* Category Filter */}
           <Grid item xs={6} md={2.5}>
             <FormControl fullWidth size="small">
-              <InputLabel>{t('activity.category')}</InputLabel>
+              <InputLabel>{t('activity.categoryFilter') || t('activity.category')}</InputLabel>
               <Select
                 value={categoryFilter}
-                label={t('activity.category')}
+                label={t('activity.categoryFilter') || t('activity.category')}
                 onChange={(e) => setCategoryFilter(e.target.value)}
               >
                 <MenuItem value="all">{t('activity.catAll')}</MenuItem>
@@ -335,10 +335,10 @@ export default function ActivityView() {
           {/* Severity Filter */}
           <Grid item xs={6} md={2.5}>
             <FormControl fullWidth size="small">
-              <InputLabel>{t('activity.severity')}</InputLabel>
+              <InputLabel>{t('activity.severityFilter') || t('activity.severity')}</InputLabel>
               <Select
                 value={severityFilter}
-                label={t('activity.severity')}
+                label={t('activity.severityFilter') || t('activity.severity')}
                 onChange={(e) => setSeverityFilter(e.target.value)}
               >
                 <MenuItem value="all">{t('activity.sevAll')}</MenuItem>

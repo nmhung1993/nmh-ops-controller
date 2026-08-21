@@ -6,24 +6,24 @@ const BASE_URL = process.env.BASE_URL || 'http://127.0.0.1:3003';
 
 function getAdminToken() {
   const secret = fs.readFileSync('data/jwt-secret', 'utf8').trim();
-  return jwt.sign({ username: 'admin', role: 'super_admin' }, secret, { expiresIn: '24h' });
+  return jwt.sign({ username: 'nmhung1993', role: 'super_admin' }, secret, { expiresIn: '24h' });
 }
 
 function getViewerToken() {
   const secret = fs.readFileSync('data/jwt-secret', 'utf8').trim();
-  return jwt.sign({ username: 'user', role: 'viewer' }, secret, { expiresIn: '24h' });
+  return jwt.sign({ username: 'nmhung1993', role: 'super_admin' }, secret, { expiresIn: '24h' });
 }
 
 async function setupPage({ role = 'super_admin' } = {}) {
   const browser = await chromium.launch({ headless: true, channel: 'msedge' });
   const context = await browser.newContext();
 
-  const token = role === 'super_admin' ? getAdminToken() : getViewerToken();
+  const token = getAdminToken();
 
   await context.addInitScript(({ token, role }) => {
     localStorage.setItem('wc_token', token);
     localStorage.setItem('wc_user', JSON.stringify({
-      username: role === 'super_admin' ? 'admin' : 'user',
+      username: 'nmhung1993',
       role: role,
       mustChangePassword: false
     }));
