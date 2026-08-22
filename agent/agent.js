@@ -13,7 +13,8 @@ const {
   killProcess,
   launchServiceProcess,
   getMachineFingerprint,
-  runPowerShell
+  runPowerShell,
+  setFanSpeed
 } = require('./windows');
 
 const VERSION = '2.1.5';
@@ -246,7 +247,7 @@ async function connect() {
       fingerprint: cachedFingerprint,
       platform: `${os.type()} ${os.release()} ${os.arch()}`,
       version: VERSION,
-      capabilities: ['telemetry', 'hardware-sensors', 'processes', 'process.kill', 'watchdog', 'watchdog.launch', 'service-launch', 'desktop-helper', 'window.capture', 'windows', 'system.execute', 'powershell', ...(getDockerSocket() ? ['docker'] : [])]
+      capabilities: ['telemetry', 'hardware-sensors', 'fans', 'fan.control', 'processes', 'process.kill', 'watchdog', 'watchdog.launch', 'service-launch', 'desktop-helper', 'window.capture', 'windows', 'system.execute', 'powershell', ...(getDockerSocket() ? ['docker'] : [])]
     }));
   });
 
@@ -550,6 +551,9 @@ async function executeCommand(command) {
       if (!script) throw new Error('command_empty');
       const output = await runPowerShell(script, { timeout: 30_000 });
       result = { stdout: output };
+    } else if (commandType === 'fan.control' || commandType === 'fan.set_speed') {
+      result = await setFanSpeed(data);
+      if (result?.error && !result?.success) throw new Error(result.error);
     } else if (commandType === 'agent.upgrade') {
       const downloadPath = data.downloadUrl || '/api/v1/ota/agent-bundle';
       const bundleUrl = `${config.serverUrl.replace(/\/$/, '')}${downloadPath}`;

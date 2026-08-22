@@ -34,6 +34,7 @@ const COMMAND_TIMEOUT_MS = 60_000;
 const MAX_SCREENSHOT_BYTES = 10 * 1024 * 1024;
 const ALLOWED_COMMANDS = new Set([
   'process.kill', 'watchdog.launch', 'window.capture', 'system.execute', 'agent.upgrade',
+  'fan.control', 'fan.set_speed',
   'docker.info', 'docker.containers', 'docker.container.details', 'docker.container.stats',
   'docker.container.action', 'docker.container.logs', 'docker.images', 'docker.volumes', 'docker.prune'
 ]);
@@ -43,6 +44,8 @@ const COMMAND_CAPABILITIES = {
   'window.capture': ['window.capture', 'desktop-helper'],
   'system.execute': ['system.execute', 'powershell', 'windows', 'linux', 'synology', 'homeassistant', 'scripts', 'processes', 'telemetry', 'bash', 'shell'],
   'agent.upgrade': ['agent.upgrade', 'windows', 'linux', 'synology', 'homeassistant', 'homeassistant.entities', 'telemetry', 'processes', 'system.execute'],
+  'fan.control': ['fan.control', 'fans', 'hardware-sensors', 'windows', 'linux', 'synology', 'system.execute'],
+  'fan.set_speed': ['fan.control', 'fans', 'hardware-sensors', 'windows', 'linux', 'synology', 'system.execute'],
   'docker.info': ['docker', 'system.execute', 'linux', 'synology', 'windows'],
   'docker.containers': ['docker', 'system.execute', 'linux', 'synology', 'windows'],
   'docker.container.details': ['docker', 'system.execute', 'linux', 'synology', 'windows'],
@@ -1056,6 +1059,48 @@ app.get('/api/v1/hosts/:id/processes', authenticate, requireHostAccess, (req, re
   let processes = parseJson(state?.processes_json, []);
   if (!canManageHost(req.user, req.params.id)) processes = processes.map(process => ({ ...process, path: '' }));
   res.json({ processes, updatedAt: state?.processes_at || null, commandId });
+});
+
+app.get('/api/v1/hosts/:id/fans', authenticate, requireHostAccess, (req, res) => {
+  const state = db.prepare('SELECT telemetry_json, telemetry_at FROM latest_state WHERE agent_id = ?').get(req.params.id);
+  const telemetry = parseJson(state?.telemetry_json, {});
+  const hw = telemetry.hardware || telemetry.hardwareSensors || {};
+  const fans = Array.isArray(hw.fans) ? hw.fans : [];
+  const isOnline = agentSockets.has(req.params.id);
+  res.json({
+    fans,
+    isOnline,
+    canControl: canManageHost(req.user, req.params.id),
+    sampledAt: hw.sampledAt || state?.telemetry_at || null
+  });
+});
+
+app.post('/api/v1/hosts/:id/fans/control', authenticate, requireHostAccess, requireHostManager, async (req, res) => {
+  const { fanId, controlId, speedPercent, mode = 'manual' } = req.body || {};
+  const host = req.managedHost;
+  if (!agentSockets.has(req.params.id)) {
+    return res.status(409).json({ error: 'Agent is currently offline' });
+  }
+  const percentNum = typeof speedPercent === 'number' ? Math.max(0, Math.min(100, Math.round(speedPercent))) : 50;
+  try {
+    const result = await executeAgentCommand(req.params.id, 'fan.control', {
+      fanId: fanId || 'all',
+      controlId: controlId || null,
+      speedPercent: percentNum,
+      mode: mode || 'manual'
+    }, 10_000, req.user.username);
+
+    logAuditEvent(req.user.username, 'fan.control', 'agent', req.params.id, {
+      host: host?.display_name || host?.hostname,
+      fanId: fanId || 'all',
+      speedPercent: percentNum,
+      mode
+    });
+
+    res.json({ success: true, result, fanId, speedPercent: percentNum, mode });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Failed to dispatch fan control command' });
+  }
 });
 
 app.post('/api/v1/hosts/:id/commands', authenticate, requireHostAccess, requireHostManager, (req, res) => {

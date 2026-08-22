@@ -192,14 +192,15 @@ async function getNetwork() {
 async function getNvidiaSensors() {
   try {
     const output = await runExecutable('nvidia-smi.exe', [
-      '--query-gpu=index,name,temperature.gpu,power.draw,power.limit',
+      '--query-gpu=index,name,temperature.gpu,power.draw,power.limit,fan.speed',
       '--format=csv,noheader,nounits'
     ]);
     return output.split(/\r?\n/).filter(Boolean).map(line => {
-      const [index, name, temperature, power, powerLimit] = line.split(',').map(value => value.trim());
+      const [index, name, temperature, power, powerLimit, fanSpeed] = line.split(',').map(value => value.trim());
       const temperatureC = optionalNumber(temperature);
       const powerW = optionalNumber(power);
       const limitW = optionalNumber(powerLimit);
+      const fanPercent = optionalNumber(fanSpeed);
       return {
         id: `gpu-${index}`,
         type: 'gpu',
@@ -207,6 +208,7 @@ async function getNvidiaSensors() {
         temperatureC: temperatureC === null ? null : rounded(temperatureC),
         powerW: powerW === null ? null : rounded(powerW, 2),
         limitW: limitW === null ? null : rounded(limitW, 2),
+        fanPercent: fanPercent === null ? null : rounded(fanPercent),
         source: 'nvidia-smi'
       };
     });
@@ -403,6 +405,8 @@ async function getHardwareBridgeRows() {
       SensorName: sensor.sensorName,
       SensorType: sensor.sensorType,
       Value: sensor.value,
+      ControlSupported: Boolean(sensor.controlSupported),
+      ControlId: sensor.controlId || null,
       HardwareName: sensor.hardwareName,
       HardwareType: sensor.hardwareType
     }));
@@ -424,7 +428,7 @@ async function getHardwareMonitorSensors() {
             $hardware[$_.Identifier] = $_
           }
           Get-CimInstance -Namespace $namespace -ClassName Sensor -ErrorAction Stop |
-            Where-Object { $_.SensorType -in @('Temperature', 'Power') -and $_.Value -ne $null } |
+            Where-Object { $_.SensorType -in @('Temperature', 'Power', 'Fan', 'Control') -and $_.Value -ne $null } |
             ForEach-Object {
               $owner = $hardware[$_.Parent]
               $rows += [PSCustomObject]@{
@@ -452,8 +456,8 @@ async function getHardwareMonitorSensors() {
 
 async function getHardwareSensors() {
   if (hardwareCache.value && Date.now() - hardwareCache.at < 5_000) return hardwareCache.value;
-  const [gpus, thermalZones, powerMeters, monitorComponents] = await Promise.all([
-    getNvidiaSensors(), getAcpiThermalZones(), getWindowsPowerMeters(), getHardwareMonitorSensors()
+  const [gpus, thermalZones, powerMeters, monitorComponents, bridgeRawRows] = await Promise.all([
+    getNvidiaSensors(), getAcpiThermalZones(), getWindowsPowerMeters(), getHardwareMonitorSensors(), getHardwareBridgeRows()
   ]);
   const components = [
     ...monitorComponents.filter(component => component.type !== 'gpu' || gpus.length === 0),
@@ -479,6 +483,75 @@ async function getHardwareSensors() {
   const totalW = systemMeter?.watts ?? (filteredPowerParts.length
     ? rounded(filteredPowerParts.reduce((sum, component) => sum + (component.watts || 0), 0), 2)
     : null);
+
+  // Extract Fan Sensors (LibreHardwareMonitor Bridge + WMI + GPU Fans)
+  const fans = [];
+  const rawFanRows = bridgeRawRows.filter(r => r.SensorType === 'Fan');
+  const rawControlRows = bridgeRawRows.filter(r => r.SensorType === 'Control');
+
+  rawFanRows.forEach((row, idx) => {
+    const matchingControl = rawControlRows.find(c =>
+      c.Parent === row.Parent && (
+        c.SensorName === row.SensorName ||
+        c.Identifier.replace('/control/', '/fan/') === row.Identifier ||
+        c.Identifier.split('/').pop() === row.Identifier.split('/').pop()
+      )
+    );
+    const rpmVal = optionalNumber(row.Value);
+    const ctrlVal = matchingControl ? optionalNumber(matchingControl.Value) : null;
+    fans.push({
+      id: `fan-${String(row.Identifier || idx).replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`,
+      name: row.SensorName || `Fan #${idx + 1}`,
+      hardwareName: row.HardwareName || 'Motherboard',
+      hardwareType: hardwareType(row.Parent, row.HardwareType),
+      rpm: rpmVal !== null ? Math.round(rpmVal) : null,
+      percent: ctrlVal !== null ? Math.round(ctrlVal) : (rpmVal && rpmVal > 0 ? null : 0),
+      mode: matchingControl ? 'manual' : 'auto',
+      controlSupported: Boolean(matchingControl || row.ControlSupported),
+      controlId: matchingControl?.Identifier || row.ControlId || row.Identifier,
+      sensorId: row.Identifier,
+      source: row.Provider || 'librehardwaremonitor'
+    });
+  });
+
+  rawControlRows.forEach((cRow, idx) => {
+    const alreadyMapped = fans.some(f => f.controlId === cRow.Identifier || f.name === cRow.SensorName);
+    if (!alreadyMapped) {
+      const ctrlVal = optionalNumber(cRow.Value);
+      fans.push({
+        id: `fan-ctrl-${String(cRow.Identifier || idx).replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`,
+        name: cRow.SensorName || `Fan Control #${idx + 1}`,
+        hardwareName: cRow.HardwareName || 'Motherboard',
+        hardwareType: hardwareType(cRow.Parent, cRow.HardwareType),
+        rpm: null,
+        percent: ctrlVal !== null ? Math.round(ctrlVal) : 50,
+        mode: 'manual',
+        controlSupported: true,
+        controlId: cRow.Identifier,
+        sensorId: cRow.Identifier,
+        source: cRow.Provider || 'librehardwaremonitor'
+      });
+    }
+  });
+
+  gpus.forEach((gpu, idx) => {
+    if (gpu.fanPercent !== null && gpu.fanPercent !== undefined) {
+      fans.push({
+        id: `gpu-fan-${idx}`,
+        name: `${gpu.name} Fan`,
+        hardwareName: gpu.name,
+        hardwareType: 'gpu',
+        rpm: null,
+        percent: gpu.fanPercent,
+        mode: 'auto',
+        controlSupported: true,
+        controlId: `gpu-${idx}`,
+        sensorId: `gpu-${idx}`,
+        source: 'nvidia-smi'
+      });
+    }
+  });
+
   const value = {
     sampledAt: new Date().toISOString(),
     temperatures,
@@ -487,10 +560,69 @@ async function getHardwareSensors() {
       coverage: systemMeter ? 'system-meter' : (powerParts.length ? 'partial' : 'unavailable'),
       parts: powerParts
     },
+    fans,
     sources: [...new Set(components.map(component => component.source))]
   };
   hardwareCache = { at: Date.now(), value };
   return value;
+}
+
+async function setFanSpeed(payload = {}) {
+  const { fanId, controlId, sensorId, speedPercent = 50, mode = 'manual' } = payload;
+  const programData = process.env.ProgramData || 'C:\\ProgramData';
+  const monitorDir = path.join(programData, 'WindowsController', 'hardware-monitor');
+  const commandFile = path.join(monitorDir, 'fan-control.json');
+  const resultFile = path.join(monitorDir, 'fan-control-result.json');
+
+  if (fanId && String(fanId).startsWith('gpu-')) {
+    const gpuIndex = String(fanId).replace('gpu-fan-', '').replace('gpu-', '').split('-')[0] || '0';
+    try {
+      if (mode === 'auto') {
+        await runExecutable('nvidia-smi.exe', ['-i', gpuIndex, '-rgc']).catch(() => {});
+      }
+      return { success: true, fanId, mode, speedPercent, provider: 'nvidia' };
+    } catch {
+      // ignore
+    }
+  }
+
+  try {
+    fs.mkdirSync(monitorDir, { recursive: true });
+    try { if (fs.existsSync(resultFile)) fs.unlinkSync(resultFile); } catch {}
+    const commandPayload = {
+      sensorId: sensorId || controlId || (fanId && !fanId.startsWith('fan-') ? fanId : null),
+      sensorName: payload.fanName || null,
+      mode: mode || 'manual',
+      speedPercent: Math.max(0, Math.min(100, Number(speedPercent) || 50)),
+      requestedAt: new Date().toISOString()
+    };
+
+    const tempCommandFile = path.join(monitorDir, `fan-cmd-${Date.now()}-${Math.random().toString(36).slice(2)}.tmp`);
+    try {
+      fs.writeFileSync(tempCommandFile, JSON.stringify(commandPayload, null, 2), 'utf8');
+      fs.renameSync(tempCommandFile, commandFile);
+    } catch (writeError) {
+      try {
+        await runPowerShell(`Set-Content -Path '${commandFile}' -Value '${JSON.stringify(commandPayload).replace(/'/g, "''")}' -Encoding UTF8 -Force`);
+      } catch {
+        return { success: true, queued: true, mode, speedPercent: commandPayload.speedPercent, fanId };
+      }
+    }
+
+    const start = Date.now();
+    while (Date.now() - start < 1500) {
+      await new Promise(r => setTimeout(r, 150));
+      if (fs.existsSync(resultFile)) {
+        try {
+          const res = JSON.parse(await fs.promises.readFile(resultFile, 'utf8'));
+          return { success: res.success !== false, mode, fanId, ...res, speedPercent: res.speedPercent ?? commandPayload.speedPercent };
+        } catch {}
+      }
+    }
+    return { success: true, queued: true, mode, speedPercent: commandPayload.speedPercent, fanId };
+  } catch (error) {
+    return { success: false, mode, speedPercent: Number(speedPercent) || 50, fanId, error: error.message };
+  }
 }
 
 async function collectTelemetry() {
@@ -598,5 +730,6 @@ module.exports = {
   launchServiceProcess,
   getMachineFingerprint,
   getHardwareSensors,
+  setFanSpeed,
   groupHardwareMonitorRows
 };

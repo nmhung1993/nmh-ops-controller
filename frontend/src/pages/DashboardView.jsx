@@ -20,6 +20,7 @@ import {
   Network,
   Thermometer,
   Zap,
+  Fan,
   CheckCircle2,
   XCircle,
   Database,
@@ -39,6 +40,7 @@ import {
 } from '../utils/formatters';
 import Label from '../components/common/Label';
 import Chart from '../components/chart/Chart';
+import FanControlWidget from '../components/dashboard/FanControlWidget';
 
 const TIME_RANGES = [
   { value: '60m', key: 'dashboard.range60m', ms: 60 * 60 * 1000, limit: 120, format: 'time' },
@@ -151,6 +153,13 @@ export default function DashboardView() {
   const powerDetailStr = powerParts.length > 0
     ? t('dashboard.powerPartsMeasured', { count: powerParts.length })
     : (Number.isFinite(powerWatts) ? 'Công suất hệ thống' : t('dashboard.sensorUnavailable'));
+
+  // Fans & RPM metrics
+  const fans = Array.isArray(hardware.fans) ? hardware.fans : [];
+  const fanRpms = fans.map((f) => Number(f.rpm)).filter((r) => Number.isFinite(r) && r > 0);
+  const maxFanRpm = fanRpms.length > 0 ? Math.max(...fanRpms) : null;
+  const avgFanRpm = fanRpms.length > 0 ? Math.round(fanRpms.reduce((a, b) => a + b, 0) / fanRpms.length) : null;
+  const fanCount = fans.length;
 
   // Disks & S.M.A.R.T Physical Disks
   const rawDisks = telemetry.disk || telemetry.disks || [];
@@ -480,6 +489,35 @@ export default function DashboardView() {
             </Card>
           </Grid>
         )}
+
+        {/* Metric 7: Fan Speed (Only if fans exist) */}
+        {(fanCount > 0 || Number.isFinite(maxFanRpm)) && (
+          <Grid item xs={6} sm={6} md={4} lg={2}>
+            <Card sx={{ p: { xs: 1.25, sm: 2 }, height: 1, overflow: 'hidden', borderRadius: 2 }}>
+              <Stack spacing={0.4}>
+                <Box sx={{ color: 'info.main', display: 'flex', alignItems: 'center' }}>
+                  <Fan
+                    size={16}
+                    style={{
+                      animation: maxFanRpm && maxFanRpm > 0
+                        ? `spin ${Math.max(0.3, Math.min(3, 900 / maxFanRpm)).toFixed(2)}s linear infinite`
+                        : 'none'
+                    }}
+                  />
+                </Box>
+                <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontWeight: 700, fontSize: '0.625rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  {t('dashboard.fanSpeed')}
+                </Typography>
+                <Typography variant="subtitle2" noWrap sx={{ fontWeight: 800, fontSize: { xs: '0.9rem', sm: '1rem' } }}>
+                  {maxFanRpm ? `${maxFanRpm.toLocaleString()} RPM` : (fanCount > 0 ? `${fanCount} quạt` : '--')}
+                </Typography>
+                <Typography variant="caption" noWrap sx={{ color: 'text.secondary', fontSize: '0.65rem' }}>
+                  {fanCount > 0 ? t('dashboard.fansCount', { count: fanCount }) : 'Tự động'}
+                </Typography>
+              </Stack>
+            </Card>
+          </Grid>
+        )}
       </Grid>
 
       {/* Trends Section Header with Time Range Selector */}
@@ -607,6 +645,11 @@ export default function DashboardView() {
           </Grid>
         )}
       </Grid>
+
+      {/* Fan Speed Controller Section */}
+      <Box sx={{ mb: 2.5 }}>
+        <FanControlWidget host={selectedHost} telemetry={telemetry} />
+      </Box>
 
       {/* Storage & Machine Identity & Sensors Grid */}
       <Grid container spacing={2.5}>

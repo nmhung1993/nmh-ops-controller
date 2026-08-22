@@ -11,7 +11,7 @@ const WebSocket = require('ws');
 const VERSION = '2.1.5';
 const CONFIG_FILE = argument('--config') || process.env.WC_AGENT_CONFIG || '/volume1/@appdata/windows-controller-agent/config.json';
 const CONNECTION_ATTEMPT_TIMEOUT_MS = Number(process.env.WC_CONNECTION_ATTEMPT_TIMEOUT_MS || 10_000);
-const capabilities = ['telemetry', 'hardware-sensors', 'processes', 'process.kill', 'watchdog', 'watchdog.launch', 'system.execute', 'linux', 'synology', 'agent.upgrade'];
+const capabilities = ['telemetry', 'hardware-sensors', 'fans', 'fan.control', 'processes', 'process.kill', 'watchdog', 'watchdog.launch', 'system.execute', 'linux', 'synology', 'agent.upgrade'];
 
 function getDockerSocket() {
   const candidates = [
@@ -262,6 +262,8 @@ async function disks() {
 function hardwareSensors() {
   const temperatures = [];
   const powerParts = [];
+  const fans = [];
+
   for (const base of ['/sys/class/thermal', '/sys/class/hwmon']) {
     let entries = [];
     try { entries = fs.readdirSync(base, { withFileTypes: true }); } catch { }
@@ -274,13 +276,74 @@ function hardwareSensors() {
       for (const file of files) {
         try {
           const raw = Number(fs.readFileSync(path.join(folder, file), 'utf8').trim());
-          if (/^(temp|thermal_zone).*input$|^temp$/.test(file) && raw > 0) temperatures.push({ id: `${entry.name}-${file}`, type: 'system', name, celsius: Math.round((raw > 1000 ? raw / 1000 : raw) * 10) / 10, source: 'linux-sysfs' });
-          if (/^power\d+_input$/.test(file) && raw >= 0) powerParts.push({ id: `${entry.name}-${file}`, type: 'system', name, watts: Math.round(raw / 1_000_000 * 100) / 100, source: 'linux-sysfs' });
+          if (/^(temp|thermal_zone).*input$|^temp$/.test(file) && raw > 0) {
+            temperatures.push({ id: `${entry.name}-${file}`, type: 'system', name, celsius: Math.round((raw > 1000 ? raw / 1000 : raw) * 10) / 10, source: 'linux-sysfs' });
+          }
+          if (/^power\d+_input$/.test(file) && raw >= 0) {
+            powerParts.push({ id: `${entry.name}-${file}`, type: 'system', name, watts: Math.round(raw / 1_000_000 * 100) / 100, source: 'linux-sysfs' });
+          }
+          if (/^fan\d+_input$/.test(file) && raw >= 0) {
+            const fanIndex = file.match(/^fan(\d+)_input$/)?.[1] || '1';
+            let label = name;
+            try {
+              const labelFile = path.join(folder, `fan${fanIndex}_label`);
+              if (fs.existsSync(labelFile)) label = fs.readFileSync(labelFile, 'utf8').trim();
+            } catch { }
+            let pwmVal = null;
+            let pwmPath = path.join(folder, `pwm${fanIndex}`);
+            if (!fs.existsSync(pwmPath)) pwmPath = path.join(folder, 'pwm1');
+            if (fs.existsSync(pwmPath)) {
+              try { pwmVal = Number(fs.readFileSync(pwmPath, 'utf8').trim()); } catch { }
+            }
+            const percent = pwmVal !== null && pwmVal >= 0 ? Math.round((pwmVal / 255) * 100) : null;
+            fans.push({
+              id: `${entry.name}-fan${fanIndex}`,
+              name: label || `Synology Fan #${fanIndex}`,
+              hardwareName: name || 'Synology NAS Fan',
+              hardwareType: 'synology',
+              rpm: Math.round(raw),
+              percent: percent !== null ? percent : (raw > 0 ? null : 0),
+              mode: pwmVal !== null ? 'manual' : 'auto',
+              controlSupported: true,
+              controlPath: fs.existsSync(pwmPath) ? pwmPath : null,
+              source: 'synology-sysfs'
+            });
+          }
         } catch { }
       }
     }
   }
-  return { sampledAt: new Date().toISOString(), temperatures, power: { totalWatts: powerParts.length ? Math.round(powerParts.reduce((sum, item) => sum + item.watts, 0) * 100) / 100 : null, coverage: powerParts.length ? 'partial' : 'unavailable', parts: powerParts }, sources: ['linux-sysfs'] };
+
+  // Fallback if no hwmon fan detected: check synofan tool or synology platform
+  if (fans.length === 0) {
+    try {
+      if (fs.existsSync('/usr/syno/bin/synofan')) {
+        fans.push({
+          id: 'synology-system-fan',
+          name: 'Synology System Fan',
+          hardwareName: 'Synology NAS',
+          hardwareType: 'synology',
+          rpm: null,
+          percent: 50,
+          mode: 'auto',
+          controlSupported: true,
+          source: 'synofan'
+        });
+      }
+    } catch { }
+  }
+
+  return {
+    sampledAt: new Date().toISOString(),
+    temperatures,
+    power: {
+      totalWatts: powerParts.length ? Math.round(powerParts.reduce((sum, item) => sum + item.watts, 0) * 100) / 100 : null,
+      coverage: powerParts.length ? 'partial' : 'unavailable',
+      parts: powerParts
+    },
+    fans,
+    sources: ['linux-sysfs']
+  };
 }
 async function collectTelemetry() {
   let dockerSummary = null;
@@ -326,6 +389,39 @@ function commandResult(commandId, status, result = null, error = null) {
   if (!approved || !send(frame)) queue('resultBuffer', frame, 1000);
   return frame;
 }
+function setSynologyFanSpeed(data = {}) {
+  const { fanId, controlPath, speedPercent = 50, mode = 'manual' } = data;
+  try {
+    // If synofan is available on Synology DSM
+    if (fs.existsSync('/usr/syno/bin/synofan')) {
+      let synoMode = 'cool';
+      if (mode === 'auto') synoMode = 'cool';
+      else if (speedPercent <= 30) synoMode = 'quiet';
+      else if (speedPercent <= 55) synoMode = 'cool';
+      else if (speedPercent <= 80) synoMode = 'full';
+      else synoMode = 'full';
+
+      try {
+        execFile('/usr/syno/bin/synofan', ['-s', synoMode], () => {});
+      } catch { }
+    }
+
+    if (controlPath && fs.existsSync(controlPath)) {
+      const enablePath = `${controlPath}_enable`;
+      if (mode === 'auto') {
+        if (fs.existsSync(enablePath)) fs.writeFileSync(enablePath, '2', 'utf8');
+      } else {
+        if (fs.existsSync(enablePath)) fs.writeFileSync(enablePath, '1', 'utf8');
+        const rawPwm = Math.max(0, Math.min(255, Math.round((Number(speedPercent) || 50) * 255 / 100)));
+        fs.writeFileSync(controlPath, String(rawPwm), 'utf8');
+      }
+    }
+    return { success: true, fanId, mode, speedPercent };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
 async function executeCommand(payload) {
   const { commandId, commandType, data = {} } = payload;
   if (!commandId) return;
@@ -343,6 +439,9 @@ async function executeCommand(payload) {
     } else if (commandType === 'process.kill') {
       process.kill(Number(data.pid), 'SIGTERM');
       result = { pid: Number(data.pid) };
+    } else if (commandType === 'fan.control' || commandType === 'fan.set_speed') {
+      result = setSynologyFanSpeed(data);
+      if (result?.error && !result?.success) throw new Error(result.error);
     } else if (commandType === 'watchdog.launch') {
       const rule = state.watchdog.rules.find(item => item.id === data.ruleId);
       if (!rule) throw new Error('watchdog_rule_not_found');

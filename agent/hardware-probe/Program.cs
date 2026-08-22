@@ -53,6 +53,9 @@ try
     {
         try
         {
+            // Process any pending fan control command from the agent
+            ProcessFanControlRequests(computer, outputDirectory);
+
             computer.Accept(updater);
             var sensors = new List<SensorSnapshot>();
             foreach (var hardware in computer.Hardware)
@@ -86,19 +89,108 @@ finally
     computer.Close();
 }
 
+static void ProcessFanControlRequests(IComputer computer, string outputDirectory)
+{
+    var commandFile = Path.Combine(outputDirectory, "fan-control.json");
+    if (!File.Exists(commandFile)) return;
+
+    try
+    {
+        var content = File.ReadAllText(commandFile);
+        using var doc = JsonDocument.Parse(content);
+        var root = doc.RootElement;
+
+        var sensorId = root.TryGetProperty("sensorId", out var idProp) ? idProp.GetString() : null;
+        var sensorName = root.TryGetProperty("sensorName", out var nameProp) ? nameProp.GetString() : null;
+        var hardwareId = root.TryGetProperty("hardwareId", out var hwProp) ? hwProp.GetString() : null;
+        var mode = root.TryGetProperty("mode", out var modeProp) ? modeProp.GetString()?.ToLowerInvariant() : "manual";
+        var speedPercent = root.TryGetProperty("speedPercent", out var speedProp) ? speedProp.GetSingle() : 50f;
+
+        var allSensors = new List<ISensor>();
+        void AddHardwareSensors(IHardware hw)
+        {
+            allSensors.AddRange(hw.Sensors);
+            foreach (var child in hw.SubHardware) AddHardwareSensors(child);
+        }
+        foreach (var hw in computer.Hardware) AddHardwareSensors(hw);
+
+        var matchedSensors = allSensors.Where(s =>
+        {
+            if (!string.IsNullOrEmpty(sensorId) && s.Identifier.ToString().Equals(sensorId, StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (!string.IsNullOrEmpty(sensorName) && s.Name.Equals(sensorName, StringComparison.OrdinalIgnoreCase))
+                return true;
+            return false;
+        }).ToList();
+
+        // If no direct sensor matched, check if all fans should be set (e.g. global mode)
+        if (matchedSensors.Count == 0 && (sensorId == "all" || string.IsNullOrEmpty(sensorId)))
+        {
+            matchedSensors = allSensors.Where(s => s.SensorType == SensorType.Control || s.Control != null).ToList();
+        }
+
+        var results = new List<object>();
+        foreach (var sensor in matchedSensors)
+        {
+            if (sensor.Control != null)
+            {
+                if (mode == "auto" || mode == "default")
+                {
+                    sensor.Control.SetDefault();
+                    results.Add(new { sensorId = sensor.Identifier.ToString(), mode = "auto", status = "default" });
+                }
+                else
+                {
+                    var clampedSpeed = Math.Clamp(speedPercent, 0f, 100f);
+                    sensor.Control.SetSoftware(clampedSpeed);
+                    results.Add(new { sensorId = sensor.Identifier.ToString(), mode = "manual", speedPercent = clampedSpeed, status = "software" });
+                }
+            }
+            else
+            {
+                results.Add(new { sensorId = sensor.Identifier.ToString(), error = "control_not_supported" });
+            }
+        }
+
+        var resultFile = Path.Combine(outputDirectory, "fan-control-result.json");
+        File.WriteAllText(resultFile, JsonSerializer.Serialize(new
+        {
+            success = results.Count > 0,
+            executedAt = DateTime.UtcNow,
+            results
+        }));
+
+        File.Delete(commandFile);
+        AppendLog(outputDirectory, $"Fan control processed: mode={mode}, speed={speedPercent}%, matched={matchedSensors.Count}");
+    }
+    catch (Exception error)
+    {
+        AppendLog(outputDirectory, $"Fan control error: {error}");
+        try
+        {
+            var resultFile = Path.Combine(outputDirectory, "fan-control-result.json");
+            File.WriteAllText(resultFile, JsonSerializer.Serialize(new { success = false, error = error.Message }));
+            File.Delete(commandFile);
+        }
+        catch { }
+    }
+}
+
 static void CollectSensors(IHardware hardware, List<SensorSnapshot> snapshots)
 {
     foreach (var sensor in hardware.Sensors)
     {
         var sensorName = CanonicalSensorName(hardware, sensor);
-        if (sensor.Value is null || (sensor.SensorType != SensorType.Temperature && sensor.SensorType != SensorType.Power))
+        if (sensor.Value is null)
         {
             continue;
         }
+
         if (sensor.SensorType == SensorType.Power && sensor.Value.Value <= 0)
         {
             continue;
         }
+
         if (sensor.SensorType == SensorType.Temperature &&
             (sensor.Value.Value <= 0 || sensor.Value.Value > 150 ||
              sensor.Name.Contains("Warning Temperature", StringComparison.OrdinalIgnoreCase) ||
@@ -108,6 +200,27 @@ static void CollectSensors(IHardware hardware, List<SensorSnapshot> snapshots)
             continue;
         }
 
+        if (sensor.SensorType == SensorType.Fan && sensor.Value.Value < 0)
+        {
+            continue;
+        }
+
+        if (sensor.SensorType == SensorType.Control && (sensor.Value.Value < 0 || sensor.Value.Value > 100))
+        {
+            continue;
+        }
+
+        if (sensor.SensorType != SensorType.Temperature &&
+            sensor.SensorType != SensorType.Power &&
+            sensor.SensorType != SensorType.Fan &&
+            sensor.SensorType != SensorType.Control)
+        {
+            continue;
+        }
+
+        var controlSupported = sensor.Control != null;
+        var controlId = sensor.Control != null ? sensor.Identifier.ToString() : null;
+
         snapshots.Add(new SensorSnapshot(
             hardware.Identifier.ToString(),
             hardware.HardwareType.ToString(),
@@ -115,7 +228,9 @@ static void CollectSensors(IHardware hardware, List<SensorSnapshot> snapshots)
             sensor.Identifier.ToString(),
             sensorName,
             sensor.SensorType.ToString(),
-            sensor.Value.Value));
+            sensor.Value.Value,
+            controlSupported,
+            controlId));
     }
 
     foreach (var child in hardware.SubHardware)
@@ -237,7 +352,9 @@ internal sealed record SensorSnapshot(
     string SensorId,
     string SensorName,
     string SensorType,
-    float Value);
+    float Value,
+    bool ControlSupported = false,
+    string? ControlId = null);
 
 internal sealed class UpdateVisitor : IVisitor
 {
